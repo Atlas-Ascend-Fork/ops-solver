@@ -87,12 +87,15 @@ check_install_path() {
 # makeself 可能将 run 文件路径作为第一个参数传入，需跳过
 get_opts() {
   while [ $# -gt 0 ]; do
-    # 跳过 makeself 传入的 run 文件路径参数。跳过条件必须锚定"以 .run 结尾"或
-    # "以路径前缀开头的 run 文件形态"，不能对任意位置做 *".run"* 子串匹配——
-    # 否则形如 --install-path=/data/x.run_env 的键值参数（值恰含 .run 子串）
-    # 会被整体吞掉，用户安装路径被静默丢弃回落默认路径（issue #163）。
+    # 跳过 makeself 传入的 run 文件路径与工作目录参数。makeself 2.5.0-patch1 会向启动脚本
+    # 注入两个参数（见 makeself-header.sh 的 scriptargs）：--<run文件> 与 --<cwd绝对路径>
+    # （如 --/usr/local/Ascend），后者此前未被跳过，导致 --install 在任意目录都被判为非法参数
+    # 而必然失败（报错信息含 cwd，表现为"报错随目录变化"）。
+    # 跳过条件必须锚定"以 .run 结尾"或"以路径前缀开头"，不能对任意位置做 *".run"* 子串
+    # 匹配——否则形如 --install-path=/data/x.run_env 的键值参数（值恰含 .run 子串）会被整体
+    # 吞掉，用户安装路径被静默丢弃回落默认路径（issue #163）。
     if [[ "$1" == *.run ]] || [[ "$1" == ./*.run ]] || [[ "$1" == --./*.run ]] || \
-       [[ "$1" == --.*.run ]] || [[ "$1" == --/*.run ]]; then
+       [[ "$1" == --.*.run ]] || [[ "$1" == --/* ]] || [[ "$1" == /* ]]; then
       shift
       continue
     fi

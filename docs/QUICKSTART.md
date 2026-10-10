@@ -82,7 +82,7 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 
 ### 1. 打印
 
-在Kernel代码中使用`DPrintf`进行调试打印，编译运行后可在日志中查看输出。
+在Kernel代码中使用`AscendC::PRINTF`进行调试打印：该接口支持打印Scalar类型数据（如整数、字符型、布尔型等），Vector/Cube Kernel 均可用；打印Tensor内容请使用`DumpTensor`，SIMT Kernel（`__simt_vf__`）请使用`AscendC::Simt::PRINTF`。编译运行后可在CANN日志（plog）中查看输出，详见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中"算子调测API"。
 
 ### 2. 性能采集
 
@@ -1490,23 +1490,25 @@ with open("./test/cmatinv_batched/data/input/A_gm.bin", "wb") as f:
 with open("./test/cmatinv_batched/data/golden/Ainv_gm.bin", "wb") as f:
     f.write(inv_a.tobytes())
 
-# 可选：打印矩阵形状和部分数据用于验证
 print(f"Generated batch {batchSize} of {n}x{n} complex matrices and their inverses")
-print("Input matrix batch 0 (first 3x3):\n", a[0, :3, :3])
-print("Inverse matrix batch 0 (first 3x3):\n", inv_a[0, :3, :3])
 
-# 验证第一个batch
-product = np.matmul(a[0], inv_a[0])
-identity = np.eye(n, dtype=np.complex64)
 
-# 计算误差
-abs_error = np.abs(product - identity)
-max_error = np.max(abs_error)
-mean_error = np.mean(abs_error)
-print("Verification results for batch 0:")
-print(f"Max absolute error: {max_error:.3e}")
-print(f"Mean absolute error: {mean_error:.3e}")
-print("Product of A and inv(A) (first 3x3):\n", product[:3, :3])
+# # 可选：打印矩阵形状和部分数据用于验证
+# print("Input matrix batch 0 (first 3x3):\n", a[0, :3, :3])
+# print("Inverse matrix batch 0 (first 3x3):\n", inv_a[0, :3, :3])
+
+# # 验证第一个batch
+# product = np.matmul(a[0], inv_a[0])
+# identity = np.eye(n, dtype=np.complex64)
+
+# # 计算误差
+# abs_error = np.abs(product - identity)
+# max_error = np.max(abs_error)
+# mean_error = np.mean(abs_error)
+# print("Verification results for batch 0:")
+# print(f"Max absolute error: {max_error:.3e}")
+# print(f"Mean absolute error: {mean_error:.3e}")
+# print("Product of A and inv(A) (first 3x3):\n", product[:3, :3])
 ```
 
 ### verify_result.py
@@ -1521,6 +1523,7 @@ import numpy as np
 relative_tol = 5e-3
 absolute_tol = 5e-3
 error_tol = 1e-4
+
 
 def verify_result(A, invA, batchSize, N):
     A = np.fromfile(A, dtype=np.complex64).reshape(batchSize, N, N)
@@ -1557,7 +1560,6 @@ def verify_result(A, invA, batchSize, N):
                     abs(output_data - golden_data) / abs(golden_data),
                 )
             )
-            total_different += 1
 
         total_elements += golden.size
         total_different += different_element_indexes.size
@@ -1595,42 +1597,57 @@ if __name__ == "__main__":
 主要功能：运行算子测试用例。
 
 ```c++
+#include <algorithm>
+#include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <vector>
-#include <complex>
-#include <algorithm>
 #include <iterator>
-#include <cmath>
+#include <vector>
+
+#include "../utils/test_utils.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
-#include "../utils/data_utils.h"
-#include "../utils/utils.h"
 
-int32_t main(int32_t argc, char *argv[])
+int32_t main(int32_t argc, char* argv[])
 {
     int deviceId, batchSize, n;
-    deviceId = (argc>1) ? std::atoi(argv[1]) : 0;
-    batchSize = (argc>2) ? std::atoi(argv[2]) : 2;
-    n = (argc>3) ? std::atoi(argv[3]) : 3;
+    deviceId = (argc > 1) ? std::atoi(argv[1]) : 0;
+    batchSize = (argc > 2) ? std::atoi(argv[2]) : 2;
+    n = (argc > 3) ? std::atoi(argv[3]) : 3;
 
-    // 固定写法，acl初始化
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(deviceId));
     aclrtStream stream = nullptr;
     CHECK_ACL(aclrtCreateStream(&stream));
 
-    // 固定写法，创建handle绑定stream
     aclsolverHandle_t handle = nullptr;
     CHECK_ACL(aclsolverCreate(&handle));
     CHECK_ACL(aclsolverSetStream(handle, stream));
 
-    // 构造输入数据
     size_t aMatrixFileSize = batchSize * n * n * sizeof(std::complex<float>);
-    std::complex<float>* A;
+    std::complex<float>* A = nullptr;
+    auto cleanup = [&]() -> aclError
+    {
+        if (A != nullptr)
+        {
+            CHECK_ACL(aclrtFreeHost(A));
+        }
+        CHECK_ACL(aclrtDestroyStream(stream));
+        if (handle != nullptr)
+        {
+            CHECK_ACL(aclsolverDestroy(handle));
+        }
+        CHECK_ACL(aclrtResetDevice(deviceId));
+        CHECK_ACL(aclFinalize());
+        return ACL_SUCCESS;
+    };
+
     CHECK_ACL(aclrtMallocHost((void**)(&A), aMatrixFileSize));
-    ReadFile("./test/cmatinv_batched/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize);
+    CHECK_RET(ReadFile("./test/cmatinv_batched/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize),
+              LOG_PRINT("ReadFile A_gm.bin failed.\n");
+              cleanup(); return ACL_ERROR_INVALID_PARAM);
     std::vector<std::complex<float>> Ainv(batchSize * n * n, {-1.0f, -1.0f});
     std::vector<int32_t> info(batchSize, 0);
 
@@ -1640,20 +1657,15 @@ int32_t main(int32_t argc, char *argv[])
     printTensor(Ainv.data(), batchSize, n, n);
 
     auto ret = aclsolverCmatinvBatched(handle, n, A, n, Ainv.data(), n, info.data(), batchSize);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCmatinvBatched failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCmatinvBatched failed. ERROR: %d\n", ret); cleanup(); return ret);
 
     std::cout << "[Output] Ainv:" << std::endl;
     printTensor(Ainv.data(), batchSize, n, n);
 
-    // 保存输出数据
     WriteFile("./test/cmatinv_batched/data/output/Ainv_gm.bin", Ainv.data(), aMatrixFileSize);
 
-    // 固定写法，acl释放资源
-    CHECK_ACL(aclrtFreeHost(A));
-    CHECK_ACL(aclrtDestroyStream(stream));
-    CHECK_ACL(aclsolverDestroy(handle));
-    CHECK_ACL(aclrtResetDevice(deviceId));
-    CHECK_ACL(aclFinalize());
+    auto cleanupRet = cleanup();
+    CHECK_RET(cleanupRet == ACL_SUCCESS, return cleanupRet);
 
     return 0;
 }
