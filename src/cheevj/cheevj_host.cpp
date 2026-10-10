@@ -461,7 +461,7 @@ void AppendTwoByTwoEigenpairs(std::vector<CompactEigenpair>* eigenpairs, int64_t
 {
     const double center = 0.5 * (static_cast<double>(diagonal0) + static_cast<double>(diagonal1));
     const double halfDifference = 0.5 * (static_cast<double>(diagonal0) - static_cast<double>(diagonal1));
-    const double radius = std::sqrt(halfDifference * halfDifference + static_cast<double>(std::norm(upper)));
+    const double radius = std::hypot(halfDifference, std::abs(static_cast<std::complex<double>>(upper)));
     const float low = static_cast<float>(center - radius);
     const float high = static_cast<float>(center + radius);
 

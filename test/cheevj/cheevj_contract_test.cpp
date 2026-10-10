@@ -96,7 +96,6 @@ void CheckInvalidParameters()
           aclsolverCheevj(nullptr, ACLSOLVER_EIG_MODE_NOVECTOR, ACLSOLVER_FILL_MODE_UPPER, 1, &a, 1, nullptr, &info) ==
                   ACL_ERROR_INVALID_PARAM &&
               info == -7);
-
 }
 
 void CheckNoArtificialSizeLimit(aclsolverHandle_t handle)
@@ -168,11 +167,11 @@ std::vector<Complex> MakePoisonedMatrix(aclsolverFillMode_t uplo, int64_t lda)
     return a;
 }
 
-bool PaddingUnchanged(const std::vector<Complex> &before, const std::vector<Complex> &after, int64_t lda)
+bool PaddingUnchanged(const std::vector<Complex> &before, const std::vector<Complex> &after, int64_t n, int64_t lda)
 {
-    for (int64_t col = 0; col < 2; ++col)
+    for (int64_t col = 0; col < n; ++col)
     {
-        for (int64_t row = 2; row < lda; ++row)
+        for (int64_t row = n; row < lda; ++row)
         {
             const size_t index = static_cast<size_t>(row + col * lda);
             if (std::memcmp(&before[index], &after[index], sizeof(Complex)) != 0)
@@ -238,7 +237,7 @@ void CheckValidContracts(aclsolverHandle_t handle)
                 status == ACL_SUCCESS && info == 0 && std::isfinite(w[0]) && std::isfinite(w[1]) && w[0] <= w[1] &&
                 NearlyEqual(w[0], expectedLow, 2.0e-3f) && NearlyEqual(w[1], expectedHigh, 2.0e-3f);
             Check(label + " status/sorted/eigenvalues", eigenvaluesValid);
-            Check(label + " lda padding unchanged", PaddingUnchanged(before, a, lda));
+            Check(label + " lda padding unchanged", PaddingUnchanged(before, a, n, lda));
 
             if (jobz == ACLSOLVER_EIG_MODE_NOVECTOR)
             {
@@ -258,6 +257,86 @@ void CheckValidContracts(aclsolverHandle_t handle)
             {
                 Check(label + " N/V and U/L eigenvalue equivalence",
                       NearlyEqual(w[0], referenceW[0], 2.0e-3f) && NearlyEqual(w[1], referenceW[1], 2.0e-3f));
+            }
+        }
+    }
+}
+
+bool CheckComplexTwoByTwoEigenvectors(const std::vector<Complex> &a, const std::vector<float> &w, int64_t lda,
+                                      const Complex &upper, double radius)
+{
+    const std::complex<double> v0(static_cast<double>(a[0].real()), static_cast<double>(a[0].imag()));
+    const std::complex<double> v1(static_cast<double>(a[1].real()), static_cast<double>(a[1].imag()));
+    const std::complex<double> v2(static_cast<double>(a[static_cast<size_t>(lda)].real()),
+                                  static_cast<double>(a[static_cast<size_t>(lda)].imag()));
+    const std::complex<double> v3(static_cast<double>(a[static_cast<size_t>(1 + lda)].real()),
+                                  static_cast<double>(a[static_cast<size_t>(1 + lda)].imag()));
+    const std::complex<double> z(static_cast<double>(upper.real()), static_cast<double>(upper.imag()));
+    const double vectorNorm = std::norm(v0) + std::norm(v1);
+    const std::complex<double> residual0 = z * v1 - static_cast<double>(w[0]) * v0;
+    const std::complex<double> residual1 = std::conj(z) * v0 - static_cast<double>(w[0]) * v1;
+    const std::complex<double> dot = std::conj(v0) * v2 + std::conj(v1) * v3;
+    if (radius == 0.0)
+    {
+        return std::isfinite(vectorNorm) && std::abs(vectorNorm - 1.0) <= 2.0e-6 && std::abs(residual0) <= 2.0e-6 &&
+               std::abs(residual1) <= 2.0e-6 && std::abs(dot) <= 2.0e-6;
+    }
+    return std::isfinite(vectorNorm) && std::abs(vectorNorm - 1.0) <= 2.0e-6 &&
+           std::abs(residual0) / radius <= 2.0e-6 && std::abs(residual1) / radius <= 2.0e-6 && std::abs(dot) <= 2.0e-6;
+}
+
+void CheckComplexTwoByTwoCase(aclsolverHandle_t handle, float scale, aclsolverEigMode_t jobz, aclsolverFillMode_t uplo)
+{
+    constexpr int64_t n = 2;
+    constexpr int64_t lda = 4;
+    const Complex upper(scale, 0.5f * scale);
+    const double radius = std::hypot(static_cast<double>(upper.real()), static_cast<double>(upper.imag()));
+    const double tolerance = std::max(2.0e-6, radius * 2.0e-6);
+    const float poison = std::numeric_limits<float>::quiet_NaN();
+    std::vector<Complex> a(static_cast<size_t>(lda * n), Complex(913.0f, -271.0f));
+    a[0] = Complex(0.0f, 0.0f);
+    a[static_cast<size_t>(1 + lda)] = Complex(0.0f, 0.0f);
+    if (uplo == ACLSOLVER_FILL_MODE_UPPER)
+    {
+        a[static_cast<size_t>(lda)] = upper;
+        a[1] = Complex(poison, poison);
+    }
+    else
+    {
+        a[1] = std::conj(upper);
+        a[static_cast<size_t>(lda)] = Complex(poison, poison);
+    }
+    const std::vector<Complex> before = a;
+    std::vector<float> w(static_cast<size_t>(n), 0.0f);
+    int32_t info = -999;
+    const aclError status = aclsolverCheevj(handle, jobz, uplo, n, a.data(), lda, w.data(), &info);
+    bool valid = status == ACL_SUCCESS && info == 0 && std::isfinite(w[0]) && std::isfinite(w[1]) && w[0] <= w[1] &&
+                 std::abs(static_cast<double>(w[0]) + radius) <= tolerance &&
+                 std::abs(static_cast<double>(w[1]) - radius) <= tolerance;
+    valid = valid && PaddingUnchanged(before, a, n, lda);
+    if (jobz == ACLSOLVER_EIG_MODE_NOVECTOR)
+    {
+        valid = valid && std::memcmp(before.data(), a.data(), before.size() * sizeof(Complex)) == 0;
+    }
+    else
+    {
+        valid = valid && CheckComplexTwoByTwoEigenvectors(a, w, lda, upper, radius);
+    }
+    const std::string label = std::string(jobz == ACLSOLVER_EIG_MODE_VECTOR ? "V" : "N") + "/" +
+                              (uplo == ACLSOLVER_FILL_MODE_UPPER ? "U" : "L") +
+                              (scale > 1.0e10f ? "/large-complex-2x2" : "/ordinary-complex-2x2");
+    Check(label, valid);
+}
+
+void CheckComplexTwoByTwoScale(aclsolverHandle_t handle)
+{
+    for (const float scale : {2.0f, 2.0e20f})
+    {
+        for (const aclsolverEigMode_t jobz : {ACLSOLVER_EIG_MODE_NOVECTOR, ACLSOLVER_EIG_MODE_VECTOR})
+        {
+            for (const aclsolverFillMode_t uplo : {ACLSOLVER_FILL_MODE_UPPER, ACLSOLVER_FILL_MODE_LOWER})
+            {
+                CheckComplexTwoByTwoCase(handle, scale, jobz, uplo);
             }
         }
     }
@@ -293,8 +372,8 @@ void CheckRepeatedTwoByTwoOrthogonality(aclsolverHandle_t handle)
         std::vector<Complex> input = RepeatedTwoByTwoInput(n, uplo);
         std::vector<float> w(static_cast<size_t>(n));
         int32_t info = -999;
-        const aclError status = aclsolverCheevj(handle, ACLSOLVER_EIG_MODE_VECTOR, uplo, n, input.data(), n,
-                                                w.data(), &info);
+        const aclError status =
+            aclsolverCheevj(handle, ACLSOLVER_EIG_MODE_VECTOR, uplo, n, input.data(), n, w.data(), &info);
         bool valid = status == ACL_SUCCESS && info == 0;
         for (int64_t column = 0; valid && column < n; ++column)
         {
@@ -310,8 +389,7 @@ void CheckRepeatedTwoByTwoOrthogonality(aclsolverHandle_t handle)
                 valid = valid && std::abs(dot - expected) <= tolerance;
             }
         }
-        Check(std::string("repeated 2x2 V/") + (uplo == ACLSOLVER_FILL_MODE_UPPER ? "U" : "L") +
-                  " orthogonality",
+        Check(std::string("repeated 2x2 V/") + (uplo == ACLSOLVER_FILL_MODE_UPPER ? "U" : "L") + " orthogonality",
               valid);
     }
 }
@@ -340,6 +418,7 @@ int main(int argc, char **argv)
     }
 
     CheckValidContracts(handle);
+    CheckComplexTwoByTwoScale(handle);
     CheckRepeatedTwoByTwoOrthogonality(handle);
     CheckNoArtificialSizeLimit(handle);
     CheckDenseAboveFixedBackends(handle);
