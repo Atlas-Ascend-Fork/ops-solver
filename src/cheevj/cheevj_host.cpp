@@ -691,9 +691,12 @@ bool SolveCompactHostJacobi(std::vector<Complex>* matrix, int64_t n, bool comput
     constexpr double relativeTolerance = 1.0e-12;
     constexpr int maxSweeps = 80;
     std::vector<DoubleComplex> work(static_cast<size_t>(n * n));
+    // Keep the convergence threshold relative to A; a unit floor drops valid small spectra.
+    double matrixScale = 0.0;
     for (size_t index = 0; index < work.size(); ++index)
     {
         work[index] = static_cast<DoubleComplex>((*matrix)[index]);
+        matrixScale = std::max(matrixScale, std::abs(work[index]));
     }
     std::vector<DoubleComplex> vectors;
     if (computeVectors)
@@ -708,13 +711,7 @@ bool SolveCompactHostJacobi(std::vector<Complex>* matrix, int64_t n, bool comput
     bool converged = false;
     for (int sweep = 0; sweep < maxSweeps; ++sweep)
     {
-        double maxDiagonal = 1.0;
-        for (int64_t index = 0; index < n; ++index)
-        {
-            maxDiagonal = std::max(
-                maxDiagonal, std::abs(work[static_cast<size_t>(CompactColumnMajorIndex(index, index, n))].real()));
-        }
-        const double thresholdSquared = relativeTolerance * relativeTolerance * maxDiagonal * maxDiagonal;
+        const double thresholdSquared = relativeTolerance * relativeTolerance * matrixScale * matrixScale;
         const double maxOffDiagonalSquared =
             RunJacobiSweep(&work, computeVectors ? &vectors : nullptr, n, thresholdSquared);
         if (maxOffDiagonalSquared <= thresholdSquared)

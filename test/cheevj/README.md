@@ -70,3 +70,14 @@ python3 test/cheevj/data/gen_data.py 2048 N U 42 random_hermitian
 LD_LIBRARY_PATH=build:${LD_LIBRARY_PATH} \
   ./build/test/cheevj/cheevj_benchmark 0 2048 N U 2 7
 ```
+
+## Small-scale Host convergence regression
+
+`cheevj_small_scale_host_test` calls the public API with a null handle and does not initialize an ACL device. It covers
+small and scaled `3x3` Hermitian tridiagonal spectra in eigenvalue-only and vector modes, plus zero-matrix controls.
+Build and run it with:
+
+```bash
+cmake --build build --target cheevj_small_scale_host_test -j2
+LD_LIBRARY_PATH=build:${LD_LIBRARY_PATH} ./build/test/cheevj/cheevj_small_scale_host_test
+```

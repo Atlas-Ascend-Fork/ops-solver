@@ -64,3 +64,17 @@ target_link_libraries(cheevj_contract_test PRIVATE
     ${OPS_SOLVER}
     $ENV{EAGER_LIBRARY_PATH}/libascendcl.so
 )
+
+add_executable(cheevj_small_scale_host_test
+    cheevj_small_scale_host_test.cpp
+)
+
+target_include_directories(cheevj_small_scale_host_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    $ENV{LINUX_INCLUDE_PATH}
+)
+
+target_link_libraries(cheevj_small_scale_host_test PRIVATE
+    ${OPS_SOLVER}
+    $ENV{EAGER_LIBRARY_PATH}/libascendcl.so
+)
