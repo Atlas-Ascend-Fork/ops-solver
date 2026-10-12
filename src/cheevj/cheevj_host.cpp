@@ -1281,9 +1281,14 @@ aclError RunCompleteVector(std::vector<Complex>* packedA, int64_t n, float* w, i
         return copyStatus;
     }
 
+    // 成功释放后立即置空（issue #186）：后续 aclrtFree 失败进入清理 lambda 时，
+    // 已成功释放的地址因置空不会再次进入 aclrtFree，避免重复释放
     CHEEVJ_CHECK_ACLRT(aclrtFree(matrixWorkspace), releaseWorkspaces());
+    matrixWorkspace = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(auxiliaryWorkspace), releaseWorkspaces());
+    auxiliaryWorkspace = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(deviceInfo), releaseWorkspaces());
+    deviceInfo = nullptr;
     return ACL_SUCCESS;
 }
 
@@ -1611,7 +1616,10 @@ DispatchResult TryPackedSpecialCases(std::vector<Complex>* packedA, Complex* a, 
             return {true, ACL_ERROR_INVALID_PARAM};
         }
         const bool converged = SolveCompactHostHouseholder(packedA, n, computeVectors, w);
-        if (computeVectors && (n <= 129 || converged))
+        // 回写契约统一（issue #172）：与 TrySmallHostInput/TryWideScaleInput 及
+        // issue #159 口径一致——仅收敛时回写特征向量；未收敛（info=1）保留原始
+        // 输入供调用方重试/诊断，n<=129 不再作为回写的例外条件
+        if (computeVectors && converged)
         {
             ScatterFullMatrix(*packedA, lda, n, a);
         }
@@ -1771,11 +1779,17 @@ aclError RunGenericDevice(std::vector<Complex>* packedA, Complex* a, int64_t lda
             ScatterFullMatrix(*packedA, lda, n, a);
         }
     }
+    // 成功释放后立即置空（issue #186）：原理同上
     CHEEVJ_CHECK_ACLRT(aclrtFree(d_A), releaseDeviceBuffers());
+    d_A = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(d_W), releaseDeviceBuffers());
+    d_W = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(d_info), releaseDeviceBuffers());
+    d_info = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(workSpace), releaseDeviceBuffers());
+    workSpace = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(tilingDevice), releaseDeviceBuffers());
+    tilingDevice = nullptr;
     return ACL_SUCCESS;
 }
 

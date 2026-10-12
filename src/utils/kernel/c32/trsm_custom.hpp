@@ -16,6 +16,12 @@
 #ifndef _TRSM_CUSTOM_HPP_
 #define _TRSM_CUSTOM_HPP_
 
+// 自带 LU_CEIL_ALIGN 定义（issue #178）：本文件使用了该宏但此前依赖包含者先包含
+// lu_custom.hpp 才可编译；#ifndef 守卫使其可与其他 5 处定义安全共存
+#ifndef LU_CEIL_ALIGN
+#define LU_CEIL_ALIGN(x, y) (((x) + (y) - 1) / (y) * (y))
+#endif
+
 #include <lib/matrix/matmul/matmul.h>
 
 #include <cassert>

@@ -69,13 +69,14 @@ check_install_path() {
     exitlog
     exit 1
   fi
+  # 展开 ~ 必须先于绝对路径转换（issue #198）：若先转成 $(pwd)/<path>，
+  # 结果恒以 / 开头，~ 分支永不成立，~/xxx 会被安装成字面 $PWD/~/xxx 目录
+  if [[ "${TARGET_INSTALL_PATH}" == ~* ]]; then
+    TARGET_INSTALL_PATH="${TARGET_INSTALL_PATH/#\~/$HOME}"
+  fi
   # 转换为绝对路径
   if [[ "${TARGET_INSTALL_PATH}" != /* ]]; then
     TARGET_INSTALL_PATH="$(cd "${USER_PWD:-.}" && pwd)/${TARGET_INSTALL_PATH}"
-  fi
-  # 展开 ~
-  if [[ "${TARGET_INSTALL_PATH}" == ~* ]]; then
-    TARGET_INSTALL_PATH="${TARGET_INSTALL_PATH/#\~/$HOME}"
   fi
   # 若路径为软链接，解析为实际路径
   if resolved=$(readlink -f "${TARGET_INSTALL_PATH}" 2>/dev/null) && [ -n "${resolved}" ]; then
@@ -96,6 +97,13 @@ get_opts() {
     # 吞掉，用户安装路径被静默丢弃回落默认路径（issue #163）。
     if [[ "$1" == *.run ]] || [[ "$1" == ./*.run ]] || [[ "$1" == --./*.run ]] || \
        [[ "$1" == --.*.run ]] || [[ "$1" == --/* ]] || [[ "$1" == /* ]]; then
+      shift
+      continue
+    fi
+    # makeself 注入的原始工作目录参数（issue #190）：形如 --/home/tmpdir，
+    # 是 makeself 打包时把调用方 pwd 一并传给内部脚本所致，并非用户参数，
+    # 直接跳过，避免参数解析提前失败导致后续 --install/--install-path 未被处理
+    if [[ "$1" == --/* ]]; then
       shift
       continue
     fi
@@ -157,8 +165,10 @@ DIRS_GRANTED_WRITE=()
 grant_write_if_needed() {
   local dir="$1"
   if [ -d "${dir}" ] && [ ! -w "${dir}" ]; then
-    chmod u+w "${dir}" 2>/dev/null
-    if [ $? -eq 0 ]; then
+    # chmod 必须放进 if 条件（issue #200）：脚本 set -e 下独立 chmod 失败会
+    # 直接中止安装且告警分支永不可达（死代码）；写成 if 形式后单个目录授权
+    # 失败仅告警并继续，保持"打印告警后继续尝试安装"的设计行为
+    if chmod u+w "${dir}" 2>/dev/null; then
       DIRS_GRANTED_WRITE+=("${dir}")
     else
       logandprint "[WARNING]: Failed to grant write permission on ${dir}."
@@ -173,7 +183,8 @@ restore_permissions() {
     i=$((i - 1))
     local dir="${DIRS_GRANTED_WRITE[$i]}"
     if [ -d "${dir}" ]; then
-      chmod u-w "${dir}" 2>/dev/null
+      # 恢复失败不应使已成功的安装被判定为失败（issue #200）
+      chmod u-w "${dir}" 2>/dev/null || true
     fi
   done
   DIRS_GRANTED_WRITE=()

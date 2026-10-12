@@ -118,7 +118,7 @@ class LUCustom1
         if (blockM != realM) Duplicate(workLocal, T(-1), blockM - realM);
         ReduceMax(workLocal, workLocal, workLocal, blockM - k, true);
         T maxIndex = workLocal.GetValue(1);
-        return *reinterpret_cast<uint32_t *>(&maxIndex);
+        return __builtin_bit_cast(uint32_t, maxIndex);
     }
     __aicore__ inline void swap(int a, int b, LocalTensor<T> &colLocal)
     {
@@ -126,7 +126,7 @@ class LUCustom1
         colLocal.SetValue(a, colLocal.GetValue(b));
         colLocal.SetValue(b, tmp);
     }
-    __aicore__ inline void Divide(int offset, int k, LocalTensor<T>& srcLocal)
+    __aicore__ inline void Divide(int offset, int k, LocalTensor<T> &srcLocal)
     {
         int32_t eventIDVToS = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_S));
         AscendC::SetFlag<AscendC::HardEvent::V_S>(eventIDVToS);
@@ -238,7 +238,7 @@ class LUCustom2
         Duplicate(workLocal, T(-1), k);
         ReduceMax(workLocal, workLocal, workLocal, blockM, true);
         T maxIndex = workLocal.GetValue(1);
-        return *reinterpret_cast<uint32_t *>(&maxIndex);
+        return __builtin_bit_cast(uint32_t, maxIndex);
     }
     __aicore__ inline void swap(int a, int b, LocalTensor<T> &colLocal)
     {
@@ -391,7 +391,7 @@ class LUCustom3
         if (blockM != realM) Duplicate(workLocal, T(-1), blockM - realM);
         ReduceMax(workLocal, workLocal, workLocal, blockM - k, true);
         T maxIndex = workLocal.GetValue(1);
-        return *reinterpret_cast<uint32_t *>(&maxIndex);
+        return __builtin_bit_cast(uint32_t, maxIndex);
     }
     __aicore__ inline void swap(int a, int b, LocalTensor<T> &colLocal)
     {
@@ -410,6 +410,20 @@ class LUCustom3
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
         DataCopy(aGlobal[offset], colLocal[idx], blockM);
+        // 跨核竞态修复（issue #94）：本函数返回后 Process 会经 S-pipe 发布 pivot
+        // 信号（wGlobal.SetValue + dcci），reader 核看到信号后即 MTE2 读取 pivot
+        // 列。需保证两件事：① S-pipe 的 SetValue 排序在本列 MTE3 store 之后
+        // （MTE3_S fence）；② 本列 store 对 reader 核 MTE2 全局可见（逐 cacheline
+        // flush）。缺失时 reader 可能读到旧的 col-k，LU 结果间歇性静默错误。
+        int32_t eventIDMTE3ToS = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(eventIDMTE3ToS);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(eventIDMTE3ToS);
+        constexpr int32_t CACHE_LINE_BYTES = 64;  // AI Core cacheline 64B（issue #94）
+        for (int32_t line = 0; line < blockM * static_cast<int32_t>(sizeof(T)); line += CACHE_LINE_BYTES)
+        {
+            DataCacheCleanAndInvalid<T, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                aGlobal[offset + line / static_cast<int32_t>(sizeof(T))]);
+        }
         augLocal = colLocal[idx];
     }
     __aicore__ inline void CopyInAug(int offset)

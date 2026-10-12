@@ -15,14 +15,16 @@ ascend_install_dir=$1
 gen_file_dir=$2
 run_pkg_version=$3
 
-mkdir -p "${gen_file_dir}"
+# 输出目录创建失败时立即以真实错误码退出（issue #189）：
+# 否则末尾条件为假的 if 复合命令返回 0，缺失产物会被 CMake ALL 目标误判为成功
+mkdir -p "${gen_file_dir}" || exit $?
 
 # create version.info
 # Version: run 包版本
-echo "Version=${run_pkg_version}" > "${gen_file_dir}/version.info"
+echo "Version=${run_pkg_version}" > "${gen_file_dir}/version.info" || exit $?
 
 # custom_opp_compiler_version: 从 Ascend compiler 读取
 if [ -f "${ascend_install_dir}/compiler/version.info" ]; then
   compiler_version=$(grep "Version" -w "${ascend_install_dir}/compiler/version.info" | awk -F = '{print $2}')
-  echo "custom_opp_compiler_version=${compiler_version}" >> "${gen_file_dir}/version.info"
+  echo "custom_opp_compiler_version=${compiler_version}" >> "${gen_file_dir}/version.info" || exit $?
 fi

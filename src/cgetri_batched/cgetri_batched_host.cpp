@@ -185,15 +185,19 @@ aclError CgetriBatchedImpl(aclsolverHandle_t handle, const int64_t n, std::compl
 
     // 三张 gather 重排表收敛为 utils 共享实现（issue #171，第 6 处拷贝归一）：
     // gather1/gather2 语义与共享实现完全一致；gather3 共享实现含 n 非 8 倍数时
-    // 尾行补齐口径（issue #161 修复），批量场景逐 batch 调用（strideN/padded 为
-    // 每 batch 相同的 n 推导值）
-    for (int64_t b = 0; b < batchNum; ++b)
+    // 尾行补齐口径（issue #161 修复）。
+    // 表生成移出 batch 循环（issue #179）：GenerateGatherTables 的输入
+    // (tileM, blockN, N, strideN) 逐 batch 完全相同，三张表每个 batch 一模一样，
+    // 循环前生成一次即可；逐 batch 真正变化的只有下方 eye 的对角线写入
     {
         auto *g1 = reinterpret_cast<uint8_t *>(gatherOffset1.data());
         auto *g2 = reinterpret_cast<uint8_t *>(gatherOffset2.data());
         auto *g3 = reinterpret_cast<uint8_t *>(gatherOffset3.data());
         // 共享实现 eyeBuf=nullptr 时为纯整数运算，无失败路径（见 lu_host_common.h 注释）
         (void)GenerateGatherTables(tileM, blockN, N, strideN, N, g1, g2, g3, nullptr, EYE_FLOATS_PER_REAL_ELEMENT);
+    }
+    for (int64_t b = 0; b < batchNum; ++b)
+    {
         // 批量 eye：第 b 个 batch 的单位阵写入共享 eye 布局的对应平面
         for (int64_t i = 0; i < N; ++i)
         {

@@ -37,9 +37,10 @@ aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
     {
         *info = 0;
     }
-    SOLVER_ECHECK(m > 0 && n > 0 && lda > 0 && A != nullptr && ipiv != nullptr && info != nullptr,
-                  "aclsolverSgetrf invalid param: m, n, lda <= 0, or A, ipiv, info is nullptr.",
-                  ACL_ERROR_INVALID_PARAM);
+    // info 允许为空（issue #180）：对齐 LAPACK 惯例，调用方不关心奇异信息时
+    // 可传 nullptr；此处的判空初始化与奇异列上报处的判空防护因此都是可达分支
+    SOLVER_ECHECK(m > 0 && n > 0 && lda > 0 && A != nullptr && ipiv != nullptr,
+                  "aclsolverSgetrf invalid param: m, n, lda <= 0, or A, ipiv is nullptr.", ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(m <= INT32_MAX && n <= INT32_MAX, "aclsolverSgetrf invalid param: m or n exceeds int32 range.",
                   ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(m * n <= INT32_MAX, "aclsolverSgetrf invalid param: m * n exceeds INT32_MAX elements.",

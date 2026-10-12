@@ -17,7 +17,13 @@ run_command() {
     local cmd="$*"
     echo "Executing command: $cmd"
 
-    if ! output=$("$@" 2>&1); then
+    # 真实退出码只能在 else 分支首条语句处取（issue #199）：`if ! cmd` 的
+    # then 分支内 $? 是 ! 反转后的状态（恒为 0）；而条件失败且无 else 时
+    # if 复合命令整体返回 0，fi 之后的 $? 同样为 0——两者都会把依赖安装
+    # 失败静默上报为 exit 0。else 分支入口处 $? 仍为条件中命令的真实状态
+    if output=$("$@" 2>&1); then
+        return 0
+    else
         local exit_code=$?
         echo -e "\nCommand execution failed!"
         echo -e "\nFailed command: $cmd"

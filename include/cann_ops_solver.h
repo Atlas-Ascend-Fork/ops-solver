@@ -104,7 +104,9 @@ typedef enum
  * @param lda leading dimension; current version requires lda == n
  * @param Ainv output inverse matrices, COMPLEX64, [batchSize, n, n]
  * @param lda_inv leading dimension of Ainv; current version requires lda_inv == n
- * @param info result info per batch; not written in current version
+ * @param info result info per batch; the current version zero-initializes only
+ *             info[0] on entry and does not write per-batch status. Argument
+ *             errors are reported via the return value, not via info.
  * @param batchSize number of matrices, valid range (0, 3000]
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
@@ -122,7 +124,9 @@ aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std:
  * @param lda leading dimension; current version requires lda == n
  * @param Ainv output inverse matrices, COMPLEX64, [batchSize, n, n]
  * @param lda_inv leading dimension of Ainv; current version requires lda_inv == n
- * @param info result info per batch; not written in current version
+ * @param info result info per batch; the current version zero-initializes only
+ *             info[0] on entry and does not write per-batch status. Argument
+ *             errors are reported via the return value, not via info.
  * @param batchSize number of matrices, valid range (0, 3000]
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
@@ -136,7 +140,8 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
  * @param n order of the square matrix, valid range [1, 8192]
  * @param A input matrix (typically LU factors from aclsolverCgetrf), COMPLEX64, contiguous n * n layout
  * @param lda leading dimension; current version requires lda == n
- * @param info result info; not written in current version
+ * @param info result info; the current version zero-initializes it on entry.
+ *             Argument errors are reported via the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex<float> *A, const int64_t lda,
@@ -149,7 +154,8 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
  * @param n order of the square matrix, valid range [1, 8192]
  * @param A input matrix (typically LU factors from aclsolverSgetrf), FLOAT32, contiguous n * n layout
  * @param lda leading dimension; current version requires lda == n
- * @param info result info; not written in current version
+ * @param info result info; the current version zero-initializes it on entry.
+ *             Argument errors are reported via the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, const int64_t lda, int32_t *info);
@@ -159,11 +165,13 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
  *
  * @param handle aclsolver handle created by aclsolverCreate
  * @param m rows of matrix A, valid range [1, 8192]
- * @param n columns of matrix A, must be positive
+ * @param n columns of matrix A, valid range [1, 8192]
  * @param A input/output matrix, COMPLEX64, contiguous m * n layout; holds L and U on return
  * @param lda leading dimension; current version requires lda == n
  * @param ipiv output pivot indices (1-based), length min(m, n)
- * @param info result info; not written in current version
+ * @param info result info; the current version zero-initializes it on entry.
+ *             Argument errors (including n > 8192) are reported via the return
+ *             value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float> *A,
@@ -174,11 +182,13 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  *
  * @param handle aclsolver handle created by aclsolverCreate
  * @param m rows of matrix A, valid range [1, 8192]
- * @param n columns of matrix A, must be positive
+ * @param n columns of matrix A, valid range [1, 8192]
  * @param A input/output matrix, FLOAT32, contiguous m * n layout; holds L and U on return
  * @param lda leading dimension; current version requires lda == n
  * @param ipiv output pivot indices (1-based), length min(m, n)
- * @param info result info; not written in current version
+ * @param info result info; the current version zero-initializes it on entry.
+ *             Argument errors (including n > 8192) are reported via the return
+ *             value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,

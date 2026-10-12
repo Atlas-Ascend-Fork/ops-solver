@@ -404,9 +404,15 @@ aclError RunCompleteNoVector(const std::vector<Complex>& packedA, int64_t n, flo
         return copyStatus;
     }
 
+    // 成功释放后立即置空（issue #186）：后续 aclrtFree 失败进入 releaseFixedBuffers
+    // 清理时，已成功释放的地址因置空不会再次进入 aclrtFree，避免重复释放
     CHEEVJ_CHECK_ACLRT(aclrtFree(matrixWorkspace), releaseFixedBuffers());
+    matrixWorkspace = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(auxiliaryWorkspace), releaseFixedBuffers());
+    auxiliaryWorkspace = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(eigenvalues), releaseFixedBuffers());
+    eigenvalues = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtFree(deviceInfo), releaseFixedBuffers());
+    deviceInfo = nullptr;
     return ACL_SUCCESS;
 }

@@ -30,9 +30,9 @@
 
 #include <cstdint>
 
-#include "cheevj_workspace.hpp"
-#include "cheevj_pair_schedule.hpp"
 #include "cheevj_ascendc_symbols.hpp"
+#include "cheevj_pair_schedule.hpp"
+#include "cheevj_workspace.hpp"
 #include "kernel_operator.h"
 #ifdef CHEEVJ_ENABLE_STAGE_PANEL_UPDATE
 #include "cheevj_panel_update.hpp"
@@ -88,9 +88,9 @@ __aicore__ inline float StageSqrtApprox(float value)
     {
         return 0.0f;
     }
-    uint32_t bits = *reinterpret_cast<uint32_t *>(&value);
+    uint32_t bits = __builtin_bit_cast(uint32_t, value);
     bits = (bits >> 1) + 0x1fc00000U;
-    float root = *reinterpret_cast<float *>(&bits);
+    float root = __builtin_bit_cast(float, bits);
     for (int iter = 0; iter < 4; ++iter)
     {
         root = 0.5f * (root + value / root);
@@ -115,12 +115,11 @@ class CheevjStageBlockPairSchedule16 : public CheevjRoundRobinPairSchedule
    public:
     __aicore__ inline void Reset(int matrixN, bool needVectors = false)
     {
-        const int selectedBlockSize =
-            matrixN >= CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK32_MIN_N
-                ? 4 * CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK_SIZE
-                : (matrixN >= CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK16_MIN_N || needVectors
-                       ? 2 * CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK_SIZE
-                       : CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK_SIZE);
+        const int selectedBlockSize = matrixN >= CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK32_MIN_N
+                                          ? 4 * CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK_SIZE
+                                          : (matrixN >= CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK16_MIN_N || needVectors
+                                                 ? 2 * CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK_SIZE
+                                                 : CHEEVJ_STAGE_BLOCK_JACOBI16_BLOCK_SIZE);
         CheevjRoundRobinPairSchedule::Reset(matrixN, selectedBlockSize);
     }
 };
@@ -233,8 +232,8 @@ class CheevjStageBlockJacobi16
         LocalTensor<float> unitaryReal = unitaryRealBuf.Get<float>();
         LocalTensor<float> unitaryImag = unitaryImagBuf.Get<float>();
 
-        const bool localConverged = SolveStagePair(pairIndex, pair, localDim, blockReal, blockImag, unitaryReal,
-                                                   unitaryImag);
+        const bool localConverged =
+            SolveStagePair(pairIndex, pair, localDim, blockReal, blockImag, unitaryReal, unitaryImag);
         CheevjWorkspaceSync();
         ApplyStageRightUpdates(stage, waveStart, wavePairCount, unitaryReal, unitaryImag);
         ApplyStageLeftUpdates(stage, waveStart, wavePairCount, unitaryReal, unitaryImag);
@@ -247,8 +246,8 @@ class CheevjStageBlockJacobi16
     }
 
     __aicore__ inline bool SolveStagePair(int pairIndex, const CheevjStageBlockPair16 &pair, int localDim,
-                                         LocalTensor<float> blockReal, LocalTensor<float> blockImag,
-                                         LocalTensor<float> unitaryReal, LocalTensor<float> unitaryImag)
+                                          LocalTensor<float> blockReal, LocalTensor<float> blockImag,
+                                          LocalTensor<float> unitaryReal, LocalTensor<float> unitaryImag)
     {
         if (!pair.valid || localDim <= 1 || localDim > CHEEVJ_STAGE_BLOCK_JACOBI16_LOCAL_DIM)
         {
@@ -328,13 +327,12 @@ class CheevjStageBlockJacobi16
     bool computeVectors;
     int maxLocalSweeps;
 
-#include "cheevj_stage_block_storage.inc"
+#include "cheevj_stage_block_left_update.inc"
+#include "cheevj_stage_block_local_jacobi.inc"
 #include "cheevj_stage_block_panel_impl_part1.inc"
 #include "cheevj_stage_block_panel_impl_part2.inc"
-
-#include "cheevj_stage_block_local_jacobi.inc"
 #include "cheevj_stage_block_right_update.inc"
-#include "cheevj_stage_block_left_update.inc"
+#include "cheevj_stage_block_storage.inc"
 };
 
 }  // namespace Cheevj

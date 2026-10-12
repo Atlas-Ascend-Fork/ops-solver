@@ -13,84 +13,99 @@
  * \brief aclsolver handle lifecycle, stream, version and other auxiliary function implementations.
  */
 
-#include "cann_ops_solver.h"
-#include "aclsolver_handle_internal.h"
-
 #include <acl/acl.h>
+
 #include <new>
 
-namespace {
+#include "aclsolver_handle_internal.h"
+#include "cann_ops_solver.h"
+
+namespace
+{
 
 /**
  * @brief Safely cast external void* handle to internal _aclsolver_handle*.
  */
-inline _aclsolver_handle *ToInternal(aclsolverHandle_t handle)
+inline _aclsolver_handle *ToInternal(aclsolverHandle_t handle) { return reinterpret_cast<_aclsolver_handle *>(handle); }
+
+}  // namespace
+
+extern "C"
 {
-    return reinterpret_cast<_aclsolver_handle *>(handle);
-}
+    aclsolverStatus_t aclsolverCreate(aclsolverHandle_t *handle)
+    {
+        if (handle == nullptr)
+        {
+            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+        }
 
-} // namespace
+        // Prevent repeated creation that would overwrite an existing pointer and cause memory leak.
+        if (*handle != nullptr)
+        {
+            return ACLSOLVER_STATUS_INVALID_VALUE;
+        }
 
-extern "C" {
+        // Contract check (issue #194): the documented lifecycle requires a current
+        // CANN context; aclrtGetCurrentContext fails both before aclInit() and
+        // after aclInit() without a device selection.
+        aclrtContext currentContext = nullptr;
+        if (aclrtGetCurrentContext(&currentContext) != ACL_SUCCESS || currentContext == nullptr)
+        {
+            return ACLSOLVER_STATUS_NOT_INITIALIZED;
+        }
 
-aclsolverStatus_t aclsolverCreate(aclsolverHandle_t *handle)
-{
-    if (handle == nullptr) {
-        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+        auto *h = new (std::nothrow) _aclsolver_handle();
+        if (h == nullptr)
+        {
+            return ACLSOLVER_STATUS_ALLOC_FAILED;
+        }
+
+        *handle = reinterpret_cast<void *>(h);
+        return ACLSOLVER_STATUS_SUCCESS;
     }
 
-    // Prevent repeated creation that would overwrite an existing pointer and cause memory leak.
-    if (*handle != nullptr) {
-        return ACLSOLVER_STATUS_INVALID_VALUE;
+    aclsolverStatus_t aclsolverDestroy(aclsolverHandle_t handle)
+    {
+        if (handle == nullptr)
+        {
+            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+        }
+
+        auto *h = ToInternal(handle);
+
+        // stream is managed by the user; here we only clear handle fields, not freeing device memory.
+        h->stream = nullptr;
+
+        delete h;
+        return ACLSOLVER_STATUS_SUCCESS;
     }
 
-    auto *h = new (std::nothrow) _aclsolver_handle();
-    if (h == nullptr) {
-        return ACLSOLVER_STATUS_ALLOC_FAILED;
+    aclsolverStatus_t aclsolverSetStream(aclsolverHandle_t handle, aclrtStream stream)
+    {
+        if (handle == nullptr)
+        {
+            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+        }
+
+        auto *h = ToInternal(handle);
+        h->stream = stream;
+        return ACLSOLVER_STATUS_SUCCESS;
     }
 
-    *handle = reinterpret_cast<void *>(h);
-    return ACLSOLVER_STATUS_SUCCESS;
-}
+    aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream *stream)
+    {
+        if (handle == nullptr)
+        {
+            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+        }
+        if (stream == nullptr)
+        {
+            return ACLSOLVER_STATUS_INVALID_VALUE;
+        }
 
-aclsolverStatus_t aclsolverDestroy(aclsolverHandle_t handle)
-{
-    if (handle == nullptr) {
-        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+        auto *h = ToInternal(handle);
+        *stream = h->stream;
+        return ACLSOLVER_STATUS_SUCCESS;
     }
 
-    auto *h = ToInternal(handle);
-
-    // stream is managed by the user; here we only clear handle fields, not freeing device memory.
-    h->stream = nullptr;
-
-    delete h;
-    return ACLSOLVER_STATUS_SUCCESS;
-}
-
-aclsolverStatus_t aclsolverSetStream(aclsolverHandle_t handle, aclrtStream stream)
-{
-    if (handle == nullptr) {
-        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
-    }
-
-    auto *h = ToInternal(handle);
-    h->stream = stream;
-    return ACLSOLVER_STATUS_SUCCESS;
-}
-
-aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream *stream)
-{
-    if (handle == nullptr) {
-        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
-    }
-    if (stream == nullptr) {
-        return ACLSOLVER_STATUS_INVALID_VALUE;
-    }
-
-    auto *h = ToInternal(handle);
-    *stream = h->stream;
-    return ACLSOLVER_STATUS_SUCCESS;
-}
-
-} // extern "C"
+}  // extern "C"

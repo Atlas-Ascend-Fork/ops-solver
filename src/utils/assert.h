@@ -32,6 +32,10 @@
         }                                                                               \
     } while (0)
 
+// 注意（issue #181）：SOLVER_CHECK 与下方 CHECK_RET 当前在全库无调用点，属预留宏。
+// 与 SOLVER_ECHECK 的关键差异：SOLVER_CHECK 条件失败时仅打印日志并执行 handleExpr，
+// **不做 return**，失败后代码继续向下执行——不得将其误用作"失败即返回"的参数校验；
+// 需要失败即返回时请使用 SOLVER_ECHECK。若确认永不使用可整体删除。
 #define SOLVER_CHECK(condition, logExpr, handleExpr)    \
     do                                                  \
     {                                                   \
@@ -45,6 +49,9 @@
         }                                               \
     } while (0)
 
+// 注意（issue #181）：CHECK_RET 当前在全库无调用点，属预留宏；条件失败时执行
+// return_expr——仅适用于"条件不满足则离开当前函数"的语义，命名未体现返回动作，
+// 使用时注意与 SOLVER_ECHECK（自带日志）区分。
 #define CHECK_RET(cond, return_expr) \
     do                               \
     {                                \
