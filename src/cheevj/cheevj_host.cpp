@@ -301,12 +301,24 @@ bool IsInputHermitianTridiagonal(const Complex* a, int64_t lda, int64_t n, bool 
     return true;
 }
 
-float MaximumDiagonalMagnitude(const Complex* a, int64_t lda, int64_t n)
+float MaximumInputMagnitude(const Complex* a, int64_t lda, int64_t n, bool lower)
 {
+    // Scan the uplo-selected triangle instead of the diagonal only
+    // (issue #176): a Hermitian tridiagonal matrix with zero diagonal and
+    // huge off-diagonals (e.g. sub/super diagonals 1e20) has diagonal
+    // magnitude 0, so the old diagonal-only scan missed the wide-scale
+    // host fallback and the fixed backend silently returned NaN spectra.
     float maximum = 0.0f;
-    for (int64_t index = 0; index < n; ++index)
+    for (int64_t col = 0; col < n; ++col)
     {
-        maximum = std::max(maximum, std::abs(a[index + index * lda].real()));
+        const int64_t rowBegin = lower ? col : 0;
+        const int64_t rowEnd = lower ? n : col + 1;
+        for (int64_t row = rowBegin; row < rowEnd; ++row)
+        {
+            const Complex value = a[row + col * lda];
+            const float magnitude = row == col ? std::abs(value.real()) : std::abs(value);
+            maximum = std::max(maximum, magnitude);
+        }
     }
     return maximum;
 }
@@ -1830,9 +1842,9 @@ aclError CheevjDispatch(aclsolverHandle_t handle, int32_t jobzValue, int32_t upl
     }
 
     constexpr float wideScaleThreshold = 1.0e6f;
-    const float diagonalMagnitude = MaximumDiagonalMagnitude(a, lda, n);
-    const bool wideDiagonalScale = diagonalMagnitude > wideScaleThreshold;
-    dispatch = TrySmallHostInput(a, lda, n, uploValue, computeVectors, wideDiagonalScale, w, info);
+    const float inputMagnitude = MaximumInputMagnitude(a, lda, n, IsLowerMode(uploValue));
+    const bool wideInputScale = inputMagnitude > wideScaleThreshold;
+    dispatch = TrySmallHostInput(a, lda, n, uploValue, computeVectors, wideInputScale, w, info);
     if (dispatch.handled)
     {
         return dispatch.status;
@@ -1845,7 +1857,7 @@ aclError CheevjDispatch(aclsolverHandle_t handle, int32_t jobzValue, int32_t upl
         return workspaceStatus;
     }
 
-    dispatch = TryWideScaleInput(a, lda, n, uploValue, computeVectors, wideDiagonalScale, w, info);
+    dispatch = TryWideScaleInput(a, lda, n, uploValue, computeVectors, wideInputScale, w, info);
     if (dispatch.handled)
     {
         return dispatch.status;

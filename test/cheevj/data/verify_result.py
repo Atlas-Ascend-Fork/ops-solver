@@ -13,7 +13,13 @@
 import logging
 import os
 import sys
+
 import numpy as np
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
+)
+from verify_utils import read_binary_strict  # noqa: E402
 
 
 INPUT_A_PATH = "./test/cheevj/data/input/A_gm.bin"
@@ -47,7 +53,8 @@ def normalize_uplo(value):
 
 
 def read_complex64_column_major(path, n):
-    data = np.fromfile(path, dtype=np.complex64)
+    # 尾部不完整元素直接报错（issue #202）：fromfile 会静默丢弃末尾脏字节
+    data = read_binary_strict(path, np.complex64)
     expected_size = n * n
     if data.size != expected_size:
         raise ValueError(
@@ -57,7 +64,7 @@ def read_complex64_column_major(path, n):
 
 
 def read_float32(path, n):
-    data = np.fromfile(path, dtype=np.float32)
+    data = read_binary_strict(path, np.float32)
     if data.size != n:
         raise ValueError(f"{path} contains {data.size} float32 values, expected {n}")
     return data

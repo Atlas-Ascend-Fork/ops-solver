@@ -148,12 +148,26 @@ class LUCustom1
         AscendC::WaitFlag<AscendC::HardEvent::V_S>(eventIDVToS);
         T realScalar = srcLocalReal.GetValue(offset + (blockM - 1 - k));
         T imagScalar = srcLocalImag.GetValue(offset + (blockM - 1 - k));
-        T denominator = realScalar * realScalar + imagScalar * imagScalar;
-        // Guard against zero pivot (singular matrix): division by zero would
-        // produce NaN/Inf and silently corrupt the LU factors (issue #29/#92).
-        SOLVER_KERNEL_CHECK(denominator != T(0), denominator = T(1); realScalar = T(0); imagScalar = T(0));
-        T realInvScalar = realScalar / denominator;
-        T imagInvScalar = imagScalar / denominator;
+        // Scale before forming the complex norm (issue #175): squaring raw
+        // float32 components overflows for finite pivots near 1e20 (e.g.
+        // 2e20+0.5e20i), making the reciprocal silently zero and corrupting
+        // the LU factors with info=0. Divide both components by max(|re|,|im|)
+        // first; the scaled norm is then in [1, 2] and cannot overflow. Zero
+        // pivots keep the reciprocal 0, preserving singular-matrix semantics
+        // (issue #29/#92).
+        T absReal = realScalar < T(0) ? -realScalar : realScalar;
+        T absImag = imagScalar < T(0) ? -imagScalar : imagScalar;
+        T scale = absReal > absImag ? absReal : absImag;
+        T realInvScalar = T(0);
+        T imagInvScalar = T(0);
+        if (scale != T(0))
+        {
+            T scaledReal = realScalar / scale;
+            T scaledImag = imagScalar / scale;
+            T scaledNorm = scaledReal * scaledReal + scaledImag * scaledImag;
+            realInvScalar = (scaledReal / scaledNorm) / scale;
+            imagInvScalar = (scaledImag / scaledNorm) / scale;
+        }
 
         LocalTensor<T> workLocal = workBuf.Get<T>();
 
@@ -328,12 +342,26 @@ class LUCustom3
     {
         T realScalar = colLocalReal[idx].GetValue(blockM - 1 - k);
         T imagScalar = colLocalImag[idx].GetValue(blockM - 1 - k);
-        T denominator = realScalar * realScalar + imagScalar * imagScalar;
-        // Guard against zero pivot (singular matrix): division by zero would
-        // produce NaN/Inf and silently corrupt the LU factors (issue #29/#92).
-        SOLVER_KERNEL_CHECK(denominator != T(0), denominator = T(1); realScalar = T(0); imagScalar = T(0));
-        T realInvScalar = realScalar / denominator;
-        T imagInvScalar = imagScalar / denominator;
+        // Scale before forming the complex norm (issue #175): squaring raw
+        // float32 components overflows for finite pivots near 1e20 (e.g.
+        // 2e20+0.5e20i), making the reciprocal silently zero and corrupting
+        // the LU factors with info=0. Divide both components by max(|re|,|im|)
+        // first; the scaled norm is then in [1, 2] and cannot overflow. Zero
+        // pivots keep the reciprocal 0, preserving singular-matrix semantics
+        // (issue #29/#92).
+        T absReal = realScalar < T(0) ? -realScalar : realScalar;
+        T absImag = imagScalar < T(0) ? -imagScalar : imagScalar;
+        T scale = absReal > absImag ? absReal : absImag;
+        T realInvScalar = T(0);
+        T imagInvScalar = T(0);
+        if (scale != T(0))
+        {
+            T scaledReal = realScalar / scale;
+            T scaledImag = imagScalar / scale;
+            T scaledNorm = scaledReal * scaledReal + scaledImag * scaledImag;
+            realInvScalar = (scaledReal / scaledNorm) / scale;
+            imagInvScalar = (scaledImag / scaledNorm) / scale;
+        }
 
         LocalTensor<T> workLocal = inQueueAugReal.AllocTensor<T>();
 

@@ -10,8 +10,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
 import sys
+
 import numpy as np
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
+)
+from verify_utils import read_binary_strict  # noqa: E402
 
 eps = 1e-3
 error_tol = 1e-4
@@ -41,14 +48,14 @@ def main():
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 32
     t = min(m, n)
 
-    # 读取输入文件
-    a = np.fromfile("./test/cgetrf/data/input/A_gm.bin", dtype=np.complex64).reshape(
+    # 读取输入文件（尾部不完整元素直接报错，issue #202）
+    a = read_binary_strict("./test/cgetrf/data/input/A_gm.bin", np.complex64).reshape(
         m, n
     )
-    x = np.fromfile("./test/cgetrf/data/output/A_gm.bin", dtype=np.complex64).reshape(
+    x = read_binary_strict("./test/cgetrf/data/output/A_gm.bin", np.complex64).reshape(
         m, n
     )
-    w = np.fromfile("./test/cgetrf/data/output/W_gm.bin", dtype=np.uint32).reshape(t)
+    w = read_binary_strict("./test/cgetrf/data/output/W_gm.bin", np.uint32).reshape(t)
 
     # 根据 pivot 数组进行行交换
     for j in range(n):

@@ -10,8 +10,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
 import sys
+
 import numpy as np
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
+)
+from verify_utils import read_binary_strict  # noqa: E402
 
 relative_tol = 5e-3
 absolute_tol = 5e-3
@@ -19,8 +26,8 @@ error_tol = 1e-4
 
 
 def verify_result(A, invA, batchSize, N):
-    A = np.fromfile(A, dtype=np.complex64).reshape(batchSize, N, N)
-    invA = np.fromfile(invA, dtype=np.complex64).reshape(batchSize, N, N)
+    A = read_binary_strict(A, np.complex64).reshape(batchSize, N, N)
+    invA = read_binary_strict(invA, np.complex64).reshape(batchSize, N, N)
 
     total_elements = 0
     total_different = 0
@@ -31,7 +38,7 @@ def verify_result(A, invA, batchSize, N):
         different_element_results = np.isclose(
             output, golden, rtol=relative_tol, atol=absolute_tol, equal_nan=True
         )
-        different_element_indexes = np.where(different_element_results == False)[0]
+        different_element_indexes = np.flatnonzero(~different_element_results)
 
         for index in range(len(different_element_indexes)):
             if total_different >= 32:

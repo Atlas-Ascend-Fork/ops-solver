@@ -13,6 +13,8 @@
 import logging
 import sys
 
+import os
+
 import numpy as np
 
 # 输出格式与既有验证脚本保持一致（纯消息文本，无日志级别前缀）
@@ -27,14 +29,31 @@ DTYPE_FLOAT32 = np.float32
 DTYPE_COMPLEX64 = np.complex64
 
 
+def read_binary_strict(path, dtype):
+    """按 dtype 读取二进制文件，尾部不足一个完整元素时直接报错（issue #202）。
+
+    numpy.fromfile 会静默丢弃末尾不组成完整元素的字节，损坏文件（截断或
+    追加脏字节）会被后续 reshape/数量校验误判为成功。这里显式校验文件
+    字节数必须是元素大小的整数倍。
+    """
+    file_size = os.path.getsize(path)
+    element_size = np.dtype(dtype).itemsize
+    if file_size % element_size != 0:
+        raise ValueError(
+            f"corrupted binary file {path}: size {file_size} is not a multiple of "
+            f"element size {element_size} for dtype {np.dtype(dtype).name}"
+        )
+    return np.fromfile(path, dtype=dtype)
+
+
 def verify_inverse(input_path, inv_path, order, dtype, format_mismatch):
     """校验 inv_path 矩阵是否为 input_path 矩阵的逆（A @ Ainv ≈ I）。
 
     差异元素由 format_mismatch(index, expected, actual) 负责格式化记录，
     最多记录 MAX_PRINTED_MISMATCHES 条；返回是否满足误差容限。
     """
-    a = np.fromfile(input_path, dtype=dtype).reshape(order, order)
-    inv_a = np.fromfile(inv_path, dtype=dtype).reshape(order, order)
+    a = read_binary_strict(input_path, dtype).reshape(order, order)
+    inv_a = read_binary_strict(inv_path, dtype).reshape(order, order)
     output = np.dot(a, inv_a).reshape(-1)
     golden = np.eye(order, dtype=dtype).reshape(-1)
     close = np.isclose(
