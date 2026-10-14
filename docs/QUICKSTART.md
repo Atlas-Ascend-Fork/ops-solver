@@ -68,9 +68,12 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 ```
 预期输出：打印算子`cmatinv_batched`的计算结果，表明算子已成功部署并正确执行。
 
-> **提示**：若已完成编译且仅需重新验证功能，可直接运行已编译的二进制文件，无需再次编译。编译完成后，测试二进制文件位于`build/test/<算子名>/<算子名>_test`，直接执行即可：
+> **提示**：若已完成编译且仅需重新验证功能，可直接运行已编译的二进制文件，无需再次编译。编译完成后，测试二进制文件位于`build/test/<算子名>/<算子名>_test`。
+>
+> 注意：`bash build.sh --run` 在测试结束后会清理生成的测试数据（`test/<算子名>/data/` 下的 input/output/golden），直接运行二进制前需先按上文重新生成（参数需与测试用例的调用参数一致）：
 >
 > ```bash
+> python3 test/cmatinv_batched/data/gen_data.py <n> <batchSize>
 > ./build/test/cmatinv_batched/cmatinv_batched_test
 > ```
 
@@ -134,12 +137,17 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 样例只打印错误码、无法定位时，打开日志后重跑：
 
 ```bash
-export ASCEND_GLOBAL_LOG_LEVEL=1        # 0=DEBUG 更详细，1=INFO
+export ASCEND_GLOBAL_LOG_LEVEL=1        # 0=DEBUG 更详细，1=INFO，2=WARN，3=ERROR
 export ASCEND_SLOG_PRINT_TO_STDOUT=1    # 日志直接打印到终端
 ./build/test/<op>/<op>_test
 ```
 
-日志同时落盘在 `~/ascend/log/plog`（root 用户为 `/root/ascend/log/plog`），按时间排序查看，重点关注**第一条** ERROR 记录。
+> **说明**：设置 `ASCEND_SLOG_PRINT_TO_STDOUT=1` 后日志只输出到终端，不再写入 plog 文件；如需查看落盘的 plog 文件，请去掉该变量后重跑。
+
+plog 文件按类别落盘在 `~/ascend/log` 下（root 用户为 `/root/ascend/log`），按时间排序查看最新文件，重点关注**第一条** ERROR 记录：
+
+- `run/plog`：运行日志，默认记录；
+- `debug/plog`：调试日志，记录等级由 `ASCEND_GLOBAL_LOG_LEVEL` 控制（如 1 记录 INFO 及以上，0 记录 DEBUG 及以上）。
 
 ---
 

@@ -99,7 +99,7 @@ bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_
     int fileStatus = stat(filePath.data(), &sBuf);
     if (fileStatus == -1)
     {
-        ERROR_LOG("failed to get file");
+        ERROR_LOG("failed to get file: %s", filePath.c_str());
         return false;
     }
     if (S_ISREG(sBuf.st_mode) == 0)
@@ -120,12 +120,12 @@ bool ReadFile(const std::string &filePath, size_t &fileSize, void *buffer, size_
     size_t size = buf->pubseekoff(0, std::ios::end, std::ios::in);
     if (size == 0)
     {
-        ERROR_LOG("file size is 0");
+        ERROR_LOG("file size is 0: %s", filePath.c_str());
         return false;
     }
     if (size > bufferSize)
     {
-        ERROR_LOG("file size is larger than buffer size");
+        ERROR_LOG("file size is larger than buffer size: %s", filePath.c_str());
         return false;
     }
     buf->pubseekpos(0, std::ios::in);

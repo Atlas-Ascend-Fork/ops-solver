@@ -239,8 +239,9 @@ if [ "${RUN_TEST}" == "ON" ]; then
             FAILED_OPS+=("${op}")
         fi
 
-        # 清理临时数据（可选）
+        # 清理临时数据（可选；清理后如需直接运行测试二进制，需先重新生成测试数据）
         rm -rf "${BASE_PATH}/test/${op}/data/input" "${BASE_PATH}/test/${op}/data/output" "${BASE_PATH}/test/${op}/data/golden"
+        echo "[INFO] 已清理 ${op} 测试数据；直接运行 ${op}_test 前请先重新生成: python3 test/${op}/data/gen_data.py"
 
         echo -e "Test for $op completed.\n"
         echo "-------------------------------------------"
