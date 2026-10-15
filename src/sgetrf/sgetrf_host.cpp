@@ -138,6 +138,14 @@ aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
     CHECK_ACLRT(aclrtMemcpy(wHost, wFileSize, wDevice, wFileSize, ACL_MEMCPY_DEVICE_TO_HOST), cleanup());
     for (int64_t i = 0; i < std::min(m, n); ++i)
     {
+        // W 主元哨兵初始化为 -1（0xFFFFFFFF），kernel 只回写真实主元行号；
+        // 残留哨兵说明该列主元为零（矩阵奇异），按 LAPACK 语义上报首个
+        // 奇异列号（1-based）。与复数孪生算子 cgetrf_host.cpp 口径对齐，
+        // 修复实矩阵奇异时静默返回成功且 info==0 的不对称行为（issue #205）
+        if (info != nullptr && *info == 0 && wHostInt[i] == -1)
+        {
+            *info = static_cast<int32_t>(i + 1);
+        }
         ipiv[i] = wHostInt[i] + 1;  // Convert to 1-based indexing
     }
 

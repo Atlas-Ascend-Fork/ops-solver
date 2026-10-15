@@ -96,13 +96,19 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
 
     // Staging guard: eyeBatchMatData alone is batchNum * eyeMatEleNum floats
     // and the packed work buffers add more; cap the combined estimate.
+    // 估算口径（issue #207）：实现随后还分配 aWorkData（aMatWorkEleNum 个 float，
+    // 公式与 eyeMatEleNum 相同），原估算式漏计该项导致约 2 倍低估——n=256、
+    // batchSize=3000 的文档允许域内估算约 3.7GiB 通过守卫，实际约 7.2GiB
+    // bad_alloc，#127 预检在自身设计域内失效。现并入 aMatWorkEleNum：
+    // 真实暂存 ≈ (2 * eyeMatEleNum + workEleNum) * sizeof(float)。
     const int64_t alignedN = (n + COL_ALIGNED_ELENUM - 1) / COL_ALIGNED_ELENUM * COL_ALIGNED_ELENUM;
     const int64_t paddedM = (n + BASE_BLOCK_ELENUM - 1) / BASE_BLOCK_ELENUM * BASE_BLOCK_ELENUM + COL_ALIGNED_ELENUM;
     const int64_t eyeMatEleNum = alignedN * paddedM * EYE_MATRIX_NUM;
     const int64_t workEleNum = ((n + TILE_ELENUM - 1) / TILE_ELENUM * TILE_ELENUM) * BASE_BLOCK_ELENUM * COMPLEX_ELENUM;
     constexpr double kMaxStagingGiB = 8.0;
-    const double stagingGiB = static_cast<double>(batchSize) * static_cast<double>(eyeMatEleNum + workEleNum) *
-                              sizeof(float) / (1024.0 * 1024.0 * 1024.0);
+    const double stagingGiB = static_cast<double>(batchSize) *
+                              static_cast<double>(eyeMatEleNum + eyeMatEleNum + workEleNum) * sizeof(float) /
+                              (1024.0 * 1024.0 * 1024.0);
     SOLVER_ECHECK(stagingGiB <= kMaxStagingGiB,
                   "CgetriBatched host staging buffers exceed the supported memory budget for this n/batchSize.",
                   ACL_ERROR_INVALID_PARAM);

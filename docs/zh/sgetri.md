@@ -73,7 +73,7 @@
     <tr>
         <td align="center">A</td>
         <td align="center">输入/输出</td>
-        <td align="left">输入为矩阵A（通常为Sgetrf分解后的L和U矩阵），输出为逆矩阵<br>数据类型仅支持FLOAT32，数据格式支持ND，shape为[n, n]</td>
+        <td align="left">输入为待求逆的原始矩阵A（算子内部完成LU分解与求解，不消费Sgetrf的输出LU因子；请勿传入Sgetrf返回的packed LU，否则结果会被主元置换且不报错），输出为逆矩阵<br>数据类型仅支持FLOAT32，数据格式支持ND，shape为[n, n]</td>
     </tr>
     <tr>
         <td align="center">lda</td>

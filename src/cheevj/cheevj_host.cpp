@@ -1559,14 +1559,27 @@ aclError BuildGenericWorkspaceConfig(int64_t n, bool computeVectors, int32_t* in
 }
 
 // Estimate whether the pure-host fallback paths can hold the packed n*n
-// complex matrix.  Returns false (and records the reason in info) when the
-// request is beyond what the process can reasonably allocate, so callers get
-// an error code instead of an escaping std::bad_alloc (issue #122).
-bool HostFallbackFeasible(int64_t n, int32_t* info)
+// complex matrix plus the internal allocations of SolveCompactHostHouseholder.
+// Returns false (and records the reason in info) when the request is beyond
+// what the process can reasonably allocate, so callers get an error code
+// instead of an escaping std::bad_alloc (issue #122).
+// 预算口径（issue #206）：原实现仅预算 packed 矩阵 8n² 字节，而门控路径内
+// SolveCompactHostHouseholder 实际分配 work=16n²（DoubleComplex）、jobz=V 时
+// 另有 eigenvectors=16n² 与 tridiagonalVectors=8n²，合计最高 40n²——估算比
+// 实际低 2~5 倍，n∈[16384, 32768] 时守卫通过后仍 bad_alloc，#122 预检失效。
+// 现按路径真实占用汇总：packed 8n² + 内部（jobz=V: 40n², jobz=N: 16n²），
+// 保证"要么预检拒绝、要么全程可分配"。
+bool HostFallbackFeasible(int64_t n, bool computeVectors, int32_t* info)
 {
     constexpr double kMaxHostMatrixGiB = 8.0;
+    constexpr double kPackedMatrixBytesPerElem = sizeof(Complex);    // 8
+    constexpr double kHostWorkBytesPerElem = sizeof(double) * 2;     // 16 (DoubleComplex)
+    constexpr double kEigenvectorBytesPerElem = sizeof(double) * 2;  // 16, jobz=V only
+    constexpr double kTridiagBytesPerElem = sizeof(Complex);         // 8, jobz=V only
+    const double bytesPerElem = kPackedMatrixBytesPerElem + kHostWorkBytesPerElem +
+                                (computeVectors ? kEigenvectorBytesPerElem + kTridiagBytesPerElem : 0.0);
     const double requestedGiB =
-        static_cast<double>(n) * static_cast<double>(n) * sizeof(Complex) / (1024.0 * 1024.0 * 1024.0);
+        static_cast<double>(n) * static_cast<double>(n) * bytesPerElem / (1024.0 * 1024.0 * 1024.0);
     if (requestedGiB > kMaxHostMatrixGiB)
     {
         InvalidParam(info, -5, "host fallback matrix exceeds the supported host memory budget");
@@ -1582,7 +1595,7 @@ DispatchResult TryWideScaleInput(Complex* a, int64_t lda, int64_t n, int32_t upl
     {
         return {false, ACL_SUCCESS};
     }
-    if (!HostFallbackFeasible(n, info))
+    if (!HostFallbackFeasible(n, computeVectors, info))
     {
         return {true, ACL_ERROR_INVALID_PARAM};
     }
@@ -1623,7 +1636,7 @@ DispatchResult TryPackedSpecialCases(std::vector<Complex>* packedA, Complex* a, 
         // n > 2048 falls back to a pure-host solver; guard the host-side
         // allocation before packing so oversized inputs return an error code
         // instead of throwing std::bad_alloc through the C boundary (#122).
-        if (n > CHEEVJ_FIXED_N2048 && !HostFallbackFeasible(n, info))
+        if (n > CHEEVJ_FIXED_N2048 && !HostFallbackFeasible(n, computeVectors, info))
         {
             return {true, ACL_ERROR_INVALID_PARAM};
         }

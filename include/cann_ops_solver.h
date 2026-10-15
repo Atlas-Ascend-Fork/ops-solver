@@ -138,7 +138,10 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
  *
  * @param handle aclsolver handle created by aclsolverCreate
  * @param n order of the square matrix, valid range [1, 8192]
- * @param A input matrix (typically LU factors from aclsolverCgetrf), COMPLEX64, contiguous n * n layout
+ * @param A input matrix: the original matrix A to invert. The operator performs
+ *             LU decomposition internally (it does NOT consume LU factors from
+ *             aclsolverCgetrf; passing packed LU output would silently produce
+ *             a pivot-permuted result). COMPLEX64, contiguous n * n layout
  * @param lda leading dimension; current version requires lda == n
  * @param info result info; the current version zero-initializes it on entry.
  *             Argument errors are reported via the return value, not via info.
@@ -152,7 +155,10 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
  *
  * @param handle aclsolver handle created by aclsolverCreate
  * @param n order of the square matrix, valid range [1, 8192]
- * @param A input matrix (typically LU factors from aclsolverSgetrf), FLOAT32, contiguous n * n layout
+ * @param A input matrix: the original matrix A to invert. The operator performs
+ *             LU decomposition internally (it does NOT consume LU factors from
+ *             aclsolverSgetrf; passing packed LU output would silently produce
+ *             a pivot-permuted result). FLOAT32, contiguous n * n layout
  * @param lda leading dimension; current version requires lda == n
  * @param info result info; the current version zero-initializes it on entry.
  *             Argument errors are reported via the return value, not via info.
@@ -168,10 +174,13 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
  * @param n columns of matrix A, valid range [1, 8192]
  * @param A input/output matrix, COMPLEX64, contiguous m * n layout; holds L and U on return
  * @param lda leading dimension; current version requires lda == n
- * @param ipiv output pivot indices (1-based), length min(m, n)
+ * @param ipiv output pivot indices (1-based), length min(m, n). If the matrix is
+ *             singular, the entry at the first singular column stays 0 (sentinel).
  * @param info result info; the current version zero-initializes it on entry.
- *             Argument errors (including n > 8192) are reported via the return
- *             value, not via info.
+ *             On success reports the 1-based index of the first singular column
+ *             (LAPACK positive-info convention) if the matrix is singular, else
+ *             remains 0. Argument errors (including n > 8192) are reported via
+ *             the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float> *A,
@@ -185,10 +194,13 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  * @param n columns of matrix A, valid range [1, 8192]
  * @param A input/output matrix, FLOAT32, contiguous m * n layout; holds L and U on return
  * @param lda leading dimension; current version requires lda == n
- * @param ipiv output pivot indices (1-based), length min(m, n)
+ * @param ipiv output pivot indices (1-based), length min(m, n). If the matrix is
+ *             singular, the entry at the first singular column stays 0 (sentinel).
  * @param info result info; the current version zero-initializes it on entry.
- *             Argument errors (including n > 8192) are reported via the return
- *             value, not via info.
+ *             On success reports the 1-based index of the first singular column
+ *             (LAPACK positive-info convention) if the matrix is singular, else
+ *             remains 0. Argument errors (including n > 8192) are reported via
+ *             the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
