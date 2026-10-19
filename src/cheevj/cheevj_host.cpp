@@ -487,24 +487,26 @@ void AppendTwoByTwoEigenpairs(std::vector<CompactEigenpair>* eigenpairs, int64_t
         return;
     }
 
-    Complex low0 = upper;
-    Complex low1(low - diagonal0, 0.0f);
-    const Complex alternate0(low - diagonal1, 0.0f);
-    const Complex alternate1 = std::conj(upper);
-    const auto squaredNorm = [](Complex value) { return std::norm(static_cast<std::complex<double>>(value)); };
+    DoubleComplex low0 = static_cast<DoubleComplex>(upper);
+    DoubleComplex low1(static_cast<double>(low) - static_cast<double>(diagonal0), 0.0);
+    const DoubleComplex alternate0(static_cast<double>(low) - static_cast<double>(diagonal1), 0.0);
+    const DoubleComplex alternate1 = std::conj(static_cast<DoubleComplex>(upper));
+    const auto squaredNorm = [](DoubleComplex value) { return std::norm(value); };
     if (squaredNorm(alternate0) + squaredNorm(alternate1) > squaredNorm(low0) + squaredNorm(low1))
     {
         low0 = alternate0;
         low1 = alternate1;
     }
     const double norm = std::sqrt(squaredNorm(low0) + squaredNorm(low1));
-    low0 = norm > 0.0 ? Complex(static_cast<float>(low0.real() / norm), static_cast<float>(low0.imag() / norm))
-                      : Complex(0.0f, 0.0f);
-    low1 = norm > 0.0 ? Complex(static_cast<float>(low1.real() / norm), static_cast<float>(low1.imag() / norm))
-                      : Complex(0.0f, 0.0f);
-    eigenpairs->push_back({low, first, second, low0, low1});
+    const Complex normalized0 =
+        norm > 0.0 ? Complex(static_cast<float>(low0.real() / norm), static_cast<float>(low0.imag() / norm))
+                   : Complex(0.0f, 0.0f);
+    const Complex normalized1 =
+        norm > 0.0 ? Complex(static_cast<float>(low1.real() / norm), static_cast<float>(low1.imag() / norm))
+                   : Complex(0.0f, 0.0f);
+    eigenpairs->push_back({low, first, second, normalized0, normalized1});
     // The orthogonal complement is the second eigenvector.
-    eigenpairs->push_back({high, first, second, -std::conj(low1), std::conj(low0)});
+    eigenpairs->push_back({high, first, second, -std::conj(normalized1), std::conj(normalized0)});
 }
 
 void SolveInputTwoByTwoBlockDiagonal(Complex* a, int64_t lda, int64_t n, bool lower, bool computeVectors, float* w)
