@@ -100,6 +100,7 @@ Solver CmatinvBatched算子实现。
 
 - 算子约束：
   - lda、lda_inv、info参数在当前版本实际未启用。
+  - lda与lda_inv当前必须等于n（矩阵按连续布局处理，batch内每个矩阵均为n*n连续存储），传入其它值将直接返回参数错误。
   - 入参n小于等于256。
   - 入参batchSize小于等于3000。
 

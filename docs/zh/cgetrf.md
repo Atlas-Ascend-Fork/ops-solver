@@ -80,7 +80,7 @@
     <tr>
         <td align="center">n</td>
         <td align="center">输入</td>
-        <td align="left">矩阵A的列数</td>
+        <td align="left">矩阵A的列数，范围为[1, 8192]</td>
     </tr>
     <tr>
         <td align="center">A</td>
