@@ -37,15 +37,19 @@ for i in range(n):
 # 计算逆矩阵 (complex64)
 inv_a = np.linalg.inv(a).astype(np.complex64)
 
-os.makedirs(os.path.dirname("./test/cgetri/data/input/A_gm.bin"), exist_ok=True)
-os.makedirs(os.path.dirname("./test/cgetri/data/output/golden.bin"), exist_ok=True)
+data_dir = os.path.dirname(os.path.abspath(__file__))
+input_path = os.path.join(data_dir, "input", "A_gm.bin")
+golden_path = os.path.join(data_dir, "output", "golden.bin")
+
+os.makedirs(os.path.dirname(input_path), exist_ok=True)
+os.makedirs(os.path.dirname(golden_path), exist_ok=True)
 
 # 写入输入数据 (原始矩阵)
-with open("./test/cgetri/data/input/A_gm.bin", "wb") as f:
+with open(input_path, "wb") as f:
     f.write(a.tobytes())
 
 # 写入输出数据 (逆矩阵)
-with open("./test/cgetri/data/output/golden.bin", "wb") as f:
+with open(golden_path, "wb") as f:
     f.write(inv_a.tobytes())
 
 print(f"Generated {n}x{n} complex matrix and its inverse")

@@ -28,10 +28,14 @@ def format_mismatch(index, expected, actual):
 
 
 if __name__ == "__main__":
+    data_dir = os.path.dirname(os.path.abspath(__file__))
+    input_path = os.path.join(data_dir, "input", "A_gm.bin")
+    output_path = os.path.join(data_dir, "output", "A_gm.bin")
+
     sys.exit(
         run_verification(
-            "./test/cgetri/data/input/A_gm.bin",
-            "./test/cgetri/data/output/A_gm.bin",
+            input_path,
+            output_path,
             DTYPE_COMPLEX64,
             format_mismatch,
         )
