@@ -15,6 +15,7 @@ Solver Sgetrf算子实现。
 ├── sgetrf
 │   ├── CMakeLists.txt      // 编译工程文件
 │   ├── README.md           // 说明文档
+│   ├── sgetrf_subnormal_pivot_test.cpp  // 次正规（subnormal）主元场景测试
 │   ├── sgetrf_test.cpp     // 算子调用样例
 │   └── data                // 测试数据目录
 │       ├── gen_data.py     // 生成测试数据脚本

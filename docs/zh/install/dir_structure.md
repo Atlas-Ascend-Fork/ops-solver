@@ -56,4 +56,4 @@
 └── ...
 ```
 
-当前 `src/` 下已提供的算子示例子目录包括：`cgetrf`、`cgetri`、`cgetri_batched`、`cmatinv_batched`、`sgetrf`、`sgetri`（随版本迭代可能增减，以仓库实际目录为准）。
+当前 `src/` 下已提供的算子示例子目录包括：`cgetrf`、`cgetri`、`cgetri_batched`、`cheevj`、`cmatinv_batched`、`sgetrf`、`sgetri`（随版本迭代可能增减，以仓库实际目录为准）。

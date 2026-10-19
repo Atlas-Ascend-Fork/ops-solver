@@ -16,7 +16,10 @@ Solver CmatinvBatched算子实现。
 ├── cmatinv_batched
 │   ├── CMakeLists.txt      // 编译工程文件
 │   ├── README.md           // 说明文档
-│   └── cmatinv_batched_test.cpp       // 算子调用样例
+│   ├── cmatinv_batched_test.cpp       // 算子调用样例
+│   └── data                // 测试数据目录
+│       ├── gen_data.py     // 生成测试数据脚本
+│       └── verify_result.py // 验证结果脚本
 ```
 
 ## 算子描述
