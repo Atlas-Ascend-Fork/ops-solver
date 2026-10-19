@@ -24,7 +24,7 @@ MANIFEST.in
 # python ut/st
 cov_report/
 report/
-data/
+/data/
 *.dump
 !**/st/msopgen/simulator/*.dump
 tf_plugin_model.pb
