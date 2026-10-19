@@ -2,7 +2,7 @@
 
 > 说明：
 > - **算子目录**：目录名为算子名小写下划线形式，每个目录承载该算子所有交付件，包括代码实现、examples、文档等，目录介绍参见[项目目录](../README.md#目录结构)。
-> - **算子执行硬件单元**：所有算子运行在AI Core。关于AI Core详细介绍参见[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)中"概念原理和术语 > 硬件架构与数据处理原理"。
+> - **算子执行硬件单元**：执行单元以表格和各算子说明为准；Cheevj包含AI Core与Host CPU数值计算分支。关于AI Core详细介绍参见[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)中"概念原理和术语 > 硬件架构与数据处理原理"。
 > - **算子接口列表**：为方便调用算子，CANN提供一套C API执行算子，以aclsolver为前缀，接口风格参考cuSolver。
 
 项目提供的所有算子分类和算子列表如下：
@@ -73,7 +73,7 @@
     <td><a href="./zh/cheevj.md">cheevj</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>AI Core</td>
+    <td>AI Core / Host CPU（按输入分发）</td>
     <td>单精度复数Hermitian矩阵特征值分解，可选计算特征向量。</td>
   </tr>
 </tbody></table>

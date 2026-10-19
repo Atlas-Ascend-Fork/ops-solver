@@ -77,6 +77,18 @@ typedef enum {
 - 接口不设置固定矩阵阶数上限；内存或设备索引资源不足时返回错误。
 - 调用返回 `ACL_SUCCESS` 后仍应检查 `info` 是否为 `0`。
 
+## 数值计算执行路径
+
+本接口包含AI Core内核和Host CPU数值计算分支，并非所有输入都在AI Core完成特征分解。
+当前实现按矩阵结构、阶数和输入幅值选择路径：例如对角矩阵和2×2块对角矩阵由Host处理；
+部分小阶、三对角或大幅值输入走Host Jacobi/Householder求解；固定形状或padding路径使用
+设备内核，并可在数值检查后回退Host求解。具体分发条件见
+[`src/cheevj/cheevj_host.cpp`](../../src/cheevj/cheevj_host.cpp)中的`CheevjDispatch`及其辅助函数。
+
+Host数值计算分支不代表完整公共接口无需设备环境即可运行。调用仍须满足配套CANN/ACL环境、
+handle和内存约束；设备路径及设备执行后的Host回退可能包含ACL设备内存传输和同步。
+产品支持范围仍以本页“产品支持情况”为准。
+
 ## 调用示例
 
 完整测试入口见
