@@ -87,12 +87,13 @@ for arg in "$@"; do
             echo "Unknown option: $arg"
             echo "Usage:"
             echo "  bash build.sh                                      # 只编译库"
-            echo "  bash build.sh --ops=cmatinv_batched                # 编译指定算子"
-            echo "  bash build.sh --ops=op1,op2                        # 编译多个算子（逗号分隔）"
+            echo "  bash build.sh --ops=cmatinv_batched                # 编译库及指定算子测试"
+            echo "  bash build.sh --ops=op1,op2                        # 编译库及多个算子测试（逗号分隔）"
             echo "  bash build.sh --run                                # 编译并运行全部 test"
             echo "  bash build.sh --ops=cmatinv_batched --run          # 编译并运行指定算子测试"
             echo "  bash build.sh --pkg                                # 编译并打包 run 包"
             echo "  bash build.sh --pkg --soc=ascend950                # 打包指定 SOC 的 run 包"
+            echo "  --ops 仅筛选测试项目；库和 run 包仍包含当前 SOC 的全部算子源码。"
             exit 1
             ;;
     esac

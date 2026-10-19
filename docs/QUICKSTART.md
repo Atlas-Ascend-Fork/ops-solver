@@ -26,11 +26,11 @@
 
 本阶段目的是**快速体验项目标准流程**，验证环境能否成功进行算子源码编译、打包、安装和运行。
 
-### 1. 编译cmatinv_batched算子
+### 1. 编译库和cmatinv_batched测试
 
-环境准备好后（注意软件与源码版本配套），进入环境并访问项目源码根目录，编译指定算子。
+环境准备好后（注意软件与源码版本配套），进入环境并访问项目源码根目录，编译Solver库和指定算子的测试项目。
 
-通用编译命令格式：`bash build.sh --pkg --soc=<芯片版本> --ops=<算子名>`。以cmatinv_batched算子为例，编译命令如下：
+通用编译命令格式：`bash build.sh --pkg --soc=<芯片版本> --ops=<算子名>`。`--ops`仅筛选`test/<算子名>/`测试项目，不裁剪Solver库的算子源码；库和run包仍包含当前SOC对应的全部算子。以cmatinv_batched算子为例，编译命令如下：
 
 ```bash
 bash build.sh --pkg --soc=ascend950 --ops=cmatinv_batched
@@ -44,7 +44,7 @@ Self-extractable archive "cann-950-ops-solver_9.0.0_linux-x86_64.run" successful
 
 > **说明**：run包实际命名规则为 `cann-<SOC短名>-ops-solver_<版本>_linux-<架构>.run`，SOC短名由编译时指定的 `--soc` 决定（如 ascend950 对应 `950`、ascend910b 对应 `910b`），架构为当前系统 `uname -m` 输出。
 
-### 2. 安装cmatinv_batched算子包
+### 2. 安装Solver算子包
 
 > **说明**：run包必须通过`--install`参数执行安装，不带参数仅显示帮助信息不会安装。可通过`--install-path=<路径>`指定安装目录，默认安装路径：root用户为`/usr/local/Ascend`，普通用户为`~/Ascend`。
 ```bash
@@ -1745,7 +1745,7 @@ Test for cmatinv_batched completed.
 
 ## 编译说明
 
-CmatinvBatched算子的编译步骤如下：
+Solver库和CmatinvBatched测试项目的编译步骤如下（`--ops`不裁剪库中的其他算子）：
 
 1. 确保已安装CANN开发环境和必要的依赖
 2. 在项目根目录下执行编译命令：
