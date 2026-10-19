@@ -105,6 +105,18 @@
     #include "acl/acl.h"
     #include "cann_ops_solver.h"
 
+    #include <cstdio>
+
+    #define CHECK_RET(cond, return_expr) \
+        do {                            \
+            if (!(cond)) {              \
+                return_expr;            \
+            }                           \
+        } while (0)
+
+    #define LOG_PRINT(message, ...) \
+        std::printf(message, ##__VA_ARGS__)
+
     int32_t main(int32_t argc, char *argv[])
     {
         // 固定写法，acl初始化
