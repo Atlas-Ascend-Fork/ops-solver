@@ -108,7 +108,7 @@
     <tr>
         <td align="center">info</td>
         <td align="center">输出</td>
-        <td align="left">每个batch矩阵的求逆结果信息<br>数据类型支持int32_t，数据格式支持ND，shape为[batch, 1]</td>
+        <td align="left">求逆结果状态信息（当前版本仅保证 info[0] 清零成功态，不逐batch上报）<br>数据类型支持int32_t，数据格式支持ND，单个int32_t（API签名为单指针，非[batch, 1]数组）</td>
     </tr>
     <tr>
         <td align="center">batchSize</td>
@@ -118,10 +118,10 @@
     </table>
 
 - 算子约束：
-  - lda、lda_inv、info参数在当前版本实际未启用。
+  - lda与lda_inv当前必须等于n（见下条）；info参数允许传入nullptr（不关心状态时可不接收）。
   - lda与lda_inv当前必须等于n（矩阵按连续布局处理，batch内每个矩阵均为n*n连续存储），传入其它值将直接返回参数错误。
   - 入参n小于32时使用本接口；n大于等于32时，本接口自动按CgetriBatched语义执行（适用其n∈[32,256]、batchSize≤3000约束），推荐n大于等于32时直接调用CgetriBatched。
-  - info参数当前版本不会写入任何返回值，传入可丢弃的变量即可。
+  - info参数遵循LAPACK语义：成功时写0；矩阵奇异时上报首个奇异列的1-based索引（getrf族）；其余状态经返回值上报。
   - 入参n小于等于256。
   - 当 n >= 32 时，CmatinvBatched 会自动转调 aclsolverCgetriBatched 算子执行。
   - 入参batchSize小于等于3000。

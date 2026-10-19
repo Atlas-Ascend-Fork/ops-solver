@@ -53,14 +53,14 @@ Solver Sgetri算子实现。
         <td align="center">A</td>
         <td align="center">[n, n]</td>
         <td align="center">FLOAT32</td>
-        <td align="left">输入矩阵A，行主序，通常为Sgetrf分解后的L和U矩阵</td>
+        <td align="left">输入为待求逆的原始矩阵A（算子内部完成LU分解与求解，不消费Sgetrf的输出LU因子；请勿传入Sgetrf返回的packed LU，否则结果会被主元置换且不报错）</td>
         <td align="center">ND</td>
     </tr>
     <tr>
         <td align="center">lda</td>
         <td align="center">[1]</td>
         <td align="center">INT64</td>
-        <td align="left">A左右相邻元素间的内存地址偏移量（当前约束为N）</td>
+        <td align="left">A同一列中相邻两行元素间的内存地址偏移量（leading dimension）（当前约束为N）</td>
         <td align="center">\</td>
     </tr>
     <tr>

@@ -33,14 +33,15 @@ extern void sgetri_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockM, int b
 
 aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, const int64_t lda, int32_t *info)
 {
-    // info 遵循 LAPACK 语义（issue #164）：成功为 0，参数错误由下方 ECHECK 以负值
-    // 语义返回（aclError）；奇异信息见各 kernel 主元哨兵约定
+    // info 遵循 LAPACK 语义（issue #164）：成功为 0，参数错误由返回值上报；
+    // info 允许为空（issue #244，对齐 getrf 族 #180 的 nullptr 容错口径），
+    // 原先"前置判空容错 + ECHECK 必传"的自相矛盾分支已统一为本口径
     if (info != nullptr)
     {
         *info = 0;
     }
-    SOLVER_ECHECK(n > 0 && lda > 0 && A != nullptr && info != nullptr,
-                  "aclsolverSgetri invalid param: n, lda <= 0, or A, info is nullptr.", ACL_ERROR_INVALID_PARAM);
+    SOLVER_ECHECK(n > 0 && lda > 0 && A != nullptr, "aclsolverSgetri invalid param: n, lda <= 0, or A is nullptr.",
+                  ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(n <= INT32_MAX, "aclsolverSgetri invalid param: n exceeds int32 range.", ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(n * n <= INT32_MAX, "aclsolverSgetri invalid param: n * n exceeds INT32_MAX elements.",
                   ACL_ERROR_INVALID_PARAM);
@@ -58,7 +59,6 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
 
     uint8_t *aMatrixDevice = nullptr;
     uint8_t *aMatrixDeviceWork = nullptr;
-    uint8_t *wHost = nullptr;
     uint8_t *wDevice = nullptr;
     uint8_t *workDevice = nullptr;
     uint8_t *eyeMatrixHost = nullptr;
@@ -74,7 +74,6 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
         if (eyeMatrixDevice) aclrtFree(eyeMatrixDevice);
         if (eyeMatrixHost) aclrtFreeHost(eyeMatrixHost);
         if (wDevice) aclrtFree(wDevice);
-        if (wHost) aclrtFreeHost(wHost);
         if (workDevice) aclrtFree(workDevice);
         if (gatherDevice1) aclrtFree(gatherDevice1);
         if (gatherDevice2) aclrtFree(gatherDevice2);
@@ -108,7 +107,6 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
     size_t aMatrixWorkSize = static_cast<size_t>(strideN) * paddedM * sizeof(float);
     CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, aMatrixWorkSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
 
-    CHECK_ACLRT(aclrtMallocHost((void **)(&wHost), wFileSize), cleanup());
     CHECK_ACLRT(aclrtMalloc((void **)&wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
     CHECK_ACLRT(aclrtMemset(wDevice, wFileSize, -1, wFileSize), cleanup());
 

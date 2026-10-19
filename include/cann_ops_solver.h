@@ -104,7 +104,7 @@ typedef enum
  * @param lda leading dimension; current version requires lda == n
  * @param Ainv output inverse matrices, COMPLEX64, [batchSize, n, n]
  * @param lda_inv leading dimension of Ainv; current version requires lda_inv == n
- * @param info result info per batch; the current version zero-initializes only
+ * @param info result info per batch (may be nullptr; issue #244); the current version zero-initializes only
  *             info[0] on entry and does not write per-batch status. Argument
  *             errors are reported via the return value, not via info.
  * @param batchSize number of matrices, valid range (0, 3000]
@@ -124,7 +124,7 @@ aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std:
  * @param lda leading dimension; current version requires lda == n
  * @param Ainv output inverse matrices, COMPLEX64, [batchSize, n, n]
  * @param lda_inv leading dimension of Ainv; current version requires lda_inv == n
- * @param info result info per batch; the current version zero-initializes only
+ * @param info result info per batch (may be nullptr; issue #244); the current version zero-initializes only
  *             info[0] on entry and does not write per-batch status. Argument
  *             errors are reported via the return value, not via info.
  * @param batchSize number of matrices, valid range (0, 3000]
@@ -143,7 +143,7 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
  *             aclsolverCgetrf; passing packed LU output would silently produce
  *             a pivot-permuted result). COMPLEX64, contiguous n * n layout
  * @param lda leading dimension; current version requires lda == n
- * @param info result info; the current version zero-initializes it on entry.
+ * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
  *             Argument errors are reported via the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
@@ -160,7 +160,7 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
  *             aclsolverSgetrf; passing packed LU output would silently produce
  *             a pivot-permuted result). FLOAT32, contiguous n * n layout
  * @param lda leading dimension; current version requires lda == n
- * @param info result info; the current version zero-initializes it on entry.
+ * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
  *             Argument errors are reported via the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
@@ -176,7 +176,7 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
  * @param lda leading dimension; current version requires lda == n
  * @param ipiv output pivot indices (1-based), length min(m, n). If the matrix is
  *             singular, the entry at the first singular column stays 0 (sentinel).
- * @param info result info; the current version zero-initializes it on entry.
+ * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
  *             On success reports the 1-based index of the first singular column
  *             (LAPACK positive-info convention) if the matrix is singular, else
  *             remains 0. Argument errors (including n > 8192) are reported via
@@ -196,7 +196,7 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  * @param lda leading dimension; current version requires lda == n
  * @param ipiv output pivot indices (1-based), length min(m, n). If the matrix is
  *             singular, the entry at the first singular column stays 0 (sentinel).
- * @param info result info; the current version zero-initializes it on entry.
+ * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
  *             On success reports the 1-based index of the first singular column
  *             (LAPACK positive-info convention) if the matrix is singular, else
  *             remains 0. Argument errors (including n > 8192) are reported via

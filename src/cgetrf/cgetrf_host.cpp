@@ -164,6 +164,23 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
         }
         ipiv[i] = wHostInt[i] + 1;  // Convert to 1-based indexing
     }
+    // 奇异性判定补充（issue #231）：kernel 侧 choosePivot 对零主元列也会回写
+    // 真实行号（值域 [offsetM, offsetM+blockM-1]，永不为 -1），上面的哨兵扫描
+    // 实际不可达；改用 LAPACK getrf 同款判据——分解后 U 的对角元为零即奇异，
+    // 从回读的 A（列主序，lda==n）取对角元实虚均为 0 上报首个奇异列
+    if (info != nullptr && *info == 0)
+    {
+        const std::complex<float> *aC = reinterpret_cast<const std::complex<float> *>(aMatrixHost);
+        for (int64_t i = 0; i < std::min(m, n); ++i)
+        {
+            const std::complex<float> &diag = aC[i * n + i];
+            if (diag.real() == 0.0f && diag.imag() == 0.0f)
+            {
+                *info = static_cast<int32_t>(i + 1);
+                break;
+            }
+        }
+    }
 
     cleanup();
 

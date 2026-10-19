@@ -80,7 +80,7 @@
     <tr>
         <td align="center">n</td>
         <td align="center">输入</td>
-        <td align="left">矩阵A的列数</td>
+        <td align="left">矩阵A的列数，范围为[1, 8192]（kernel 设计上限，超出返回参数错误，issue #230/#233）</td>
     </tr>
     <tr>
         <td align="center">A</td>
@@ -105,9 +105,9 @@
     </table>
 
 - 算子约束：
-  - lda、info参数在当前版本实际未启用。
+  - lda参数当前必须等于n（见下条）；info参数允许传入nullptr（不关心状态时可不接收）。
   - lda当前必须等于n（矩阵按m*n/n*n连续布局处理），传入其它值将直接返回参数错误。
-  - info参数当前版本不会写入任何返回值，传入可丢弃的变量即可。
+  - info参数遵循LAPACK语义：成功时写0；矩阵奇异时上报首个奇异列的1-based索引（getrf族）；其余状态经返回值上报。
 
 - 调用实现
     使用内核调用符<<<>>>调用核函数。

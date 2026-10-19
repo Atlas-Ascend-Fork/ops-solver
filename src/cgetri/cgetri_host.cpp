@@ -42,8 +42,10 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
     {
         *info = 0;
     }
-    SOLVER_ECHECK(n > 0 && lda > 0 && A != nullptr && info != nullptr,
-                  "aclsolverCgetri invalid param: n, lda <= 0, or A, info is nullptr.", ACL_ERROR_INVALID_PARAM);
+    // info 允许为空（issue #244，对齐 getrf 族 #180 的 nullptr 容错口径），
+    // 与上方 info != nullptr 判空清零分支统一，消除自相矛盾
+    SOLVER_ECHECK(n > 0 && lda > 0 && A != nullptr, "aclsolverCgetri invalid param: n, lda <= 0, or A is nullptr.",
+                  ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(n <= INT32_MAX, "aclsolverCgetri invalid param: n exceeds int32 range.", ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(n * n <= INT32_MAX, "aclsolverCgetri invalid param: n * n exceeds INT32_MAX elements.",
                   ACL_ERROR_INVALID_PARAM);
@@ -78,7 +80,6 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
     uint8_t *aMatrixHost = reinterpret_cast<uint8_t *>(A);
     uint8_t *aMatrixDevice = nullptr;
     uint8_t *aMatrixDeviceWork = nullptr;
-    uint8_t *wHost = nullptr;
     uint8_t *wDevice = nullptr;
     uint8_t *workDevice = nullptr;
     uint8_t *eyeMatrixHost = nullptr;
@@ -94,7 +95,6 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
         if (eyeMatrixDevice) aclrtFree(eyeMatrixDevice);
         if (eyeMatrixHost) aclrtFreeHost(eyeMatrixHost);
         if (wDevice) aclrtFree(wDevice);
-        if (wHost) aclrtFreeHost(wHost);
         if (workDevice) aclrtFree(workDevice);
         if (gatherDevice1) aclrtFree(gatherDevice1);
         if (gatherDevice2) aclrtFree(gatherDevice2);
@@ -113,7 +113,6 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
     size_t aMatrixWorkSize = static_cast<size_t>(strideN) * paddedM * sizeof(float) * 3;
     CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, aMatrixWorkSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
 
-    CHECK_ACLRT(aclrtMallocHost((void **)(&wHost), wFileSize), cleanup());
     CHECK_ACLRT(aclrtMalloc((void **)&wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
     CHECK_ACLRT(aclrtMemset(wDevice, wFileSize, -1, wFileSize), cleanup());
 

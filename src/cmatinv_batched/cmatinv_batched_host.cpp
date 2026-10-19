@@ -142,10 +142,11 @@ aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std:
 
     uint32_t numBlocks = GetNormalizedAivBlockCount(MAX_CORE_CNT);
 
-    SOLVER_ECHECK(
-        n > 0 && batchSize > 0 && lda > 0 && lda_inv > 0 && A != nullptr && Ainv != nullptr && info != nullptr,
-        "CmatinvBatched get invalid param: n, batchSize, lda, lda_inv <= 0, or A, Ainv, info is nullptr.",
-        ACL_ERROR_INVALID_PARAM);
+    // info 允许为空（issue #244，对齐 getrf 族 #180 的 nullptr 容错口径），
+    // 与上方 info != nullptr 判空清零分支统一，消除自相矛盾
+    SOLVER_ECHECK(n > 0 && batchSize > 0 && lda > 0 && lda_inv > 0 && A != nullptr && Ainv != nullptr,
+                  "CmatinvBatched get invalid param: n, batchSize, lda, lda_inv <= 0, or A, Ainv is nullptr.",
+                  ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(n <= MAX_MATRIX_SHAPE && batchSize <= MAX_MATRIX_BATCH,
                   "CmatinvBatched get n > 256 or batchSize > 3000, which exceeds the supported limit.",
                   ACL_ERROR_INVALID_PARAM);

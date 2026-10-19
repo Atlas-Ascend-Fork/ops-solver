@@ -80,10 +80,11 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
     // 参数范围校验先于一切估算算术执行：体积估算的乘法仅在通过范围校验的 n/batchSize 上
     // 运行，消除大 n（约 1.75e9 以上）下 int64 有符号溢出 UB 与误导性报错（issue #139，
     // 检视意见：此前仅前移了校验到守卫 CHECK 之前，估算算术本身仍在校验前执行）
-    SOLVER_ECHECK(
-        n > 0 && batchSize > 0 && lda > 0 && lda_inv > 0 && A != nullptr && Ainv != nullptr && info != nullptr,
-        "CgetriBatched get invalid param: n, batchSize, lda, lda_inv <= 0, or A, Ainv, info is nullptr.",
-        ACL_ERROR_INVALID_PARAM);
+    // info 允许为空（issue #244，对齐 getrf 族 #180 的 nullptr 容错口径），
+    // 与上方 info != nullptr 判空清零分支统一，消除自相矛盾
+    SOLVER_ECHECK(n > 0 && batchSize > 0 && lda > 0 && lda_inv > 0 && A != nullptr && Ainv != nullptr,
+                  "CgetriBatched get invalid param: n, batchSize, lda, lda_inv <= 0, or A, Ainv is nullptr.",
+                  ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(n <= MAX_MATRIX_SHAPE && batchSize <= MAX_MATRIX_BATCH,
                   "CgetriBatched get n > 256 or batchSize > 3000, which exceeds the supported limit.",
                   ACL_ERROR_INVALID_PARAM);
@@ -94,21 +95,24 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
     SOLVER_ECHECK(lda == n && lda_inv == n, "CgetriBatched only supports lda == n and lda_inv == n in current version.",
                   ACL_ERROR_INVALID_PARAM);
 
-    // Staging guard: eyeBatchMatData alone is batchNum * eyeMatEleNum floats
-    // and the packed work buffers add more; cap the combined estimate.
-    // 估算口径（issue #207）：实现随后还分配 aWorkData（aMatWorkEleNum 个 float，
-    // 公式与 eyeMatEleNum 相同），原估算式漏计该项导致约 2 倍低估——n=256、
-    // batchSize=3000 的文档允许域内估算约 3.7GiB 通过守卫，实际约 7.2GiB
-    // bad_alloc，#127 预检在自身设计域内失效。现并入 aMatWorkEleNum：
-    // 真实暂存 ≈ (2 * eyeMatEleNum + workEleNum) * sizeof(float)。
+    // Staging guard: cap the combined host staging estimate.
+    // 估算口径（issue #232 修正 #207 的单位错误）：按 Impl 实际分配构成重算——
+    // 逐 batch 缓冲仅 wBatchData（batchNum*t 个 uint32_t）与 eyeBatchMatData
+    // （batchNum*eyeMatEleNum 个 float）；aWorkData/workGmData/gatherOffset×3
+    // 均为单份共享缓冲（不乘 batchSize）。前置校验已强制 n ≤ 256、batchSize ≤
+    // 3000，该估算式在合法域内上界有限（约 4GiB），守卫作为越界/未来参数域
+    // 扩展时的预检保留，合法域内不触发（有界性依据见上）。
     const int64_t alignedN = (n + COL_ALIGNED_ELENUM - 1) / COL_ALIGNED_ELENUM * COL_ALIGNED_ELENUM;
     const int64_t paddedM = (n + BASE_BLOCK_ELENUM - 1) / BASE_BLOCK_ELENUM * BASE_BLOCK_ELENUM + COL_ALIGNED_ELENUM;
     const int64_t eyeMatEleNum = alignedN * paddedM * EYE_MATRIX_NUM;
     const int64_t workEleNum = ((n + TILE_ELENUM - 1) / TILE_ELENUM * TILE_ELENUM) * BASE_BLOCK_ELENUM * COMPLEX_ELENUM;
+    const int64_t wPivotEleNum = ((n + COL_ALIGNED_ELENUM - 1) / COL_ALIGNED_ELENUM * COL_ALIGNED_ELENUM);
     constexpr double kMaxStagingGiB = 8.0;
-    const double stagingGiB = static_cast<double>(batchSize) *
-                              static_cast<double>(eyeMatEleNum + eyeMatEleNum + workEleNum) * sizeof(float) /
-                              (1024.0 * 1024.0 * 1024.0);
+    const double perBatchBytes =
+        static_cast<double>(wPivotEleNum) * sizeof(uint32_t) + static_cast<double>(eyeMatEleNum) * sizeof(float);
+    const double sharedBytes = (static_cast<double>(eyeMatEleNum) + static_cast<double>(workEleNum)) * sizeof(float);
+    const double stagingGiB =
+        (static_cast<double>(batchSize) * perBatchBytes + sharedBytes) / (1024.0 * 1024.0 * 1024.0);
     SOLVER_ECHECK(stagingGiB <= kMaxStagingGiB,
                   "CgetriBatched host staging buffers exceed the supported memory budget for this n/batchSize.",
                   ACL_ERROR_INVALID_PARAM);

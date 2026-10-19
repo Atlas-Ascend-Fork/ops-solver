@@ -42,15 +42,25 @@ def verify_result(A, invA, batchSize, N):
         )
         different_element_indexes = np.flatnonzero(~different_element_results)
 
-        # 打印前32个不匹配的元素
+        # 打印跨 batch 合计前 32 个不匹配的元素（issue #243）：原实现 total_different
+        # 在 batch 循环后才累加，首个坏 batch 打印全部、后续 batch 一条不打，
+        # 32 条上限形同虚设；改为明细循环内以局部计数器统一限流
+        printed_this_run = 0
         for index in range(len(different_element_indexes)):
-            if total_different >= 32:
+            if total_different + printed_this_run >= 32:
                 break
             real_index = different_element_indexes[index]
             golden_data = golden[real_index]
             output_data = output[real_index]
+            # 除零防护（issue #243）：golden 为单位阵，对角外位置为 0，相对差
+            # 分母为 0 时改打印绝对差，避免 ZeroDivisionError 吞掉全部明细
+            denom = abs(golden_data)
+            if denom != 0:
+                diff_desc = "rdiff: %.6f" % (abs(output_data - golden_data) / denom)
+            else:
+                diff_desc = "absdiff: %.6f" % abs(output_data - golden_data)
             print(
-                "batch: %d, data index: %08d, expected: %.9f%+.9fj, actual: %.9f%+.9fj, rdiff: %.6f"
+                "batch: %d, data index: %08d, expected: %.9f%+.9fj, actual: %.9f%+.9fj, %s"
                 % (
                     b,
                     real_index,
@@ -58,9 +68,10 @@ def verify_result(A, invA, batchSize, N):
                     golden_data.imag,
                     output_data.real,
                     output_data.imag,
-                    abs(output_data - golden_data) / abs(golden_data),
+                    diff_desc,
                 )
             )
+            printed_this_run += 1
 
         total_elements += golden.size
         total_different += different_element_indexes.size

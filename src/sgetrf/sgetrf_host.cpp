@@ -45,6 +45,11 @@ aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
                   ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(m * n <= INT32_MAX, "aclsolverSgetrf invalid param: m * n exceeds INT32_MAX elements.",
                   ACL_ERROR_INVALID_PARAM);
+    // n 上限校验（issue #230，对齐 cgetrf 的 LU_CGETRF_MAX_N 口径与头文档声明）：
+    // n > 8192 时 kernel 侧 PadCustom::Process 的 linesPerIter = TILE_LENGTH/alignedN
+    // 为 0，随后 lines/linesPerIter 整数除零（未定义行为）
+    SOLVER_ECHECK(n <= LU_CGETRF_MAX_N, "aclsolverSgetrf invalid param: n exceeds the kernel design limit 8192.",
+                  ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(m <= LU_MAX_ROW, "aclsolverSgetrf invalid param: m exceeds the 8192-row kernel limit.",
                   ACL_ERROR_INVALID_PARAM);
     SOLVER_ECHECK(
@@ -147,6 +152,22 @@ aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
             *info = static_cast<int32_t>(i + 1);
         }
         ipiv[i] = wHostInt[i] + 1;  // Convert to 1-based indexing
+    }
+    // 奇异性判定补充（issue #231）：kernel 侧 choosePivot 对零主元列也会回写
+    // 真实行号（值域 [offsetM, offsetM+blockM-1]，永不为 -1），上面的哨兵扫描
+    // 实际不可达；改用 LAPACK getrf 同款判据——分解后 U 的对角元为零即奇异，
+    // 从回读的 A（列主序，lda==n）取对角元 |U[i][i]| == 0 上报首个奇异列
+    if (info != nullptr && *info == 0)
+    {
+        const float *aF = reinterpret_cast<const float *>(aMatrixHost);
+        for (int64_t i = 0; i < std::min(m, n); ++i)
+        {
+            if (aF[i * n + i] == 0.0f)
+            {
+                *info = static_cast<int32_t>(i + 1);
+                break;
+            }
+        }
     }
 
     cleanup();
