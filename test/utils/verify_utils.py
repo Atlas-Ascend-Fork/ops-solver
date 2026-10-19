@@ -54,7 +54,15 @@ def verify_inverse(input_path, inv_path, order, dtype, format_mismatch):
     """
     a = read_binary_strict(input_path, dtype).reshape(order, order)
     inv_a = read_binary_strict(inv_path, dtype).reshape(order, order)
+    if not np.isfinite(a).all() or not np.isfinite(inv_a).all():
+        logging.info(
+            "Non-finite input or inverse output cannot pass accuracy verification."
+        )
+        return False
     output = np.dot(a, inv_a).reshape(-1)
+    if not np.isfinite(output).all():
+        logging.info("Non-finite inverse product cannot pass accuracy verification.")
+        return False
     golden = np.eye(order, dtype=dtype).reshape(-1)
     close = np.isclose(
         output, golden, rtol=RELATIVE_TOL, atol=ABSOLUTE_TOL, equal_nan=True

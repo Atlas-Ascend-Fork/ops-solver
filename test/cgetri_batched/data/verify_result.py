@@ -29,11 +29,18 @@ def verify_result(A, invA, batchSize, N):
     A = read_binary_strict(A, np.complex64).reshape(batchSize, N, N)
     invA = read_binary_strict(invA, np.complex64).reshape(batchSize, N, N)
 
+    if not np.isfinite(A).all() or not np.isfinite(invA).all():
+        print("Non-finite input or inverse output cannot pass accuracy verification.")
+        return False
+
     total_elements = 0
     total_different = 0
 
     for b in range(batchSize):
         output = np.dot(A[b], invA[b]).reshape(-1)
+        if not np.isfinite(output).all():
+            print("Non-finite inverse product cannot pass accuracy verification.")
+            return False
         golden = np.eye(N).astype(np.complex64).reshape(-1)
         different_element_results = np.isclose(
             output, golden, rtol=relative_tol, atol=absolute_tol, equal_nan=True

@@ -57,6 +57,10 @@ def main():
     )
     w = read_binary_strict("./test/sgetrf/data/output/W_gm.bin", np.uint32).reshape(t)
 
+    if not np.isfinite(a).all() or not np.isfinite(x).all():
+        print("Non-finite input or LU output cannot pass accuracy verification.")
+        return False
+
     # 根据 pivot 数组进行行交换
     for j in range(n):
         for i in range(t):
@@ -66,6 +70,9 @@ def main():
 
     # 计算 expected 结果
     b = gemm(x)
+    if not np.isfinite(b).all():
+        print("Non-finite LU product cannot pass accuracy verification.")
+        return False
 
     print("-------------------------------------------------------")
     cnt = 0
