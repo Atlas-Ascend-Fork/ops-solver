@@ -16,7 +16,7 @@ RUN_TEST=OFF
 ENABLE_PACKAGE=FALSE
 
 export BASE_PATH=$(
-  cd "$(dirname $0)"
+  cd "$(dirname "$0")"
   pwd
 )
 export BUILD_PATH="${BASE_PATH}/build"
@@ -162,36 +162,36 @@ if [ -z "${matched}" ]; then
     exit 1
 fi
 
-CMAKE_OPTIONS="-DSOC_VERSION=${SOC_VERSION} -DASCEND_CANN_PACKAGE_PATH=${ASCEND_HOME}"
+CMAKE_OPTIONS=("-DSOC_VERSION=${SOC_VERSION}" "-DASCEND_CANN_PACKAGE_PATH=${ASCEND_HOME}")
 
 # 帮助 find_package(ASC) 定位 ASCConfig.cmake（CMake 查找 ASC/ASCConfig.cmake 或 ASC/asc-config.cmake）
 if [ -z "${ASC_DIR}" ]; then
     for p in "${ASCEND_HOME}/lib64/cmake" "${ASCEND_HOME}/compiler/latest/lib64/cmake" \
              "${ASCEND_HOME}/ascendc/lib64/cmake"; do
         if [ -f "${p}/ASC/ASCConfig.cmake" ] || [ -f "${p}/ASC/asc-config.cmake" ]; then
-            CMAKE_OPTIONS="${CMAKE_OPTIONS} -DCMAKE_PREFIX_PATH=${p}"
+            CMAKE_OPTIONS+=("-DCMAKE_PREFIX_PATH=${p}")
             break
         fi
     done
 fi
-[ -n "${ASC_DIR}" ] && CMAKE_OPTIONS="${CMAKE_OPTIONS} -DASC_DIR=${ASC_DIR}"
+[ -n "${ASC_DIR}" ] && CMAKE_OPTIONS+=("-DASC_DIR=${ASC_DIR}")
 
 if [ -n "${BUILD_OPS}" ]; then
     # 将逗号分隔转换为分号分隔（CMake 列表格式）
     TEST_NAMES_CMAKE="${BUILD_OPS//,/;}"
-    CMAKE_OPTIONS="${CMAKE_OPTIONS} -DBUILD_TEST=ON -DTEST_NAMES=${TEST_NAMES_CMAKE}"
+    CMAKE_OPTIONS+=("-DBUILD_TEST=ON" "-DTEST_NAMES=${TEST_NAMES_CMAKE}")
 fi
 
 if [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
-    CMAKE_OPTIONS="${CMAKE_OPTIONS} -DENABLE_PACKAGE=ON -DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}"
+    CMAKE_OPTIONS+=("-DENABLE_PACKAGE=ON" "-DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}")
 fi
 
-cmake -S "${BASE_PATH}" -B "${BUILD_DIR}" ${CMAKE_OPTIONS}
-cmake --build ${BUILD_DIR} -j
+cmake -S "${BASE_PATH}" -B "${BUILD_DIR}" "${CMAKE_OPTIONS[@]}"
+cmake --build "${BUILD_DIR}" -j
 if [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
-    cmake --build ${BUILD_DIR} --target package
+    cmake --build "${BUILD_DIR}" --target package
 else
-    cmake --install ${BUILD_DIR}
+    cmake --install "${BUILD_DIR}"
 fi
 
 
