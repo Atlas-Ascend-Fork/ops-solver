@@ -115,7 +115,9 @@ def orthogonality_error(vectors):
     if n <= FULL_ORTHOGONAL_LIMIT:
         identity = np.eye(n, dtype=np.complex64)
         error = vectors.conj().T @ vectors - identity
-        return float(np.linalg.norm(error, ord="fro") / max(float(n), 1.0))
+        # Check each unit-norm/orthogonal Gram entry; averaging over n*n
+        # entries can hide an entirely zero or duplicated vector column.
+        return float(np.max(np.abs(error)))
 
     rng = np.random.default_rng(2606000 + n)
     probes = (
@@ -123,11 +125,14 @@ def orthogonality_error(vectors):
         + 1j * rng.standard_normal((n, ORTHOGONAL_PROBES), dtype=np.float32)
     ).astype(np.complex64)
     probes /= np.maximum(np.linalg.norm(probes, axis=0, keepdims=True), 1.0e-12)
+    column_energy = np.sum(np.abs(vectors) ** 2, axis=0)
+    column_error = float(np.max(np.abs(column_energy - 1.0)))
     error = vectors.conj().T @ (vectors @ probes) - probes
-    return float(
+    probe_error = float(
         np.linalg.norm(error, ord="fro")
         / max(float(np.linalg.norm(probes, ord="fro")), 1.0)
     )
+    return max(probe_error, column_error)
 
 
 def print_eigenvalue_mismatches(output, golden):
