@@ -64,8 +64,12 @@ def main():
     # 根据 pivot 数组进行行交换
     for j in range(n):
         for i in range(t):
-            assert w[i] >= i + 1 and w[i] <= m
-            p = w[i] - 1  # convert 1-based to 0-based
+            pivot = int(w[i])
+            if not (i + 1 <= pivot <= m):
+                raise ValueError(
+                    f"invalid pivot at index {i}: {pivot}, expected [{i + 1}, {m}]"
+                )
+            p = pivot - 1  # convert 1-based to 0-based
             a[[i, p], j] = a[[p, i], j]
 
     # 计算 expected 结果
