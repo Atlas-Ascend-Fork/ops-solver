@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file pad.hpp
@@ -16,15 +16,18 @@
 #ifndef _PAD_HPP_
 #define _PAD_HPP_
 
-#include <cstdint>
 #include <lib/matrix/matmul/matmul.h>
+
+#include <cstdint>
+
 #include "kernel_operator.h"
 
 using namespace AscendC;
 using namespace matmul;
 
 template <typename T>
-class SplitRealImag {
+class SplitRealImag
+{
     static const int TILE_LENGTH = 8192;
     GlobalTensor<T> srcGlobal, dstGlobalReal, dstGlobalImag;
     int N;
@@ -37,7 +40,8 @@ class SplitRealImag {
     TQue<QuePosition::VECIN, 2> inQueue;
     TQue<QuePosition::VECOUT, 2> outQueueReal, outQueueImag;
     LocalTensor<T> realLocal, imagLocal;
-public:
+
+   public:
     __aicore__ inline SplitRealImag() {}
     __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe)
     {
@@ -46,7 +50,8 @@ public:
         pipe->InitBuffer(outQueueImag, 2, TILE_LENGTH * sizeof(T));
         elementsPerBlock = 32 / sizeof(T);
     }
-    __aicore__ inline void SetMatrix(GlobalTensor<T> srcGlobal, GlobalTensor<T> dstGlobalReal, GlobalTensor<T> dstGlobalImag, int N, int srcN, int dstN)
+    __aicore__ inline void SetMatrix(GlobalTensor<T> srcGlobal, GlobalTensor<T> dstGlobalReal,
+                                     GlobalTensor<T> dstGlobalImag, int N, int srcN, int dstN)
     {
         this->srcGlobal = srcGlobal;
         this->dstGlobalReal = dstGlobalReal;
@@ -71,13 +76,17 @@ public:
         srcOffset += loopCount * linesPerIter * srcN * 2;
         dstOffset += loopCount * linesPerIter * dstN;
         int tailLines = lines - linesPerIter * loopCount;
-        if (tailLines) {
-            if (N << 1 <= TILE_LENGTH) {
+        if (tailLines)
+        {
+            if (N << 1 <= TILE_LENGTH)
+            {
                 CopyIn(srcOffset, tailLines / 2);
                 Compute(0, 0, tailLines / 2 * alignedN * 2);
                 CopyIn(srcOffset + tailLines / 2 * srcN * 2, (tailLines + 1) / 2);
                 Compute(1, tailLines / 2 * alignedN, (tailLines + 1) / 2 * alignedN * 2);
-            } else {
+            }
+            else
+            {
                 CopyIn(srcOffset, TILE_LENGTH);
                 Compute(0, 0, TILE_LENGTH);
                 CopyIn(srcOffset + TILE_LENGTH, alignedN * 2 - TILE_LENGTH);
@@ -87,13 +96,17 @@ public:
         }
         srcOffset -= linesPerIter * srcN * 2;
         dstOffset -= linesPerIter * dstN;
-        for (int i = 0; i < loopCount; ++i) {
-            if (N << 1 <= TILE_LENGTH) {
+        for (int i = 0; i < loopCount; ++i)
+        {
+            if (N << 1 <= TILE_LENGTH)
+            {
                 CopyIn(srcOffset, linesPerIter / 2);
                 Compute(0, 0, linesPerIter / 2 * alignedN * 2);
                 CopyIn(srcOffset + linesPerIter / 2 * srcN * 2, (linesPerIter + 1) / 2);
                 Compute(1, linesPerIter / 2 * alignedN, (linesPerIter + 1) / 2 * alignedN * 2);
-            } else {
+            }
+            else
+            {
                 CopyIn(srcOffset, TILE_LENGTH);
                 Compute(0, 0, TILE_LENGTH);
                 CopyIn(srcOffset + TILE_LENGTH, alignedN * 2 - TILE_LENGTH);
@@ -107,34 +120,38 @@ public:
     __aicore__ inline void CopyIn(int offset, int lines)
     {
         LocalTensor<T> srcLocal = inQueue.AllocTensor<T>();
-        if (N << 1 <= TILE_LENGTH) {
-            DataCopyExtParams intriParams {
-                static_cast<uint16_t>(lines),
-                static_cast<uint16_t>(N * 2 * sizeof(T)),
+        if (N << 1 <= TILE_LENGTH)
+        {
+            DataCopyExtParams intriParams{
+                static_cast<uint16_t>(lines), static_cast<uint16_t>(N * 2 * sizeof(T)),
                 static_cast<uint16_t>((srcN * 2 - N * 2) * sizeof(T)),
-                static_cast<uint16_t>(N % elementsPerBlock && N % elementsPerBlock <= elementsPerBlock / 2),
-                0
-            };
-            DataCopyPadExtParams<T> padParams {true, 0, static_cast<uint8_t>(padN), 0};
+                static_cast<uint16_t>(N % elementsPerBlock && N % elementsPerBlock <= elementsPerBlock / 2), 0};
+            DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(padN), 0};
             DataCopyPad(srcLocal, srcGlobal[offset], intriParams, padParams);
-        } else {
+        }
+        else
+        {
             DataCopy(srcLocal, srcGlobal[offset], lines);
         }
         inQueue.EnQue(srcLocal);
     }
     __aicore__ inline void Compute(int progress, int calcedLength, int length)
     {
-        if (!progress) {
+        if (!progress)
+        {
             realLocal = outQueueReal.AllocTensor<T>();
             imagLocal = outQueueImag.AllocTensor<T>();
         }
         LocalTensor<T> srcLocal = inQueue.DeQue<T>();
         uint64_t rsvdCnt;
-        GatherMask(realLocal[calcedLength], srcLocal, 1, false, 0, {1, static_cast<uint16_t>((length * sizeof(T) + 255) / 256), 8, 0}, rsvdCnt);
-        GatherMask(imagLocal[calcedLength], srcLocal, 2, false, 0, {1, static_cast<uint16_t>((length * sizeof(T) + 255) / 256), 8, 0}, rsvdCnt);
+        GatherMask(realLocal[calcedLength], srcLocal, 1, false, 0,
+                   {1, static_cast<uint16_t>((length * sizeof(T) + 255) / 256), 8, 0}, rsvdCnt);
+        GatherMask(imagLocal[calcedLength], srcLocal, 2, false, 0,
+                   {1, static_cast<uint16_t>((length * sizeof(T) + 255) / 256), 8, 0}, rsvdCnt);
         PipeBarrier<PIPE_V>();
         inQueue.FreeTensor(srcLocal);
-        if (progress) {
+        if (progress)
+        {
             outQueueReal.EnQue(realLocal);
             outQueueImag.EnQue(imagLocal);
         }
@@ -143,13 +160,8 @@ public:
     {
         LocalTensor<T> realLocal = outQueueReal.DeQue<T>();
         LocalTensor<T> imagLocal = outQueueImag.DeQue<T>();
-        DataCopyExtParams intriParams{
-            static_cast<uint16_t>(lines),
-            static_cast<uint16_t>(N * sizeof(T)),
-            0,
-            static_cast<uint16_t>((dstN - N) * sizeof(T)),
-            0
-        };
+        DataCopyExtParams intriParams{static_cast<uint16_t>(lines), static_cast<uint16_t>(N * sizeof(T)), 0,
+                                      static_cast<uint16_t>((dstN - N) * sizeof(T)), 0};
         DataCopyPad(dstGlobalReal[offset], realLocal, intriParams);
         DataCopyPad(dstGlobalImag[offset], imagLocal, intriParams);
         outQueueReal.FreeTensor(realLocal);
@@ -158,7 +170,8 @@ public:
 };
 
 template <typename T>
-class MergeRealImag {
+class MergeRealImag
+{
     static const int TILE_LENGTH = 8192;
     GlobalTensor<T> aOrgGlobal;
     GlobalTensor<T> aGlobalReal, aGlobalImag;
@@ -175,7 +188,8 @@ class MergeRealImag {
     TQue<QuePosition::VECIN, 1> gatherQueue;
     LocalTensor<T> realLocal, imagLocal;
     LocalTensor<uint32_t> gatherLocal;
-public:
+
+   public:
     __aicore__ inline MergeRealImag() {}
     __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe, GlobalTensor<uint32_t> aGather)
     {
@@ -185,7 +199,8 @@ public:
         elementsPerBlock = 32 / sizeof(T);
         this->aGather = aGather;
     }
-    __aicore__ inline void SetMatrix(GlobalTensor<T> aOrgGlobal, GlobalTensor<T> aGlobalReal, GlobalTensor<T> aGlobalImag, int N, int srcN, int dstN)
+    __aicore__ inline void SetMatrix(GlobalTensor<T> aOrgGlobal, GlobalTensor<T> aGlobalReal,
+                                     GlobalTensor<T> aGlobalImag, int N, int srcN, int dstN)
     {
         this->aOrgGlobal = aOrgGlobal;
         this->aGlobalReal = aGlobalReal;
@@ -206,7 +221,8 @@ public:
     {
         LoadGather();
         int loopCount = lines / linesPerIter;
-        for (int i = 0; i < loopCount; ++i) {
+        for (int i = 0; i < loopCount; ++i)
+        {
             CopyIn(srcOffset, linesPerIter, alignedN);
             Compute(linesPerIter * alignedN * 2);
             CopyOut(dstOffset, linesPerIter, N);
@@ -214,7 +230,8 @@ public:
             dstOffset += linesPerIter * dstN * 2;
         }
         lines %= linesPerIter;
-        if (!lines) {
+        if (!lines)
+        {
             gatherQueue.FreeTensor(gatherLocal);
             return;
         }
@@ -234,12 +251,8 @@ public:
     {
         LocalTensor<T> srcLocal = inQueue.AllocTensor<T>();
 
-        DataCopyParams copyInParams{
-            static_cast<uint16_t>(blockM),
-            static_cast<uint16_t>(blockN / elementsPerBlock),
-            static_cast<uint16_t>((srcN - blockN) / elementsPerBlock),
-            0
-        };
+        DataCopyParams copyInParams{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockN / elementsPerBlock),
+                                    static_cast<uint16_t>((srcN - blockN) / elementsPerBlock), 0};
         DataCopy(srcLocal, aGlobalReal[offset], copyInParams);
         DataCopy(srcLocal[TILE_LENGTH / 2], aGlobalImag[offset], copyInParams);
 
@@ -258,22 +271,19 @@ public:
     {
         LocalTensor<T> dstLocal = outQueue.DeQue<T>();
 
-        DataCopyExtParams copyOutParams{
-            static_cast<uint16_t>(blockM),
-            static_cast<uint16_t>(blockN * 2 * sizeof(T)),
-            static_cast<uint16_t>((alignedN * 2 - blockN * 2) / elementsPerBlock),
-            static_cast<uint16_t>((dstN * 2 - blockN * 2) * sizeof(T)),
-            0
-        };
+        DataCopyExtParams copyOutParams{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockN * 2 * sizeof(T)),
+                                        static_cast<uint16_t>((alignedN * 2 - blockN * 2) / elementsPerBlock),
+                                        static_cast<uint16_t>((dstN * 2 - blockN * 2) * sizeof(T)), 0};
         DataCopyPad(aOrgGlobal[offset], dstLocal, copyOutParams);
 
         outQueue.FreeTensor(dstLocal);
     }
 };
 
-__aicore__ inline void pad(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR A_org, GM_ADDR A_work)
+__aicore__ inline void pad(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR A_org,
+                           GM_ADDR A_work)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     int blockNum = GetBlockNum();
     int blockIdx = GetBlockIdx();
     int M = (orgM + 15) / 16 * 16;
@@ -298,9 +308,10 @@ __aicore__ inline void pad(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM,
 #endif
 }
 
-__aicore__ inline void restore(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR A_org, GM_ADDR A_work, GM_ADDR gather3_gm)
+__aicore__ inline void restore(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR A_org,
+                               GM_ADDR A_work, GM_ADDR gather3_gm)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
     CrossCoreWaitFlag(0x2);
 
@@ -324,8 +335,10 @@ __aicore__ inline void restore(TBufPool<TPosition::VECCALC, 16> &tbufPool, int o
     opmg.Init(&tbufPool, gather3);
     opmg.SetMatrix(aGlobalOrg, aGlobalReal, aGlobalImag, min(orgN, TILE_LENGTH), strideN, orgN);
     opmg.MergeRealImagWork(orgM, blockNum << 1, blockIdx);
-    if (orgN > TILE_LENGTH) {
-        opmg.SetMatrix(aGlobalOrg[TILE_LENGTH * 2], aGlobalReal[TILE_LENGTH], aGlobalImag[TILE_LENGTH], orgN - TILE_LENGTH, strideN, orgN);
+    if (orgN > TILE_LENGTH)
+    {
+        opmg.SetMatrix(aGlobalOrg[TILE_LENGTH * 2], aGlobalReal[TILE_LENGTH], aGlobalImag[TILE_LENGTH],
+                       orgN - TILE_LENGTH, strideN, orgN);
         opmg.MergeRealImagWork(orgM, blockNum << 1, blockIdx);
     }
 

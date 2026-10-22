@@ -15,7 +15,7 @@
                                 int activeSize)
     {
         activeN = activeSize;
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         BindGlobals(matrixReal, matrixImag, panelVReal, panelVImag, panelWReal, panelWImag, wHReal, wHImag, wHImagNeg,
                     diagonal, offDiagonal, tauReal, tauImag, panelWorkspace, barrierWorkspace);
         InitBuffers(pipe);

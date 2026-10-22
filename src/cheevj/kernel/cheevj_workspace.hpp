@@ -70,7 +70,7 @@ __aicore__ inline int CheevjWorkspaceWorkerIndex()
 
 __aicore__ inline void CheevjWorkspaceSync()
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     PipeBarrier<PIPE_ALL>();
     CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
     CrossCoreWaitFlag(0x2);
@@ -361,7 +361,7 @@ __aicore__ inline void SplitCompactInterleavedToPlanar(TBufPool<TPosition::VECCA
                                                        GM_ADDR compactInterleaved, GM_ADDR workspace, int n,
                                                        int inputLda, bool needVectors, int scratchPlanes = 0)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjCompactToPlanarSplit op;
     op.Init(&tbufPool);
     op.SetMatrix(compactInterleaved, workspace, n, inputLda, needVectors, scratchPlanes);
@@ -382,7 +382,7 @@ __aicore__ inline void SplitCompactInterleavedToPlanar(TBufPool<TPosition::VECCA
 __aicore__ inline void MaterializeImagNeg(TBufPool<TPosition::VECCALC, 16> &tbufPool, GM_ADDR workspace, int n,
                                           bool needVectors, int scratchPlanes = 0)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjPlanarWorkspace planar;
     planar.Bind(workspace, n, needVectors, scratchPlanes);
     CheevjImagNegMaterialize op;
@@ -403,7 +403,7 @@ __aicore__ inline void MaterializeImagNeg(TBufPool<TPosition::VECCALC, 16> &tbuf
 __aicore__ inline void InitPlanarIdentity(TBufPool<TPosition::VECCALC, 16> &tbufPool, GM_ADDR workspace, int n,
                                           int scratchPlanes = 0)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjPlanarWorkspace planar;
     planar.Bind(workspace, n, true, scratchPlanes);
     CheevjIdentityInit op;

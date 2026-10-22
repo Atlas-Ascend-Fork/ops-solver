@@ -44,7 +44,7 @@ constexpr uint32_t CHEEVJ_TILING_UPLO = 3;
 constexpr uint32_t CHEEVJ_TILING_IS_DIAGONAL = 4;
 constexpr uint32_t CHEEVJ_TILING_MAX_SWEEPS = 10;
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
 __aicore__ inline void RunLargeCubeStage(Cheevj::CheevjStageBlockJacobi16* panelService,
                                          Cheevj::CheevjStageBlockPairSchedule16* schedule, CMatmulCustom<float>* opmm,
                                          int stage, int panelSlotIndex, int panelSlotCount,
@@ -142,7 +142,7 @@ __global__ __aicore__ void cheevj_kernel(GM_ADDR sync, GM_ADDR a, GM_ADDR w, GM_
     const bool isDiagonal = tilingData[CHEEVJ_TILING_IS_DIAGONAL] != 0;
     const int maxSweeps = static_cast<int>(tilingData[CHEEVJ_TILING_MAX_SWEEPS]);
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     if (isDiagonal || n <= Cheevj::CHEEVJ_DEVICE_MAX_N)
     {
         return;
@@ -191,7 +191,7 @@ __global__ __aicore__ void cheevj_fixed_prepare_kernel(GM_ADDR matrixReal, GM_AD
                                                        GM_ADDR barrierWorkspace, int panelStart, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {
@@ -225,7 +225,7 @@ __global__ __aicore__ void cheevj_fixed_archive_kernel(GM_ADDR panelVReal, GM_AD
                                                        GM_ADDR reflectorImag, int panelStart, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {
@@ -278,7 +278,7 @@ __global__ __aicore__ void cheevj_fixed_apply_update_kernel(GM_ADDR packedReal, 
                                                             int computeVectors, int activeN, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {
@@ -330,7 +330,7 @@ __global__ __aicore__ void cheevj_fixed_unpack_kernel(GM_ADDR packedReal, GM_ADD
                                                       GM_ADDR matrixImag, int panelStart, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {
@@ -357,7 +357,7 @@ __global__ __aicore__ void cheevj_fixed_unpack_kernel(GM_ADDR packedReal, GM_ADD
 __global__ __aicore__ void cheevj_fixed_tridiag_reset_kernel(GM_ADDR commandWorkspace, GM_ADDR barrierWorkspace, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {
@@ -387,7 +387,7 @@ __global__ __aicore__ void cheevj_fixed_tridiag_vectors_kernel(GM_ADDR diagonal,
                                                                int rowWave, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {

@@ -193,7 +193,7 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockN, int tileM, GM_A
     MatmulCustom<float> opmm;
     SolveTrsm<float> optrsm;
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     pipe.InitBufPool(tbufPool, 192 * 1024);
 
     PadCustom<float> oppad;
@@ -303,7 +303,7 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockN, int tileM, GM_A
     oppad.SetMatrix(aGlobal, aGlobalOrg, orgN, strideN, orgN);
     oppad.PadCustomWork(orgM, blockNum << 1, blockIdx);
 
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     opmm.Init(&pipe);
     SetAtomicAdd<float>();
     for (int i = 1, offset = blockN; i < cnt; ++i, offset += blockN)
@@ -345,8 +345,9 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockN, int tileM, GM_A
 #endif
 }
 
-__global__ __aicore__ void sgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work,
-                                         GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm)
+__global__ __aicore__ void sgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org,
+                                         GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm,
+                                         GM_ADDR gather2_gm)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     custom_lu(orgM, orgN, blockN, tileM, A_org, A_work, W, work_gm, gather1_gm, gather2_gm);
@@ -355,7 +356,7 @@ __global__ __aicore__ void sgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int b
 void sgetrf_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work, GM_ADDR W,
                       GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm, uint32_t numBlocks, void *stream)
 {
-    sgetrf_kernel<<<numBlocks, nullptr, stream>>>(sync, orgM, orgN, blockN, tileM, A_org, A_work, W, work_gm, gather1_gm,
-                                                  gather2_gm);
+    sgetrf_kernel<<<numBlocks, nullptr, stream>>>(sync, orgM, orgN, blockN, tileM, A_org, A_work, W, work_gm,
+                                                  gather1_gm, gather2_gm);
 }
 #endif  // SGETRF_MIX_H

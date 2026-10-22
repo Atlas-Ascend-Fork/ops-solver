@@ -42,7 +42,7 @@ class CheevjTridiagInverseIteration
     __aicore__ inline void Init(AscendC::TPipe *pipe, GM_ADDR diagonal, GM_ADDR offDiagonal, GM_ADDR eigenvalues,
                                 GM_ADDR eigenvectorsRowMajor, int n, int waveStart)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         diagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(diagonal));
         offDiagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(offDiagonal));
         eigenvaluesGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(eigenvalues));
@@ -77,7 +77,7 @@ class CheevjTridiagInverseIteration
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (matrixOrder <= 0 || matrixOrder > CHEEVJ_TRIDIAG_INVERSE_MAX_N || block < 0 ||
             block >= CHEEVJ_TRIDIAG_INVERSE_WORKERS)

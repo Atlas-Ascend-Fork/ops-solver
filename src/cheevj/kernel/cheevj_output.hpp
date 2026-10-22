@@ -220,10 +220,7 @@ class CheevjPlanarOutputWriter
     GlobalTensor<float> wOut;
     CheevjPlanarWorkspace planar;
 
-    __aicore__ inline bool IsSupportedN() const
-    {
-        return planar.layout.n > 0;
-    }
+    __aicore__ inline bool IsSupportedN() const { return planar.layout.n > 0; }
 
     __aicore__ inline bool HasColumnMapScratch() const { return planar.layout.scratchPlanes > 0; }
 
@@ -427,7 +424,7 @@ __aicore__ inline void WriteCheevjPlanarOutput(TBufPool<TPosition::VECCALC, 16> 
                                                GM_ADDR w, GM_ADDR workspace, int n, bool needVectors,
                                                int scratchPlanes = 0)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjPlanarOutputWriter op;
     op.Init(&tbufPool);
     op.SetOutput(compactInterleaved, w, workspace, n, needVectors, scratchPlanes);
@@ -449,7 +446,7 @@ __aicore__ inline void WriteCheevjPlanarEigenvalues(TBufPool<TPosition::VECCALC,
                                                     GM_ADDR workspace, int n, bool needVectors, int scratchPlanes = 0,
                                                     bool storeColumnMap = false)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjPlanarWorkspace planar;
     planar.Bind(workspace, n, needVectors, scratchPlanes);
 
@@ -479,7 +476,7 @@ __aicore__ inline void WriteCheevjPlanarVectorsToCompact(TBufPool<TPosition::VEC
                                                          GM_ADDR compactInterleaved, GM_ADDR workspace, int n,
                                                          int scratchPlanes = 0, bool useStoredColumnMap = false)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjPlanarWorkspace planar;
     planar.Bind(workspace, n, true, scratchPlanes);
 
@@ -515,7 +512,7 @@ __aicore__ inline void WriteCheevjPlanarMatrixToCompact(TBufPool<TPosition::VECC
                                                         GM_ADDR compactInterleaved, GM_ADDR workspace, int n,
                                                         bool needVectors, int scratchPlanes = 0)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CheevjPlanarWorkspace planar;
     planar.Bind(workspace, n, needVectors, scratchPlanes);
 

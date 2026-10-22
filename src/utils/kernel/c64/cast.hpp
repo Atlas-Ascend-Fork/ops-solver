@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file cast.hpp
@@ -17,12 +17,14 @@
 #define _CAST_HPP_
 
 #include <cstdint>
+
 #include "kernel_operator.h"
 
 using namespace AscendC;
 
 template <typename IN_DTYPE, typename OUT_DTYPE>
-class CastDtype {
+class CastDtype
+{
     static constexpr int64_t BUFFER_NUM = 2;
     static constexpr int32_t ELENUM_REPEAT_FP32 = 64;
     static constexpr int32_t ELENUM_REPEAT_FP16 = 128;
@@ -35,7 +37,8 @@ class CastDtype {
     TQue<QuePosition::VECOUT, BUFFER_NUM> outQueue;
 
     int64_t totalElenum;
-public:
+
+   public:
     __aicore__ inline CastDtype() {}
     __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe, int64_t elenum, GM_ADDR dst, GM_ADDR src)
     {
@@ -78,17 +81,21 @@ public:
 
         int64_t loopNum = this->totalElenum / MAX_CAST_ELENUM;
         int64_t tailNum = this->totalElenum % MAX_CAST_ELENUM;
-        if (tailNum > 0) {
+        if (tailNum > 0)
+        {
             loopNum += 1;
         }
 
-        for (int64_t loopIdx = 0; loopIdx < loopNum; loopIdx++) {
+        for (int64_t loopIdx = 0; loopIdx < loopNum; loopIdx++)
+        {
             uint64_t eleOffset = static_cast<uint64_t>(loopIdx * MAX_CAST_ELENUM);
-            if (loopIdx % vecNum != vecIdx) {
+            if (loopIdx % vecNum != vecIdx)
+            {
                 continue;
             }
             int32_t curCalElenum = MAX_CAST_ELENUM;
-            if (loopIdx == loopNum - 1 && tailNum > 0) {
+            if (loopIdx == loopNum - 1 && tailNum > 0)
+            {
                 curCalElenum = tailNum;
             }
 
@@ -99,7 +106,7 @@ public:
 
 __aicore__ inline void cast_up(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR dst, GM_ADDR src)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CastDtype<half, float> opup;
     opup.Init(&tbufPool, orgM * orgN * 2, dst, src);
     opup.Process();
@@ -110,9 +117,10 @@ __aicore__ inline void cast_up(TBufPool<TPosition::VECCALC, 16> &tbufPool, int o
 #endif
 }
 
-__aicore__ inline void cast_down(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR dst, GM_ADDR src)
+__aicore__ inline void cast_down(TBufPool<TPosition::VECCALC, 16> &tbufPool, int orgM, int orgN, GM_ADDR dst,
+                                 GM_ADDR src)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     CastDtype<float, half> opdown;
     opdown.Init(&tbufPool, orgM * orgN * 2, dst, src);
     opdown.Process();

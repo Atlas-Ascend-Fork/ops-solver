@@ -26,7 +26,7 @@ __global__ __aicore__ void cheevj_fixed_sturm_kernel(GM_ADDR diagonal, GM_ADDR o
                                                      int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     AscendC::GlobalTensor<float> boundsGlobal;
     AscendC::TBuf<AscendC::TPosition::VECCALC> boundsBuf;

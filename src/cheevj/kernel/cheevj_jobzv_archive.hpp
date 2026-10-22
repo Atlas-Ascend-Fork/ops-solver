@@ -30,7 +30,7 @@ class CheevjArchivePanelReflectors
     __aicore__ inline void Init(AscendC::TPipe *pipe, GM_ADDR panelVReal, GM_ADDR panelVImag, GM_ADDR reflectorReal,
                                 GM_ADDR reflectorImag, int panelStart, int blockOffset = 0)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         panelVRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(panelVReal));
         panelVImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(panelVImag));
         reflectorRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(reflectorReal));
@@ -53,7 +53,7 @@ class CheevjArchivePanelReflectors
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int localStep = static_cast<int>(AscendC::GetBlockIdx()) - archiveBlockOffset;
         if (AscendC::GetBlockNum() < archiveBlockOffset + PanelWidth || localStep < 0 || localStep >= PanelWidth ||
             start < 0 || start >= MatrixN || (start % PanelWidth) != 0)

@@ -12,7 +12,7 @@
                                 GM_ADDR reflectorImag, GM_ADDR tauReal, GM_ADDR tauImag, GM_ADDR eigenvectorReal,
                                 GM_ADDR eigenvectorImag, GM_ADDR info)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         BindCommonGlobals(tridiagonalEigenvectorsRowMajor, reflectorReal, reflectorImag, tauReal, tauImag,
                           eigenvectorReal, eigenvectorImag, info);
         InitBuffers(pipe);

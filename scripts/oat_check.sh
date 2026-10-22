@@ -24,7 +24,10 @@ else
     echo "[OAT] CRLF line endings detected, auto-fixing script and re-running..."
     _TMP="${_SCRIPT}.lf"
     sed 's/\r//' "$_SCRIPT" > "$_TMP" && mv "$_TMP" "$_SCRIPT"
-    exec sh "$_SCRIPT" "$@"
+    # Re-exec with bash (not sh): the script is bash-ized (#242) and relies on
+    # bash-only ${PIPESTATUS[0]}; a dash re-entry would abort with
+    # "Bad substitution" before the Maven failure fallback path is reached.
+    exec bash "$_SCRIPT" "$@"
 fi
 
 set -e

@@ -441,7 +441,7 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockM, int blockN, int
     int blockNum = GetBlockNum();
     int blockIdx = GetBlockIdx();
     int coreIdx = blockIdx;
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     coreIdx >>= 1;
 #endif
 
@@ -480,7 +480,7 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockM, int blockN, int
     int t = min(M, N);
     int cnt = t / blockN;
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     pipe.InitBufPool(tbufPool, 192 * 1024);
 
     SplitRealImag<float> opsp;
@@ -863,7 +863,7 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockM, int blockN, int
                        orgN - TILE_LENGTH, strideN, orgN);
         opmg.MergeRealImagWork(orgM, blockNum << 1, blockIdx);
     }
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     opmm.Init(&pipe);
     SetAtomicAdd<float>();
     static constexpr int gemm1BlockNum = 8;
@@ -993,17 +993,17 @@ __aicore__ inline void custom_lu(int orgM, int orgN, int blockM, int blockN, int
 #endif
 }
 
-__global__ __aicore__ void cgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM, GM_ADDR A_org,
-                                         GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm,
+__global__ __aicore__ void cgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM,
+                                         GM_ADDR A_org, GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm,
                                          GM_ADDR gather2_gm, GM_ADDR gather3_gm)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     custom_lu(orgM, orgN, blockM, blockN, tileM, A_org, A_work, W, work_gm, gather1_gm, gather2_gm, gather3_gm);
 }
 
-void cgetrf_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work, GM_ADDR W,
-                      GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm, GM_ADDR gather3_gm, uint32_t numBlocks,
-                      void *stream)
+void cgetrf_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM, GM_ADDR A_org,
+                      GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm,
+                      GM_ADDR gather3_gm, uint32_t numBlocks, void *stream)
 {
     cgetrf_kernel<<<numBlocks, nullptr, stream>>>(sync, orgM, orgN, blockM, blockN, tileM, A_org, A_work, W, work_gm,
                                                   gather1_gm, gather2_gm, gather3_gm);

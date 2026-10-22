@@ -38,7 +38,7 @@ __global__ __aicore__ void cheevj_fixed_panel_kernel(GM_ADDR packedReal, GM_ADDR
                                                      int n, int activeN)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {

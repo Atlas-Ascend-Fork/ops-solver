@@ -11,7 +11,7 @@
 #ifdef CHEEVJ_ENABLE_STAGE_PANEL_UPDATE
     __aicore__ inline bool ProcessSinglePairRightPanelAiv(int stage, int pairIndex, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanUseSinglePairRightPanel(pair, localDim) || slotIndex < 0 || slotIndex >= PanelServiceSlotCount() ||
@@ -34,7 +34,7 @@
 
     __aicore__ inline bool ProcessSinglePairRightVectorPanelAiv(int stage, int pairIndex, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!computeVectors || !HasVectorPlanes() || !CanUseSinglePairRightPanel(pair, localDim) || slotIndex < 0 ||
@@ -57,7 +57,7 @@
 
     __aicore__ inline bool ProcessRightPanelStageAiv(int stage, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         return ProcessRightPanelStageAivSplit(stage, slotIndex, lane, planar.aReal, planar.aImag, planar.aReal,
                                               planar.aImag, planar.aImagNeg, true);
 #else
@@ -70,7 +70,7 @@
 
     __aicore__ inline bool ProcessRightVectorPanelStageAiv(int stage, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         if (!computeVectors || !HasVectorPlanes())
         {
             return false;
@@ -87,7 +87,7 @@
 
     __aicore__ inline bool ProcessLeftPanelStageAiv(int stage, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         return ProcessLeftPanelStageAivSplit(stage, slotIndex, lane);
 #else
         (void)stage;
@@ -99,7 +99,7 @@
 
     __aicore__ inline bool ProcessSinglePairLeftPanelAiv(int stage, int pairIndex, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanUseSinglePairRightPanel(pair, localDim) || slotIndex < 0 || slotIndex >= PanelServiceSlotCount() ||
@@ -142,7 +142,7 @@
 
     __aicore__ inline bool ProcessDirectRightPanelStageAiv(int stage, int slotIndex, int lane)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, slotIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanUseDirectSegmentedRightPanel() || slotIndex < 0 || slotIndex >= schedule.PairCountPerStage() ||
@@ -169,7 +169,7 @@
 
     __aicore__ inline bool ProcessSinglePairDirectRightPanelCube(int stage, int pairIndex, CMatmulCustom<float> *opmm)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanUseDirectSegmentedRightPanel() || pairIndex < 0 || pairIndex >= schedule.PairCountPerStage() ||
@@ -212,7 +212,7 @@
 
     __aicore__ inline bool ProcessSinglePairRightPanelCube(int stage, int pairIndex)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanUseSinglePairRightPanel(pair, localDim) || GetBlockIdx() != 0)
@@ -232,7 +232,7 @@
 #endif
     }
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     __aicore__ inline bool CanProcessSinglePairPanelCube(const CheevjStageBlockPair16 &pair, int localDim,
                                                          int slotIndex, CMatmulCustom<float> *opmm) const
     {
@@ -251,7 +251,7 @@
     __aicore__ inline bool ProcessSinglePairRightPanelCube(int stage, int pairIndex, int slotIndex,
                                                            CMatmulCustom<float> *opmm)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanProcessSinglePairPanelCube(pair, localDim, slotIndex, opmm))
@@ -287,7 +287,7 @@
     __aicore__ inline bool ProcessRightPanelTaskCube(int stage, int taskIndex, int taskOrdinal,
                                                      CMatmulCustom<float> *opmm)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         const int sliceCount = PanelTaskSliceCount();
         const int pairIndex = taskIndex / sliceCount;
         const int sliceIndex = taskIndex - pairIndex * sliceCount;
@@ -329,7 +329,7 @@
     __aicore__ inline bool ProcessSinglePairLeftPanelCube(int stage, int pairIndex, int slotIndex,
                                                           CMatmulCustom<float> *opmm)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanProcessSinglePairPanelCube(pair, localDim, slotIndex, opmm))
@@ -366,7 +366,7 @@
     __aicore__ inline bool ProcessSinglePairPanelCubeBuffered(int stage, int pairIndex, int slotIndex,
                                                                int bufferIndex, CMatmulCustom<float> *opmm)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         const CheevjStageBlockPair16 pair = schedule.PairForStage(stage, pairIndex);
         const int localDim = pair.valid ? pair.left.size + pair.right.size : 0;
         if (!CanUseSinglePairRightPanel(pair, localDim) || slotIndex < 0 || slotIndex >= PanelServiceSlotCount() ||

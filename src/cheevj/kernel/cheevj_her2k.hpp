@@ -40,7 +40,7 @@ template <int MatrixN>
 __aicore__ inline void CheevjHer2kBuildD(GM_ADDR vReal, GM_ADDR vImag, GM_ADDR wHReal, GM_ADDR wHImag,
                                          GM_ADDR wHImagNeg, GM_ADDR dReal, GM_ADDR dImag, int activeN)
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     AscendC::GlobalTensor<float> vRealGlobal;
     AscendC::GlobalTensor<float> vImagGlobal;
     AscendC::GlobalTensor<float> wHRealGlobal;
@@ -97,7 +97,7 @@ class CheevjHer2kEpilogue
     __aicore__ inline void Init(AscendC::TPipe* pipe, GM_ADDR cReal, GM_ADDR cImag, GM_ADDR dReal, GM_ADDR dImag,
                                 GM_ADDR matrixReal, GM_ADDR matrixImag, int panelStart, int activeN)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         cRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(cReal));
         cImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(cImag));
         dRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(dReal));
@@ -125,7 +125,7 @@ class CheevjHer2kEpilogue
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int tileCount = (activeOrder + CHEEVJ_HER2K_VEC_TILE - 1) / CHEEVJ_HER2K_VEC_TILE;
         int ordinal = 0;
         for (int distance = 0; distance < tileCount; ++distance)

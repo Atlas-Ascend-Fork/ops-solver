@@ -47,7 +47,7 @@ class CheevjTridiagSturm
                                 GM_ADDR lowWorkspace, GM_ADDR highWorkspace, int n, float globalLow, float globalHigh,
                                 int rounds)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         diagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(diagonal));
         offDiagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(offDiagonal));
         eigenvaluesGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(eigenvalues));
@@ -90,7 +90,7 @@ class CheevjTridiagSturm
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int firstEigenIndex = static_cast<int>(AscendC::GetBlockIdx()) * CHEEVJ_STURM_LANES;
         if (matrixOrder <= 0 || matrixOrder > CHEEVJ_STURM_MAX_N || firstEigenIndex >= matrixOrder ||
             iterationCount <= 0)

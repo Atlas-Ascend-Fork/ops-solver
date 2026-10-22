@@ -163,6 +163,10 @@ class CMatmulCustom
             return;
         }
 
+        // K-granularity contract: this class packs operands with Nd2Nz and feeds raw
+        // Mmad, whose fractal K unit is 8 for FP32. blockK must be a multiple of 8
+        // (callers pad K with zeros when needed); otherwise the packing and the Mmad
+        // K granularity disagree and the result is silently wrong.
         PrepareStandardProcess(offsetA, offsetB, offsetC, blockM, blockN, blockK);
         const int mBlocks = (singleCoreM + baseM - 1) / baseM;
         const int nBlocks = (singleCoreN + baseN - 1) / baseN;
@@ -199,6 +203,10 @@ class CMatmulCustom
             mm <<= 1;
         }
         baseK = min(singleCoreK, min(8192 / nn, 8192 / mm));
+        // Cap baseK at the FP32 fractal K unit (C0=8, see gemm_segmented.inc):
+        // Nd2Nz packs K in units of 8, so a larger baseK lets a non-multiple-of-8
+        // tailK cross a fractal K boundary and silently corrupt the Mmad result.
+        baseK = min(baseK, 8);
     }
 
     __aicore__ inline void ProcessStandardTiles(int mBlocks, int nBlocks, int kBlocks)
@@ -224,8 +232,7 @@ class CMatmulCustom
         }
     }
 
-    __aicore__ inline void ProcessStandardKGroup(int i, int j, int k, int kBlocks,
-                                                 const LocalTensor<T> &c1RealLocal,
+    __aicore__ inline void ProcessStandardKGroup(int i, int j, int k, int kBlocks, const LocalTensor<T> &c1RealLocal,
                                                  const LocalTensor<T> &c1ImagLocal, const uint8_t (&padList)[4])
     {
         tailK = baseK;
@@ -267,10 +274,8 @@ class CMatmulCustom
         inQueueB1Real.FreeTensor(b1RealLocal);
     }
 
-    __aicore__ inline void AccumulateRealProducts(const LocalTensor<T> &a1RealLocal,
-                                                  const LocalTensor<T> &b1RealLocal,
-                                                  const LocalTensor<T> &b1ImagLocal,
-                                                  const LocalTensor<T> &c1RealLocal,
+    __aicore__ inline void AccumulateRealProducts(const LocalTensor<T> &a1RealLocal, const LocalTensor<T> &b1RealLocal,
+                                                  const LocalTensor<T> &b1ImagLocal, const LocalTensor<T> &c1RealLocal,
                                                   const LocalTensor<T> &c1ImagLocal, int k, int cnt)
     {
         for (int x = 0; x < cnt; ++x)
@@ -290,8 +295,7 @@ class CMatmulCustom
                                                          const LocalTensor<T> &b1RealLocal,
                                                          const LocalTensor<T> &b1ImagLocal,
                                                          const LocalTensor<T> &c1RealLocal,
-                                                         const LocalTensor<T> &c1ImagLocal, int k, int kBlocks,
-                                                         int cnt)
+                                                         const LocalTensor<T> &c1ImagLocal, int k, int kBlocks, int cnt)
     {
         LocalTensor<T> a1ImagNegLocal = inQueueA1Imag.DeQue<T>();
         for (int x = 0; x < cnt; ++x)
@@ -312,9 +316,8 @@ class CMatmulCustom
         inQueueA1Imag.FreeTensor(a1ImagNegLocal);
     }
 
-    __aicore__ inline void AccumulateImagProducts(const LocalTensor<T> &a1ImagLocal,
-                                                  const LocalTensor<T> &b1RealLocal, LocalTensor<T> &b1ImagLocal,
-                                                  const LocalTensor<T> &c1RealLocal,
+    __aicore__ inline void AccumulateImagProducts(const LocalTensor<T> &a1ImagLocal, const LocalTensor<T> &b1RealLocal,
+                                                  LocalTensor<T> &b1ImagLocal, const LocalTensor<T> &c1RealLocal,
                                                   const LocalTensor<T> &c1ImagLocal, int k, int kBlocks, int cnt)
     {
         inQueueB1Imag.FreeTensor(b1ImagLocal);
@@ -332,7 +335,7 @@ class CMatmulCustom
         }
     }
 
-    #include "gemm_segmented.inc"
+#include "gemm_segmented.inc"
 
     __aicore__ inline void CopyInAReal(int offsetA_1, int cnt)
     {

@@ -56,7 +56,7 @@ class CheevjE2EPreparePacked
                                 GM_ADDR updateReal, GM_ADDR updateImag, GM_ADDR panelWorkspace,
                                 GM_ADDR barrierWorkspace, int panelStart)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         matrixRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixReal));
         matrixImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixImag));
         packedRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(packedReal));
@@ -100,7 +100,7 @@ class CheevjE2EPreparePacked
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         // panelSize 按形状取值，须满足 host 侧分配上界 CHEEVJ_FIXED_PANEL_SIZE=16
         // （cheevj_fixed_host.inc 经 static_assert 绑定，issue #160）；
         // 布局消费公式 4*panelSize*MatrixN + 2*MatrixN 与 host 分配公式逐项对应
@@ -194,7 +194,7 @@ class CheevjE2EUnpack
     __aicore__ inline void Init(AscendC::TPipe* pipe, GM_ADDR packedReal, GM_ADDR packedImag, GM_ADDR matrixReal,
                                 GM_ADDR matrixImag, int panelStart)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         packedRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(packedReal));
         packedImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(packedImag));
         matrixRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixReal));
@@ -214,7 +214,7 @@ class CheevjE2EUnpack
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         const int blocks = static_cast<int>(AscendC::GetBlockNum());
         if (start < 0 || start >= MatrixN || blocks <= 0)
@@ -251,7 +251,7 @@ class CheevjE2EFinalize
     __aicore__ inline void Init(AscendC::TPipe* pipe, GM_ADDR diagonal, GM_ADDR offDiagonal, GM_ADDR tauReal,
                                 GM_ADDR tauImag, GM_ADDR matrixReal, GM_ADDR matrixImag, GM_ADDR bounds, GM_ADDR info)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         diagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(diagonal));
         offDiagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(offDiagonal));
         tauRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(tauReal));
@@ -286,7 +286,7 @@ class CheevjE2EFinalize
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         const int blocks = static_cast<int>(AscendC::GetBlockNum());
         if (blocks <= 0 || block < 0 || block >= blocks)

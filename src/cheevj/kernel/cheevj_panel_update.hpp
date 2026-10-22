@@ -46,7 +46,7 @@ __aicore__ inline void CheevjBindFloatGlobal(GlobalTensor<float> *tensor, Global
 
 __aicore__ inline void CheevjPanelCleanEntireDataCache()
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     GlobalTensor<uint64_t> cacheGlobal;
     cacheGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(0));
     DataCacheCleanAndInvalid<uint64_t, CacheLine::ENTIRE_DATA_CACHE>(cacheGlobal);
@@ -56,7 +56,7 @@ __aicore__ inline void CheevjPanelCleanEntireDataCache()
 __aicore__ inline void CheevjRunComplexGemmCube(GM_ADDR aReal, GM_ADDR aImag, GM_ADDR bReal, GM_ADDR bImag,
                                                 GM_ADDR bImagNeg, GM_ADDR cReal, GM_ADDR cImag, int m, int n, int k)
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     TPipe pipe;
     CMatmulCustom<float> opmm;
     opmm.Init(&pipe);
@@ -296,7 +296,7 @@ class CheevjPanelUpdate
 
     __aicore__ inline void ProcessMixedAiv()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         PackInputPanel();
         PublishPackedPanelToCube();
         WaitCubeGemmDone();
@@ -307,7 +307,7 @@ class CheevjPanelUpdate
 
     __aicore__ inline void ProcessMixedAivWithUnitaryPack()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         PackInputPanel();
         PackColumnMajorUnitaryToRowMajor();
         PublishPackedPanelToCube();
@@ -319,7 +319,7 @@ class CheevjPanelUpdate
 
     __aicore__ inline void ProcessMixedCube()
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         WaitPackedPanel();
         TPipe pipe;
         CMatmulCustom<float> opmm;
@@ -333,7 +333,7 @@ class CheevjPanelUpdate
 
     __aicore__ inline void ProcessMixedCube(CMatmulCustom<float> *opmm)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         if (opmm == nullptr)
         {
             return;
@@ -400,7 +400,7 @@ class CheevjPanelUpdate
 
     __aicore__ inline void PublishPackedPanelToCube()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         PipeBarrier<PIPE_ALL>();
         CheevjPanelCleanEntireDataCache();
         CrossCoreSetFlag<0x2, PIPE_MTE3>(packReadyFlag);
@@ -409,21 +409,21 @@ class CheevjPanelUpdate
 
     __aicore__ inline void WaitPackedPanel()
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         CrossCoreWaitFlag(packReadyFlag);
 #endif
     }
 
     __aicore__ inline void PublishCubeGemmDone()
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         CrossCoreSetFlag<0x2, PIPE_FIX>(gemmDoneFlag);
 #endif
     }
 
     __aicore__ inline void WaitCubeGemmDone()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         CrossCoreWaitFlag(gemmDoneFlag);
 #endif
     }

@@ -217,7 +217,7 @@ __aicore__ inline void custom_lu(TBufPool<TPosition::VECCALC, 16> &tbufPool, CMa
 
     SolveTrsm<float> optrsm;
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     GTRF2Solver<float> getf2solver;
     getf2solver.Init(&tbufPool, aGlobalReal, aGlobalImag, workGlobal, wGlobal, gather1, gather2, M, orgM, strideN,
                      blockN, workM, tileM);
@@ -317,7 +317,7 @@ __aicore__ inline void custom_lu(TBufPool<TPosition::VECCALC, 16> &tbufPool, CMa
     CrossCoreWaitFlag(0x2);
     tbufPool.Reset();
 
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     SetAtomicAdd<float>();
     for (int i = 1, offset = blockN; i < cnt; ++i, offset += blockN)
     {

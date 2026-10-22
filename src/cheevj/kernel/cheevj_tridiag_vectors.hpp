@@ -139,7 +139,7 @@ class CheevjTridiag2048Vectors
                                 GM_ADDR eigenvectors, GM_ADDR info, GM_ADDR commandWorkspace, GM_ADDR barrierWorkspace,
                                 int wave)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         diagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(diagonal));
         offDiagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(offDiagonal));
         eigenvaluesGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(eigenvalues));
@@ -172,7 +172,7 @@ class CheevjTridiag2048Vectors
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (AscendC::GetBlockNum() != CHEEVJ_TRIDIAG2048_PARTICIPANTS || block < 0 ||
             block >= CHEEVJ_TRIDIAG2048_PARTICIPANTS || rowWave < 0 || rowWave >= CHEEVJ_TRIDIAG2048_ROW_WAVES)

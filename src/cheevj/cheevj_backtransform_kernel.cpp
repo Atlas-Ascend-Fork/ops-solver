@@ -35,7 +35,7 @@ __global__ __aicore__ void cheevj_fixed_backtransform_kernel(GM_ADDR tridiagonal
                                                              GM_ADDR info, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     // Non-fixed orders are padded to one of these backend sizes by RunPaddedFixed;
     // small and greater-than-2048 orders use the host fallback instead.

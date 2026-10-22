@@ -26,7 +26,7 @@
     __aicore__ inline void Init(AscendC::TPipe *pipe, GM_ADDR diagonal, GM_ADDR offDiagonal, GM_ADDR eigenvalues,
                                 GM_ADDR eigenvectors, GM_ADDR info, GM_ADDR commandWorkspace, GM_ADDR barrierWorkspace)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         diagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(diagonal));
         offDiagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(offDiagonal));
         eigenvaluesGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(eigenvalues));
@@ -57,7 +57,7 @@
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (AscendC::GetBlockNum() != Participants || block < 0 ||
             block >= Participants)

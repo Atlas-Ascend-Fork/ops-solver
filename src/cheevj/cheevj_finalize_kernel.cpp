@@ -34,7 +34,7 @@ __global__ __aicore__ void cheevj_fixed_finalize_kernel(GM_ADDR diagonal, GM_ADD
                                                         GM_ADDR bounds, GM_ADDR info, int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     if (n == kN512)
     {

@@ -202,7 +202,7 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
     int blockIdx = GetBlockIdx();
     int cnt = M / block_m;
     int coreIdx = blockIdx;
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     coreIdx >>= 1;
 #endif
 
@@ -223,7 +223,7 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
         return;
     }
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     blockNum <<= 1;
 
     aGlobalReal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(A + trsmOffsetN * sizeof(float)));
@@ -241,7 +241,7 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
                     strideN, block_m, realBlockN);
 #endif
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
     aGlobalReal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(A + trsmOffsetN * sizeof(float)));
     aGlobalImag = aGlobalReal[M * strideN];
     aGlobalImagNeg = aGlobalReal[M * strideN * 2];
@@ -249,7 +249,7 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
                    strideN, strideN);
     SetAtomicAdd<float>();
 #endif
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     if (blockIdx % 2 <= doubleAIV) optrsm.Process(M - block_m, orgM % block_m ? orgM % block_m : block_m);
     if (cnt > 1) CrossCoreSetFlag<0x2, PIPE_MTE3>(0x0);
 #endif
@@ -261,7 +261,7 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
     int big_block_offsetC;
     for (int i = 1, offset_m = M - block_m * 2, big_block_offset_m = M; i < cnt; ++i, offset_m -= block_m)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         int r = i % lim;
         if (r)
         {
@@ -307,13 +307,13 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
             opmm.Process(big_block_offsetA, big_block_offsetB, big_block_offsetC, big_block_tmp, realBlockN,
                          big_block_m);
         }
-#elif __DAV_C220_VEC__
+#elif defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         CrossCoreWaitFlag(0x1);
         if (blockIdx % 2 <= doubleAIV) optrsm.Process(offset_m, block_m);
         if (i != cnt - 1) CrossCoreSetFlag<0x2, PIPE_MTE3>(0x0);
 #endif
     }
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     tbufPool.Reset();
 #endif
 }

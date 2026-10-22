@@ -122,7 +122,7 @@ class CheevjHouseholderNb4Persistent
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (AscendC::GetBlockNum() != CHEEVJ_HH_PERSISTENT_PARTICIPANTS || block < 0 ||
             block >= CHEEVJ_HH_PERSISTENT_PARTICIPANTS)
@@ -214,7 +214,7 @@ class CheevjHouseholderN1024Nb4Streamed
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (AscendC::GetBlockNum() != CHEEVJ_HH_N1024_STREAMED_PARTICIPANTS || block < 0 ||
             block >= CHEEVJ_HH_N1024_STREAMED_PARTICIPANTS)
@@ -340,7 +340,7 @@ class CheevjHouseholderN2048Nb4Streamed
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (AscendC::GetBlockNum() != CHEEVJ_HH_N2048_STREAMED_PARTICIPANTS || block < 0 ||
             block >= CHEEVJ_HH_N2048_STREAMED_PARTICIPANTS)

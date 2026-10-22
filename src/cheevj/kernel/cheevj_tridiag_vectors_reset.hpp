@@ -29,7 +29,7 @@ class CheevjTridiagVectorsReset
    public:
     __aicore__ inline void Init(AscendC::TPipe *pipe, GM_ADDR commandWorkspace, GM_ADDR barrierWorkspace)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         commandGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(commandWorkspace));
         barrierGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(barrierWorkspace));
         pipe->InitBuffer(zeroBuf, BarrierInts * sizeof(int32_t));
@@ -42,7 +42,7 @@ class CheevjTridiagVectorsReset
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         if (AscendC::GetBlockIdx() != 0)
         {
             return;

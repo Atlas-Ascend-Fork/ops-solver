@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file trsm.cpp
@@ -16,16 +16,19 @@
 #ifndef _TRSM_HPP_
 #define _TRSM_HPP_
 
-#include <cstdint>
 #include <lib/matrix/matmul/matmul.h>
-#include "kernel_operator.h"
+
+#include <cstdint>
+
 #include "gemm.hpp"
+#include "kernel_operator.h"
 
 using namespace AscendC;
 using namespace matmul;
 
-template<typename T>
-class SolveTrsm {
+template <typename T>
+class SolveTrsm
+{
     GlobalTensor<T> aRealGlobal, lRealGlobal;
     GlobalTensor<T> aImagGlobal, lImagGlobal;
     GlobalTensor<T> aImagNegGlobal;
@@ -40,12 +43,13 @@ class SolveTrsm {
     int N;
     int blockM;
     int blockN;
-public:
+
+   public:
     __aicore__ inline SolveTrsm() {}
     __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe, int blockM)
     {
         this->blockM = blockM;
-        
+
         elementsPerBlock = 32 / sizeof(T);
 
         pipe->InitBuffer(triangularQueueReal, 1, blockM * blockM * sizeof(T));
@@ -60,7 +64,9 @@ public:
 
         calcLocal = calcBuf.Get<T>();
     }
-    __aicore__ inline void SetMatrix(GlobalTensor<T> &aRealGlobal, GlobalTensor<T> &aImagGlobal, GlobalTensor<T> &aImagNegGlobal, GlobalTensor<T> &lRealGlobal, GlobalTensor<T> &lImagGlobal, int M, int N, int blockN)
+    __aicore__ inline void SetMatrix(GlobalTensor<T> &aRealGlobal, GlobalTensor<T> &aImagGlobal,
+                                     GlobalTensor<T> &aImagNegGlobal, GlobalTensor<T> &lRealGlobal,
+                                     GlobalTensor<T> &lImagGlobal, int M, int N, int blockN)
     {
         this->M = M;
         this->N = N;
@@ -83,22 +89,14 @@ public:
         LocalTensor<T> matALocalImag = MatAQueueImag.AllocTensor<T>();
 
         // copy L
-        DataCopyParams copyParamsMatL {
-            static_cast<uint16_t>(blockM),
-            static_cast<uint16_t>(blockM / elementsPerBlock),
-            static_cast<uint16_t>((M - blockM) / elementsPerBlock),
-            0
-        };
+        DataCopyParams copyParamsMatL{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockM / elementsPerBlock),
+                                      static_cast<uint16_t>((M - blockM) / elementsPerBlock), 0};
         DataCopy(triangularLocalReal, lRealGlobal[matLBlockOffset], copyParamsMatL);
         DataCopy(triangularLocalImag, lImagGlobal[matLBlockOffset], copyParamsMatL);
 
         // copy A
-        DataCopyParams copyParamsMatA {
-            static_cast<uint16_t>(blockM),
-            static_cast<uint16_t>(blockN / elementsPerBlock),
-            static_cast<uint16_t>((N - blockN) / elementsPerBlock),
-            0
-        };
+        DataCopyParams copyParamsMatA{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockN / elementsPerBlock),
+                                      static_cast<uint16_t>((N - blockN) / elementsPerBlock), 0};
         DataCopy(matALocalReal, aRealGlobal[matABlockOffset], copyParamsMatA);
         DataCopy(matALocalImag, aImagGlobal[matABlockOffset], copyParamsMatA);
 
@@ -117,9 +115,11 @@ public:
 
         PipeBarrier<PIPE_ALL>();
 
-        for (int rowIdx = 0; rowIdx < blockM; ++rowIdx) {
+        for (int rowIdx = 0; rowIdx < blockM; ++rowIdx)
+        {
             int offset = blockN * rowIdx;
-            for (int tempRowIdx = 0; tempRowIdx < rowIdx; ++tempRowIdx) {
+            for (int tempRowIdx = 0; tempRowIdx < rowIdx; ++tempRowIdx)
+            {
                 int offsetS = blockM * rowIdx + tempRowIdx;
                 int offsetT = blockN * tempRowIdx;
                 T sReal = triangularLocalReal.GetValue(offsetS);
@@ -155,12 +155,8 @@ public:
         augLocalImag = augQueueImag.DeQue<T>();
         augLocalImagNeg = augQueueImagNeg.DeQue<T>();
 
-        DataCopyParams copyParamsMatOut {
-            static_cast<uint16_t>(blockM),
-            static_cast<uint16_t>(blockN / elementsPerBlock),
-            0,
-            static_cast<uint16_t>((N - blockN) / elementsPerBlock)
-        };
+        DataCopyParams copyParamsMatOut{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockN / elementsPerBlock),
+                                        0, static_cast<uint16_t>((N - blockN) / elementsPerBlock)};
 
         DataCopy(aRealGlobal[matABlockOffset], augLocalReal, copyParamsMatOut);
         DataCopy(aImagGlobal[matABlockOffset], augLocalImag, copyParamsMatOut);
@@ -171,15 +167,17 @@ public:
     }
 };
 
-template<typename T>
-class NegateCustom {
+template <typename T>
+class NegateCustom
+{
     TQue<QuePosition::VECIN, 1> inQueueSrc;
     TQue<QuePosition::VECOUT, 1> outQueueDst;
     GlobalTensor<T> aGlobal;
     int N;
     int elementsPerBlock;
     static constexpr int TILE_LENGTH = 8192;
-public:
+
+   public:
     __aicore__ inline NegateCustom() {}
     __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe)
     {
@@ -195,16 +193,13 @@ public:
     __aicore__ inline void Process(int blockM, int blockN)
     {
         int linesPerIter = TILE_LENGTH / blockN;
-        for (int i = 0, offset = 0; i < blockM; i += linesPerIter, offset += linesPerIter * N) {
+        for (int i = 0, offset = 0; i < blockM; i += linesPerIter, offset += linesPerIter * N)
+        {
             int t = min(linesPerIter, blockM - i);
             {
                 LocalTensor<T> srcLocal = inQueueSrc.AllocTensor<T>();
-                DataCopyParams copyInParams {
-                    static_cast<uint16_t>(t),
-                    static_cast<uint16_t>(blockN / elementsPerBlock),
-                    static_cast<uint16_t>((N - blockN) / elementsPerBlock),
-                    0
-                };
+                DataCopyParams copyInParams{static_cast<uint16_t>(t), static_cast<uint16_t>(blockN / elementsPerBlock),
+                                            static_cast<uint16_t>((N - blockN) / elementsPerBlock), 0};
                 DataCopy(srcLocal, aGlobal[offset], copyInParams);
                 inQueueSrc.EnQue(srcLocal);
             }
@@ -217,18 +212,15 @@ public:
             }
             {
                 LocalTensor<T> dstLocal = outQueueDst.DeQue<T>();
-                DataCopyParams copyOutParams {
-                    static_cast<uint16_t>(t),
-                    static_cast<uint16_t>(blockN / elementsPerBlock),
-                    0,
-                    static_cast<uint16_t>((N - blockN) / elementsPerBlock)
-                };
+                DataCopyParams copyOutParams{static_cast<uint16_t>(t), static_cast<uint16_t>(blockN / elementsPerBlock),
+                                             0, static_cast<uint16_t>((N - blockN) / elementsPerBlock)};
                 DataCopy(aGlobal[offset], dstLocal, copyOutParams);
                 outQueueDst.FreeTensor(dstLocal);
             }
         }
     }
-private:
+
+   private:
     __aicore__ inline void CalcRow(int st, int length)
     {
         CopyIn(st, length);
@@ -257,34 +249,41 @@ private:
     }
 };
 
-template<typename T>
-__aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, int M, int N, int strideN, int blockM, GlobalTensor<T> aGlobalReal, GlobalTensor<T> aGlobalImag, GlobalTensor<T> aGlobalImagNeg, GlobalTensor<T> lGlobalReal, GlobalTensor<T> lGlobalImag)
+template <typename T>
+__aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, int M, int N, int strideN, int blockM,
+                                 GlobalTensor<T> aGlobalReal, GlobalTensor<T> aGlobalImag,
+                                 GlobalTensor<T> aGlobalImagNeg, GlobalTensor<T> lGlobalReal,
+                                 GlobalTensor<T> lGlobalImag)
 {
     int blockIdx = GetBlockIdx();
     int baseM = 128;
     int bigBlockCount;
     int lim = 512 / blockM;
     int cnt = M / blockM;
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     int halfN = (N / 2 + 15) / 16 * 16;
     auto trsmAGlobalReal = aGlobalReal[(blockIdx & 1) * halfN];
     auto trsmAGlobalImag = aGlobalImag[(blockIdx & 1) * halfN];
     auto trsmAGlobalImagNeg = aGlobalImagNeg[(blockIdx & 1) * halfN];
-    optrsm.SetMatrix(trsmAGlobalReal, trsmAGlobalImag, trsmAGlobalImagNeg, lGlobalReal, lGlobalImag, strideN, strideN, blockIdx & 1 ? N - halfN : halfN);
+    optrsm.SetMatrix(trsmAGlobalReal, trsmAGlobalImag, trsmAGlobalImagNeg, lGlobalReal, lGlobalImag, strideN, strideN,
+                     blockIdx & 1 ? N - halfN : halfN);
 #endif
-#ifdef  __DAV_C220_CUBE__
-    opmm.SetMatrix(lGlobalReal, lGlobalImag, aGlobalReal, aGlobalImagNeg, aGlobalImag, aGlobalReal, aGlobalImag, strideN, strideN);
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
+    opmm.SetMatrix(lGlobalReal, lGlobalImag, aGlobalReal, aGlobalImagNeg, aGlobalImag, aGlobalReal, aGlobalImag,
+                   strideN, strideN);
 #endif
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     optrsm.Process(0);
     if (cnt > 1) CrossCoreSetFlag<0x2, PIPE_MTE3>(0x0);
 #endif
     int bigBlockM = 0;
     int bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC;
-    for (int i = 1, offsetM = blockM, bigBlockOffsetM = 0; i < cnt; ++i, offsetM += blockM) {
-#ifdef __DAV_C220_CUBE__
+    for (int i = 1, offsetM = blockM, bigBlockOffsetM = 0; i < cnt; ++i, offsetM += blockM)
+    {
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
         int r = i % lim;
-        if (r) {
+        if (r)
+        {
             int offsetA = offsetM * strideN + offsetM - blockM;
             int offsetB = (offsetM - blockM) * strideN;
             int offsetC = offsetM * strideN;
@@ -304,7 +303,9 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
             int bigBlockTmp = min(M - bigBlockOffsetA / strideN, baseM);
             if (bigBlockTmp <= 0) continue;
             opmm.Process(bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC, bigBlockTmp, N, bigBlockM);
-        } else {
+        }
+        else
+        {
             bigBlockM = (i & -i) * blockM;
             bigBlockCount = bigBlockM / baseM;
             bigBlockOffsetM += lim * blockM;
@@ -313,7 +314,8 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
             bigBlockOffsetB = LOffsetN * strideN;
             bigBlockOffsetC = offsetM * strideN;
             CrossCoreWaitFlag(0x0);
-            opmm.Process(bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC, min(M - bigBlockOffsetA / strideN, baseM), N, bigBlockM);
+            opmm.Process(bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC, min(M - bigBlockOffsetA / strideN, baseM),
+                         N, bigBlockM);
             CrossCoreSetFlag<0x2, PIPE_FIX>(0x1);
             bigBlockOffsetA += baseM * strideN;
             bigBlockOffsetC += baseM * strideN;
@@ -321,7 +323,7 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
             if (bigBlockTmp <= 0) continue;
             opmm.Process(bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC, bigBlockTmp, N, bigBlockM);
         }
-#elif __DAV_C220_VEC__
+#elif defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         CrossCoreWaitFlag(0x1);
         optrsm.Process(offsetM);
         if (i != cnt - 1) CrossCoreSetFlag<0x2, PIPE_MTE3>(0x0);

@@ -71,7 +71,7 @@
         infoGlobal.SetValue(0, converged ? 0 : 1);
     }
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     __aicore__ inline void InitializeLargeWorkspace(TBufPool<TPosition::VECCALC, 16> &tbufPool, GM_ADDR a,
                                                     GM_ADDR workspace, int n, int inputLda, bool computeVectors,
                                                     int scratchPlanes, bool useStageBlock)
@@ -141,7 +141,7 @@
     __aicore__ inline int PrepareLargeWorkspace(GM_ADDR a, GM_ADDR w, GM_ADDR workspace, int n, int inputLda,
                                                 int jobz, int uplo, bool knownDiagonal, int maxSweeps)
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         (void)uplo;
         const bool computeVectors = IsVectorMode(jobz);
         const int scratchPlanes = LargeScratchPlanes(computeVectors);
@@ -178,7 +178,7 @@
 #endif
     }
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     __aicore__ inline int PlanarLargeOffset(const CheevjPlanarWorkspace &planar, int row, int col) const
     {
         return col * planar.layout.strideN + row;

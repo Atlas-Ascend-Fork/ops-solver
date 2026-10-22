@@ -32,7 +32,7 @@ class CheevjStreamedJobzVBacktransform
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         if (AscendC::GetBlockNum() != Workers || block < 0 || block >= Workers || LoadInfo() != 0)
         {

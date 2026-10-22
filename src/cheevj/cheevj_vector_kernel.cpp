@@ -27,7 +27,7 @@ __global__ __aicore__ void cheevj_fixed_tridiag_inverse_kernel(GM_ADDR diagonal,
                                                                int n)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
     AscendC::TPipe pipe;
     Cheevj::CheevjTridiagInverseIteration solver;
     solver.Init(&pipe, diagonal, offDiagonal, eigenvalues, eigenvectors, n, waveStart);
