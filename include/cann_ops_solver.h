@@ -203,6 +203,11 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  *             the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
+
+
+aclError aclsolverSpotrf(aclsolverHandle_t handle,  const char uplo,const int64_t m, const int64_t n, float *A, const int64_t lda,
+                         int32_t *info);
+
 aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
                          int32_t *ipiv, int32_t *info);
 
