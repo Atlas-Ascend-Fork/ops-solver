@@ -28,6 +28,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <complex>
+
 #include "acl/acl.h"
 #include "cann_ops_solver_common.h"
 

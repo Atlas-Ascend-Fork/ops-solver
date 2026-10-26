@@ -1,0 +1,24 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*
+ * Internal launch interface shared by the Cgetrs host and device translation units.
+ */
+
+#ifndef CGETRS_LAUNCHERS_HPP
+#define CGETRS_LAUNCHERS_HPP
+
+#include <cstdint>
+
+void cgetrs_kernel_do(uint8_t *sync, int orgN, int orgNRHS, int trans, int lda, int ldb, int blockM, int blockN,
+                     uint8_t *A_org, uint8_t *A_work, uint8_t *W, uint8_t *P, uint8_t *B_org, uint8_t *B_work,
+                     uint8_t *gather, uint32_t numBlocks, void *stream);
+
+#endif  // CGETRS_LAUNCHERS_HPP

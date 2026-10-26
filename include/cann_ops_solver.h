@@ -206,6 +206,7 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
 aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
                          int32_t *ipiv, int32_t *info);
 
+
 /**
  * @brief Compute eigenvalues and optionally eigenvectors of a complex Hermitian matrix.
  *
@@ -247,3 +248,7 @@ aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, acls
  */
 aclError aclsolverSgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
                          float *tau, int32_t *info);
+
+aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, float *A, const int64_t lda, int32_t *ipiv, float *B, const int64_t ldb, int32_t *info);
+
+aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B, const int64_t ldb, int32_t *info);
