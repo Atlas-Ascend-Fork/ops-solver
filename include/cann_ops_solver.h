@@ -227,3 +227,23 @@ aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  */
 aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, aclsolverFillMode_t uplo, const int64_t n,
                          std::complex<float> *A, const int64_t lda, float *W, int32_t *info);
+
+/**
+ * @brief QR decomposition of a single real float matrix (A = Q * R) using Householder reflections
+ *
+ * A uses column-major storage. On return, the upper triangle contains R and the elements
+ * below the diagonal, together with tau, represent the orthogonal matrix Q. Q is not formed
+ * explicitly.
+ *
+ * @param handle aclsolver handle created by aclsolverCreate
+ * @param m rows of matrix A, must be non-negative
+ * @param n columns of matrix A, must be non-negative
+ * @param A input/output matrix, FLOAT32, column-major m * n layout; holds R and Householder
+ *          vectors on return
+ * @param lda leading dimension of A; must be at least max(1, m)
+ * @param tau output scalar factors of the Householder reflectors, length min(m, n)
+ * @param info result info; not written in current version
+ * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
+ */
+aclError aclsolverSgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
+                         float *tau, int32_t *info);
