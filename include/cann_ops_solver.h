@@ -279,3 +279,20 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
  */
 aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_t n, std::complex<float> *A,
                          const int64_t lda, int32_t *info);
+
+/**
+ * @brief QR decomposition of a single complex matrix (A = Q * R)
+ *
+ * @param handle aclsolver handle created by aclsolverCreate
+ * @param m rows of matrix A, must be positive
+ * @param n columns of matrix A, must be positive
+ * @param A input/output matrix, complex float (std::complex<float>), contiguous m * n layout;
+ *          on return, contains the upper triangular matrix R and the elementary reflectors
+ *          used to construct Q (see tau)
+ * @param lda leading dimension; must be at least max(1, m).
+ * @param tau output scalar factors of the elementary reflectors (length min(m, n))
+ * @param info result info; not written in current version
+ * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
+ */
+aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float> *A,
+                         const int64_t lda, std::complex<float> *tau, int32_t *info);

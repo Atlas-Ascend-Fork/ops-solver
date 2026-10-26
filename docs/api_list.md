@@ -63,6 +63,14 @@
   </tr>
   <tr>
     <td>solver</td>
+    <td><a href="./zh/cgeqrf.md">cgeqrf</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>复数矩阵QR分解，计算复数矩阵A的QR分解，A = Q * R，其中Q为酉矩阵，R为上三角矩阵。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
     <td><a href="./zh/sgetri.md">sgetri</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -141,6 +149,7 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetrf` | 单精度矩阵LU分解 |
 | `aclsolverSpotrf` | 单精度矩阵LL^T分解 |
 | `aclsolverSgeqrf` | 单精度矩阵QR分解 |
+| `aclsolverCgeqrf` | 复数矩阵QR分解 |
 | `aclsolverSgetri` | 单精度矩阵求逆 |
 | `aclsolverCmatinvBatched` | 批量复数矩阵求逆（小矩阵，n≤32） |
 | `aclsolverCgetriBatched` | 批量复数矩阵求逆（大矩阵，n>32） |

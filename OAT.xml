@@ -34,6 +34,11 @@
                 <!-- sgeqrf 算子派生自 PACO（复旦大学），保留其 GPL-3.0-or-later 双许可头与作者署名，不参与 CANN-2.0 许可证匹配 -->
                 <filteritem type="filepath" name="src/sgeqrf/.*" desc="PACO derived sgeqrf keeps its GPL-3.0-or-later dual license header"/>
                 <filteritem type="filepath" name="test/sgeqrf/.*" desc="PACO derived sgeqrf tests keep the GPL-3.0-or-later dual license header"/>
+                <!-- cgeqrf 算子派生自 PACO（复旦大学），保留其 GPL-3.0-or-later 双许可头与作者署名，不参与 CANN-2.0 许可证匹配 -->
+                <filteritem type="filepath" name="src/cgeqrf/.*" desc="PACO derived cgeqrf keeps its GPL-3.0-or-later dual license header"/>
+                <filteritem type="filepath" name="test/cgeqrf/.*" desc="PACO derived cgeqrf tests keep the GPL-3.0-or-later dual license header"/>
+                <filteritem type="filename" name="COPYING-PACO" desc="PACO GPL-3.0 full text kept at repo root"/>
+                <filteritem type="filename" name="LICENSE-PACO" desc="PACO GPL-2.0 dual license text kept at repo root"/>
             </filefilter>
             <filefilter name="copyrightPolicyFilter" desc="Filters for copyright header policies">
                 <filteritem type="filename" name=".gitmodules" desc="git submodule "/>
@@ -43,6 +48,11 @@
                 <!-- sgeqrf 算子保留 PACO 作者的版权署名，不按 Huawei Technologies Co., Ltd. 版权头校验 -->
                 <filteritem type="filepath" name="src/sgeqrf/.*" desc="PACO derived sgeqrf keeps the original author copyright"/>
                 <filteritem type="filepath" name="test/sgeqrf/.*" desc="PACO derived sgeqrf tests keep the original author copyright"/>
+                <!-- cgeqrf 算子保留 PACO 作者的版权署名，不按 Huawei Technologies Co., Ltd. 版权头校验 -->
+                <filteritem type="filepath" name="src/cgeqrf/.*" desc="PACO derived cgeqrf keeps the original author copyright"/>
+                <filteritem type="filepath" name="test/cgeqrf/.*" desc="PACO derived cgeqrf tests keep the original author copyright"/>
+                <filteritem type="filename" name="COPYING-PACO" desc="PACO GPL-3.0 full text kept at repo root"/>
+                <filteritem type="filename" name="LICENSE-PACO" desc="PACO GPL-2.0 dual license text kept at repo root"/>
                 <!--filteritem type="filename" name="*.uvwxyz" desc="Describe the reason for filtering scan results"/-->
                 <!--filteritem type="filepath" name="abcdefg/.*.uvwxyz" desc="Describe the reason for filtering scan results"/-->
                 <!--filteritem type="filepath" name="projectroot/[a-zA-Z0-9]{20,}.sh" desc="Temp files"/-->
