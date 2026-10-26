@@ -102,23 +102,48 @@ int32_t main(int32_t argc, char *argv[])
               LOG_PRINT("Matrix byte size overflows size_t.\n");
               return 1);
 
+    // 资源句柄先行声明（issue #257，对齐 test/sgetri/sgetri_test.cpp 的 cleanup
+    // lambda 范式）：此前的错误路径直接 return 1，绕过 A（pinned host 内存）、
+    // stream/handle/device/aclFinalize 清理，反复运行/多卡复用环境会放大成资源
+    // 泄漏；所有错误路径统一 cleanup() 后返回
+    aclrtStream stream = nullptr;
+    aclsolverHandle_t handle = nullptr;
+    std::complex<float> *A = nullptr;
+    auto cleanup = [&]()
+    {
+        if (A != nullptr)
+        {
+            (void)aclrtFreeHost(A);
+            A = nullptr;
+        }
+        if (stream != nullptr)
+        {
+            (void)aclrtDestroyStream(stream);
+            stream = nullptr;
+        }
+        if (handle != nullptr)
+        {
+            (void)aclsolverDestroy(handle);
+            handle = nullptr;
+        }
+        (void)aclrtResetDevice(deviceId);
+        (void)aclFinalize();
+    };
+
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(deviceId));
-    aclrtStream stream = nullptr;
     CHECK_ACL(aclrtCreateStream(&stream));
 
-    aclsolverHandle_t handle = nullptr;
     CHECK_ACL(aclsolverCreate(&handle));
     CHECK_ACL(aclsolverSetStream(handle, stream));
 
     const size_t matrixElements = static_cast<size_t>(n) * static_cast<size_t>(n);
     const size_t aMatrixFileSize = matrixElements * sizeof(std::complex<float>);
-    std::complex<float> *A = nullptr;
     CHECK_ACL(aclrtMallocHost(reinterpret_cast<void **>(&A), aMatrixFileSize));
     size_t readSize = aMatrixFileSize;
     CHECK_RET(ReadFile(INPUT_A_PATH, readSize, A, aMatrixFileSize),
               LOG_PRINT("Read input matrix failed: %s\n", INPUT_A_PATH);
-              return 1);
+              cleanup(); return 1);
     const std::vector<std::complex<float>> inputA(A, A + matrixElements);
 
     std::vector<float> W(n, 0.0f);
@@ -128,22 +153,17 @@ int32_t main(int32_t argc, char *argv[])
     PrintComplexColumnMajor(A, n, n, 8, 8);
 
     auto ret = aclsolverCheevj(handle, ParseJobz(jobzChar), ParseUplo(uploChar), n, A, n, W.data(), info.data());
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCheevj failed. ERROR: %d\n", ret); return ret);
-    CHECK_RET(info[0] == 0, LOG_PRINT("aclsolverCheevj returned info: %d\n", info[0]); return info[0]);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCheevj failed. ERROR: %d\n", ret); cleanup(); return ret);
+    CHECK_RET(info[0] == 0, LOG_PRINT("aclsolverCheevj returned info: %d\n", info[0]); cleanup(); return info[0]);
     if (jobzChar == 'N')
     {
         CHECK_RET(std::memcmp(inputA.data(), A, aMatrixFileSize) == 0,
                   LOG_PRINT("aclsolverCheevj modified A for jobz=N.\n");
-                  return 1);
+                  cleanup(); return 1);
     }
 
     WriteResults(jobzChar, A, n, W, aMatrixFileSize);
 
-    CHECK_ACL(aclrtFreeHost(A));
-    CHECK_ACL(aclrtDestroyStream(stream));
-    CHECK_ACL(aclsolverDestroy(handle));
-    CHECK_ACL(aclrtResetDevice(deviceId));
-    CHECK_ACL(aclFinalize());
-
+    cleanup();
     return 0;
 }

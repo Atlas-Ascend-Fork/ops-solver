@@ -95,7 +95,12 @@ int32_t main(int32_t argc, char* argv[])
         return ret;
     }
 
-    WriteFile("./test/cgetri_batched/data/output/Ainv_gm.bin", Ainv.data(), aMatrixFileSize);
+    // 写出校验（issue #259，与 :84 ReadFile 校验对称）：写出失败（目录只读、
+    // 磁盘满）而输出路径存在旧结果文件时，进程若仍返回 0，后续 verify_result.py
+    // 校验的是过期数据，精度验证"假通过"；失败时 cleanup 并返回错误码
+    CHECK_RET(WriteFile("./test/cgetri_batched/data/output/Ainv_gm.bin", Ainv.data(), aMatrixFileSize),
+              LOG_PRINT("WriteFile Ainv_gm.bin failed.\n");
+              cleanup(); return ACL_ERROR_INVALID_PARAM);
 
     cleanup();
     return 0;

@@ -35,8 +35,6 @@ class SolveTrsm
     TQue<QuePosition::VECIN, 1> triangularQueueReal, triangularQueueImag;
     TQue<QuePosition::VECIN, 1> MatAQueueReal, MatAQueueImag;
     TQue<QuePosition::VECOUT, 1> augQueueReal, augQueueImag, augQueueImagNeg;
-    TBuf<TPosition::VECCALC> calcBuf;
-    LocalTensor<T> calcLocal;
     static constexpr int maxN = 256;
     uint64_t elementsPerBlock;
     int M;
@@ -59,10 +57,6 @@ class SolveTrsm
         pipe->InitBuffer(augQueueReal, 1, blockM * maxN * sizeof(T));
         pipe->InitBuffer(augQueueImag, 1, blockM * maxN * sizeof(T));
         pipe->InitBuffer(augQueueImagNeg, 1, blockM * maxN * sizeof(T));
-
-        pipe->InitBuffer(calcBuf, blockM * 32);
-
-        calcLocal = calcBuf.Get<T>();
     }
     __aicore__ inline void SetMatrix(GlobalTensor<T> &aRealGlobal, GlobalTensor<T> &aImagGlobal,
                                      GlobalTensor<T> &aImagNegGlobal, GlobalTensor<T> &lRealGlobal,
@@ -260,7 +254,7 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
     int bigBlockCount;
     int lim = 512 / blockM;
     int cnt = M / blockM;
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#ifdef __DAV_C220_VEC__
     int halfN = (N / 2 + 15) / 16 * 16;
     auto trsmAGlobalReal = aGlobalReal[(blockIdx & 1) * halfN];
     auto trsmAGlobalImag = aGlobalImag[(blockIdx & 1) * halfN];
@@ -268,11 +262,11 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
     optrsm.SetMatrix(trsmAGlobalReal, trsmAGlobalImag, trsmAGlobalImagNeg, lGlobalReal, lGlobalImag, strideN, strideN,
                      blockIdx & 1 ? N - halfN : halfN);
 #endif
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
+#ifdef __DAV_C220_CUBE__
     opmm.SetMatrix(lGlobalReal, lGlobalImag, aGlobalReal, aGlobalImagNeg, aGlobalImag, aGlobalReal, aGlobalImag,
                    strideN, strideN);
 #endif
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#ifdef __DAV_C220_VEC__
     optrsm.Process(0);
     if (cnt > 1) CrossCoreSetFlag<0x2, PIPE_MTE3>(0x0);
 #endif
@@ -280,7 +274,7 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
     int bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC;
     for (int i = 1, offsetM = blockM, bigBlockOffsetM = 0; i < cnt; ++i, offsetM += blockM)
     {
-#if defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
+#ifdef __DAV_C220_CUBE__
         int r = i % lim;
         if (r)
         {
@@ -323,7 +317,7 @@ __aicore__ inline void solveTrsm(SolveTrsm<T> &optrsm, CMatmulCustom<T> &opmm, i
             if (bigBlockTmp <= 0) continue;
             opmm.Process(bigBlockOffsetA, bigBlockOffsetB, bigBlockOffsetC, bigBlockTmp, N, bigBlockM);
         }
-#elif defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#elif __DAV_C220_VEC__
         CrossCoreWaitFlag(0x1);
         optrsm.Process(offsetM);
         if (i != cnt - 1) CrossCoreSetFlag<0x2, PIPE_MTE3>(0x0);

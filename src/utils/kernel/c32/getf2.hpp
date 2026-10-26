@@ -93,7 +93,7 @@ class LUCustom1
                 Divide(k * blockM, k, srcLocal);
                 wGlobal.SetValue(offsetM + k, offsetM + (blockM - 1 - p));
                 if (k == t - 1) break;
-                for (int i = k + 1; i < realN; ++i) elimimate(k * blockM, i * blockM, k, srcLocal);
+                for (int i = k + 1; i < realN; ++i) eliminate(k * blockM, i * blockM, k, srcLocal);
             }
             DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(wGlobal[offsetM]);
             Barrier();
@@ -120,6 +120,10 @@ class LUCustom1
         Abs(workLocal, colLocal[blockM * k], blockM - k);
         if (blockM != realM) Duplicate(workLocal, T(-1), blockM - realM);
         ReduceMax(workLocal, workLocal, workLocal, blockM - k, true);
+        // ReduceMax(V) -> GetValue(S) 补同步屏障（issue #258，对齐本文件
+        // LUCustom3 与 c64 两处实现按 #93 修复的写法）：V/S 管线时序紧张时
+        // 无屏障读结果可能取到旧值，选主元错误导致分解结果静默错误
+        PipeBarrier<PIPE_ALL>();
         T maxIndex = workLocal.GetValue(1);
         return __builtin_bit_cast(uint32_t, maxIndex);
     }
@@ -137,7 +141,7 @@ class LUCustom1
         T tmpScalar = T(1) / srcLocal.GetValue(offset + (blockM - 1 - k));
         Muls(srcLocal[offset], srcLocal[offset], tmpScalar, blockM - k - 1);
     }
-    __aicore__ inline void elimimate(int srcOffset, int dstOffset, int k, LocalTensor<T> &srcLocal)
+    __aicore__ inline void eliminate(int srcOffset, int dstOffset, int k, LocalTensor<T> &srcLocal)
     {
         T tmpScalar = -srcLocal.GetValue(dstOffset + (blockM - 1 - k));
         Axpy(srcLocal[dstOffset], srcLocal[srcOffset], tmpScalar, blockM - k - 1);
@@ -244,7 +248,7 @@ class LUCustom3
             }
             for (int i = curIdx; i < lineCount; ++i)
             {
-                elimimate(i, k);
+                eliminate(i, k);
             }
             if (k < startLine || k >= endLine)
             {
@@ -299,7 +303,7 @@ class LUCustom3
         inQueueAug.EnQue(augLocal);
         inQueueAug.DeQue<T>();
     }
-    __aicore__ inline void elimimate(int idx, int k)
+    __aicore__ inline void eliminate(int idx, int k)
     {
         T tmpScalar = -colLocal[idx].GetValue(blockM - 1 - k);
         Axpy(colLocal[idx], augLocal, tmpScalar, blockM - k - 1);

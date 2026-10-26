@@ -56,7 +56,7 @@ class CheevjE2EPreparePacked
                                 GM_ADDR updateReal, GM_ADDR updateImag, GM_ADDR panelWorkspace,
                                 GM_ADDR barrierWorkspace, int panelStart)
     {
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#ifdef __DAV_C220_VEC__
         matrixRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixReal));
         matrixImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixImag));
         packedRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(packedReal));
@@ -68,8 +68,8 @@ class CheevjE2EPreparePacked
         wHRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(wHReal));
         wHImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(wHImag));
         wHImagNegGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(wHImagNeg));
-        updateRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(updateReal));
-        updateImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(updateImag));
+        // updateReal/updateImag 仅在此绑定，Process 全程未读取（issue #256 清理范围），
+        // 属死存储，不再设置 GlobalTensor
         panelWorkspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(panelWorkspace));
         barrierWorkspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(barrierWorkspace));
         start = panelStart;
@@ -100,7 +100,7 @@ class CheevjE2EPreparePacked
 
     __aicore__ inline void Process()
     {
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#ifdef __DAV_C220_VEC__
         // panelSize 按形状取值，须满足 host 侧分配上界 CHEEVJ_FIXED_PANEL_SIZE=16
         // （cheevj_fixed_host.inc 经 static_assert 绑定，issue #160）；
         // 布局消费公式 4*panelSize*MatrixN + 2*MatrixN 与 host 分配公式逐项对应
@@ -160,8 +160,6 @@ class CheevjE2EPreparePacked
     AscendC::GlobalTensor<float> wHRealGlobal;
     AscendC::GlobalTensor<float> wHImagGlobal;
     AscendC::GlobalTensor<float> wHImagNegGlobal;
-    AscendC::GlobalTensor<float> updateRealGlobal;
-    AscendC::GlobalTensor<float> updateImagGlobal;
     AscendC::GlobalTensor<float> panelWorkspaceGlobal;
     AscendC::GlobalTensor<int32_t> barrierWorkspaceGlobal;
 
@@ -188,70 +186,13 @@ class CheevjE2EPreparePacked
 };
 
 template <int MatrixN>
-class CheevjE2EUnpack
-{
-   public:
-    __aicore__ inline void Init(AscendC::TPipe* pipe, GM_ADDR packedReal, GM_ADDR packedImag, GM_ADDR matrixReal,
-                                GM_ADDR matrixImag, int panelStart)
-    {
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
-        packedRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(packedReal));
-        packedImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(packedImag));
-        matrixRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixReal));
-        matrixImagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(matrixImag));
-        start = panelStart;
-        pipe->InitBuffer(rowRealBuf, MatrixN * sizeof(float));
-        pipe->InitBuffer(rowImagBuf, MatrixN * sizeof(float));
-#else
-        (void)pipe;
-        (void)packedReal;
-        (void)packedImag;
-        (void)matrixReal;
-        (void)matrixImag;
-        (void)panelStart;
-#endif
-    }
-
-    __aicore__ inline void Process()
-    {
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
-        const int block = static_cast<int>(AscendC::GetBlockIdx());
-        const int blocks = static_cast<int>(AscendC::GetBlockNum());
-        if (start < 0 || start >= MatrixN || blocks <= 0)
-        {
-            return;
-        }
-        const int trailing = MatrixN - start;
-        auto rowReal = rowRealBuf.Get<float>();
-        auto rowImag = rowImagBuf.Get<float>();
-        for (int row = block; row < trailing; row += blocks)
-        {
-            const int packedOffset = row * MatrixN;
-            const int destinationOffset = (start + row) * MatrixN + start;
-            CopyFloatRow(rowReal, packedRealGlobal, packedOffset, matrixRealGlobal, destinationOffset, trailing);
-            CopyFloatRow(rowImag, packedImagGlobal, packedOffset, matrixImagGlobal, destinationOffset, trailing);
-        }
-#endif
-    }
-
-   private:
-    AscendC::GlobalTensor<float> packedRealGlobal;
-    AscendC::GlobalTensor<float> packedImagGlobal;
-    AscendC::GlobalTensor<float> matrixRealGlobal;
-    AscendC::GlobalTensor<float> matrixImagGlobal;
-    AscendC::TBuf<AscendC::TPosition::VECCALC> rowRealBuf;
-    AscendC::TBuf<AscendC::TPosition::VECCALC> rowImagBuf;
-    int start = 0;
-};
-
-template <int MatrixN>
 class CheevjE2EFinalize
 {
    public:
     __aicore__ inline void Init(AscendC::TPipe* pipe, GM_ADDR diagonal, GM_ADDR offDiagonal, GM_ADDR tauReal,
                                 GM_ADDR tauImag, GM_ADDR matrixReal, GM_ADDR matrixImag, GM_ADDR bounds, GM_ADDR info)
     {
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#ifdef __DAV_C220_VEC__
         diagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(diagonal));
         offDiagonalGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(offDiagonal));
         tauRealGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(tauReal));
@@ -286,7 +227,7 @@ class CheevjE2EFinalize
 
     __aicore__ inline void Process()
     {
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
+#ifdef __DAV_C220_VEC__
         const int block = static_cast<int>(AscendC::GetBlockIdx());
         const int blocks = static_cast<int>(AscendC::GetBlockNum());
         if (blocks <= 0 || block < 0 || block >= blocks)

@@ -42,8 +42,6 @@ class SolveTrsmUpper
     TQue<QuePosition::VECIN, 1> triangularQueueReal, triangularQueueImag;
     TQue<QuePosition::VECIN, 1> MatAQueueReal, MatAQueueImag;
     TQue<QuePosition::VECOUT, 1> augQueueReal, augQueueImag, augQueueImagNeg;
-    TBuf<TPosition::VECCALC> calcBuf;
-    LocalTensor<T> calcLocal;
     static constexpr int maxN = 256;
     uint64_t elementsPerBlock;
     int M;
@@ -78,10 +76,6 @@ class SolveTrsmUpper
         pipe->InitBuffer(augQueueReal, 1, blockM * maxN * sizeof(T));
         pipe->InitBuffer(augQueueImag, 1, blockM * maxN * sizeof(T));
         pipe->InitBuffer(augQueueImagNeg, 1, blockM * maxN * sizeof(T));
-
-        pipe->InitBuffer(calcBuf, blockM * 32);
-
-        calcLocal = calcBuf.Get<T>();
     }
     __aicore__ inline void Process(int offset_m, int mask)
     {

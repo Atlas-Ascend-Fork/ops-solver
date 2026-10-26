@@ -112,7 +112,7 @@ class LUCustom1
                 }
                 for (int i = k + 1; i < realN; ++i)
                 {
-                    elimimate(k * blockM, i * blockM, k, srcLocalReal, srcLocalImag);
+                    eliminate(k * blockM, i * blockM, k, srcLocalReal, srcLocalImag);
                 }
             }
             DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(wGlobal[offsetM]);
@@ -185,7 +185,7 @@ class LUCustom1
         Axpy(srcLocalImag[offset], workLocal, -imagInvScalar, blockM - k - 1);
         PipeBarrier<PIPE_ALL>();
     }
-    __aicore__ inline void elimimate(int srcOffset, int dstOffset, int k, LocalTensor<T> &srcLocalReal,
+    __aicore__ inline void eliminate(int srcOffset, int dstOffset, int k, LocalTensor<T> &srcLocalReal,
                                      LocalTensor<T> &srcLocalImag)
     {
         T realScalar = -srcLocalReal.GetValue(dstOffset + (blockM - 1 - k));
@@ -320,7 +320,7 @@ class LUCustom3
             }
             for (int i = curIdx; i < lineCount; ++i)
             {
-                elimimate(i, k);
+                eliminate(i, k);
             }
             if (k < startLine || k >= endLine)
             {
@@ -418,7 +418,7 @@ class LUCustom3
         inQueueAugReal.DeQue<T>();
         inQueueAugImag.DeQue<T>();
     }
-    __aicore__ inline void elimimate(int idx, int k)
+    __aicore__ inline void eliminate(int idx, int k)
     {
         T realScalar = -colLocalReal[idx].GetValue(blockM - 1 - k);
         T imagScalar = colLocalImag[idx].GetValue(blockM - 1 - k);

@@ -16,6 +16,7 @@
 #include <securec.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include "../utils/assert.h"
@@ -54,7 +55,11 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
     aclrtStream stream = nullptr;
     if (handle != nullptr)
     {
-        aclsolverGetStream(handle, &stream);
+        // GetStream 返回值校验（issue #255，对齐 closed #4/#36 口径）：失败被吞时
+        // 内核静默落在默认流并按 nullptr 同步，破坏调用方流语义且真实错误被掩盖
+        const aclError streamRet = aclsolverGetStream(handle, &stream);
+        SOLVER_ECHECK(streamRet == ACL_SUCCESS, "aclsolverSgetri failed to get stream from handle.",
+                      ACL_ERROR_INTERNAL_ERROR);
     }
 
     uint8_t *aMatrixDevice = nullptr;
@@ -144,6 +149,25 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
 
     CHECK_ACLRT(aclrtMemcpy(aMatrixHost, aMatrixFileSize, aMatrixDevice, aMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
                 cleanup());
+
+    // 奇异上报（issue #254，落地 docs/zh/sgetri.md 承诺的 LAPACK 语义）：内核 trsm
+    // 阶段以 U 对角元作除数，奇异输入（主元为 0）时 1/0 产生 Inf 并扩散为 NaN，
+    // 此前既无通道也无检查，接口返回成功且 info=0。host 侧在结果 D2H 后扫描 A_work
+    // 的 U 对角线（工作区布局：分解结果位于 work 副本对角），首个非有限/零对角元的
+    // 1-based 列号写入 info，同 getrf 体口径；正常路径数值与返回值不变
+    const int32_t n32 = static_cast<int32_t>(n);
+    for (int32_t col = 0; col < n32; ++col)
+    {
+        const float pivot = aMatrixHost[static_cast<size_t>(col) * n32 + col];
+        if (pivot == 0.0f || !std::isfinite(pivot))
+        {
+            if (info != nullptr)
+            {
+                *info = col + 1;
+            }
+            break;
+        }
+    }
 
     cleanup();
 

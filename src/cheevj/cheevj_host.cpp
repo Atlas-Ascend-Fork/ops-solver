@@ -22,6 +22,7 @@
 #include <iostream>
 #include <limits>
 #include <new>
+#include <stdexcept>
 #include <vector>
 
 #include "../utils/assert.h"
@@ -1477,7 +1478,15 @@ aclrtStream GetCheevjStream(aclsolverHandle_t handle)
     aclrtStream stream = nullptr;
     if (handle != nullptr)
     {
-        aclsolverGetStream(handle, &stream);
+        // GetStream 返回值校验（issue #255，对齐 closed #4/#36 口径）：失败被吞时
+        // 内核静默落在默认流并按 nullptr 同步，破坏调用方流语义且真实错误被掩盖；
+        // 本函数返回 aclrtStream 无法用 SOLVER_ECHECK 上抛错误码，改为抛出运行时
+        // 异常，由公共入口 aclsolverCheevj 的 try/catch 统一翻译为错误码
+        const aclError streamRet = aclsolverGetStream(handle, &stream);
+        if (streamRet != ACL_SUCCESS)
+        {
+            throw std::runtime_error("Cheevj failed to get stream from handle.");
+        }
     }
     return stream;
 }
