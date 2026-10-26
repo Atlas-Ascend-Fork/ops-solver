@@ -257,3 +257,25 @@ aclError aclsolverSgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_
 aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, float *A, const int64_t lda, int32_t *ipiv, float *B, const int64_t ldb, int32_t *info);
 
 aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B, const int64_t ldb, int32_t *info);
+
+/**
+ * @brief Cholesky factorization of a single complex Hermitian positive-definite matrix (A = L * L^H or U^H * U)
+ *
+ * @param handle aclsolver handle created by aclsolverCreate
+ * @param uplo selects which triangular part of A is stored and where the factor is written:
+ *             'U' for upper triangular (factorization A = U^H * U),
+ *             'L' for lower triangular (factorization A = L * L^H).
+ *             Both 'U' and 'L' are supported; only the uppercase forms are accepted, other
+ *             values are rejected with ACL_ERROR_INVALID_PARAM. The factor is written into
+ *             the triangular part selected by uplo (if uplo='U' the upper triangle contains U;
+ *             if uplo='L' the lower triangle contains L).
+ * @param n order of matrix A, must be positive
+ * @param A input/output matrix, complex float (std::complex<float>), row-major with leading
+ *          dimension lda; on return, contains the factor U (if uplo='U') or L (if uplo='L') in the
+ *          specified triangular part; the other triangular part is unchanged.
+ * @param lda Leading dimension of A; must be at least max(1, n).
+ * @param info result info; not written in current version
+ * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
+ */
+aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_t n, std::complex<float> *A,
+                         const int64_t lda, int32_t *info);

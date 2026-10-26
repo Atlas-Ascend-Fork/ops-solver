@@ -52,8 +52,9 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>单精度矩阵cholesky分解，计算单精度矩阵A的LL^T分解，A = L * L^T，L为下三角矩阵，L^T为上三角矩阵。</td>
-</tr>
-    <tr>
+  </tr>
+  <tr>
+    <td>solver</td>
     <td><a href="./zh/sgeqrf.md">sgeqrf</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -108,6 +109,14 @@
     <td>AI Core</td>
     <td>复数线性方程组求解，利用LU分解结果求解复数线性方程组 AX = B。</td>
   </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cpotrf.md">cpotrf</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>复数矩阵Cholesky分解，计算复数矩阵A的Cholesky分解，根据需求解 A = L * L^H 或 A = U^H * U，L为下三角矩阵，U为上三角矩阵。</td>
+  </tr>
 </tbody></table>
 
 
@@ -132,10 +141,10 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetrf` | 单精度矩阵LU分解 |
 | `aclsolverSpotrf` | 单精度矩阵LL^T分解 |
 | `aclsolverSgeqrf` | 单精度矩阵QR分解 |
-=======
 | `aclsolverSgetri` | 单精度矩阵求逆 |
 | `aclsolverCmatinvBatched` | 批量复数矩阵求逆（小矩阵，n≤32） |
 | `aclsolverCgetriBatched` | 批量复数矩阵求逆（大矩阵，n>32） |
 | `aclsolverCheevj` | 单精度复数Hermitian矩阵特征值分解 |
-| `aclsolverSgetrs`         | 单精度线性方程组求解 |
-| `aclsolverCgetrs`         | 复数线性方程组求解 |
+| `aclsolverSgetrs` | 单精度线性方程组求解 |
+| `aclsolverCgetrs` | 复数线性方程组求解 |
+| `aclsolverCpotrf` | 复数矩阵Cholesky分解 |
