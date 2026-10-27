@@ -83,6 +83,21 @@ set_source_files_properties(
     PROPERTIES LANGUAGE ASC
 )
 
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+    set_source_files_properties(src/cpotrf/arch35/cholesky_kernels.cpp
+        src/cpotrf/arch35/cholesky_factor.cpp
+        src/cpotrf/arch35/cholesky_panel.cpp
+        src/cpotrf/arch35/cholesky_native.cpp
+        PROPERTIES COMPILE_OPTIONS "-O3;--cce-long-scbz=true")
+    if(NOT DEFINED CANN_3RD_LIB_PATH)
+        set(CANN_3RD_LIB_PATH "${CMAKE_BINARY_DIR}/third_party")
+    endif()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/catlass-fetch.cmake)
+    target_link_libraries(${OPS_SOLVER} PRIVATE OPS_SOLVER::catlass)
+    set_source_files_properties(src/cpotrf/arch35/cholesky_schur.cpp
+        PROPERTIES COMPILE_OPTIONS "-O3")
+endif()
+
 target_include_directories(${OPS_SOLVER} BEFORE PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common/

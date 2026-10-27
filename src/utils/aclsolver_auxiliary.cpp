@@ -19,6 +19,7 @@
 
 #include "aclsolver_handle_internal.h"
 #include "cann_ops_solver.h"
+#include "cholesky/cholesky.h"
 
 namespace
 {
@@ -26,41 +27,40 @@ namespace
 /**
  * @brief Safely cast external void* handle to internal _aclsolver_handle*.
  */
-inline _aclsolver_handle *ToInternal(aclsolverHandle_t handle) { return reinterpret_cast<_aclsolver_handle *>(handle); }
+inline _aclsolver_handle* ToInternal(aclsolverHandle_t handle) { return reinterpret_cast<_aclsolver_handle*>(handle); }
 
 }  // namespace
 
 extern "C"
 {
-    aclsolverStatus_t aclsolverCreate(aclsolverHandle_t *handle)
+    aclsolverStatus_t aclsolverCreate(aclsolverHandle_t* handle)
     {
         if (handle == nullptr)
         {
-            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, "solver handle is null");
         }
 
         // Prevent repeated creation that would overwrite an existing pointer and cause memory leak.
         if (*handle != nullptr)
         {
-            return ACLSOLVER_STATUS_INVALID_VALUE;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_INVALID_VALUE, "invalid solver handle or stream output");
         }
 
-        // Contract check (issue #194): the documented lifecycle requires a current
-        // CANN context; aclrtGetCurrentContext fails both before aclInit() and
-        // after aclInit() without a device selection.
+        // Handle creation requires an initialized CANN context, as in the upstream lifecycle contract.
         aclrtContext currentContext = nullptr;
         if (aclrtGetCurrentContext(&currentContext) != ACL_SUCCESS || currentContext == nullptr)
         {
-            return ACLSOLVER_STATUS_NOT_INITIALIZED;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_NOT_INITIALIZED,
+                                         "solver requires an initialized CANN context");
         }
 
-        auto *h = new (std::nothrow) _aclsolver_handle();
+        auto* h = new (std::nothrow) _aclsolver_handle();
         if (h == nullptr)
         {
-            return ACLSOLVER_STATUS_ALLOC_FAILED;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_ALLOC_FAILED, "solver handle allocation failed");
         }
 
-        *handle = reinterpret_cast<void *>(h);
+        *handle = reinterpret_cast<void*>(h);
         return ACLSOLVER_STATUS_SUCCESS;
     }
 
@@ -68,12 +68,55 @@ extern "C"
     {
         if (handle == nullptr)
         {
-            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, "solver handle is null");
         }
 
-        auto *h = ToInternal(handle);
+        auto* h = ToInternal(handle);
 
-        // stream is managed by the user; here we only clear handle fields, not freeing device memory.
+        aclsolverStatus_t status = ACLSOLVER_STATUS_SUCCESS;
+        auto rememberError = [&status](aclsolverStatus_t error, const char* message)
+        {
+            Cholesky::ReportError(error, message);
+            if (status == ACLSOLVER_STATUS_SUCCESS)
+            {
+                status = error;
+            }
+        };
+        bool deviceSyncAttempted = false;
+        bool deviceSynchronized = false;
+        for (size_t i = 0; i < h->choleskyScratch.size();)
+        {
+            const auto& block = h->choleskyScratch[i];
+            if (!deviceSynchronized && aclrtSynchronizeStream(block.stream) != ACL_SUCCESS)
+            {
+                rememberError(ACLSOLVER_STATUS_EXECUTION_FAILED, "cannot synchronize Cholesky scratch stream");
+                if (!deviceSyncAttempted)
+                {
+                    deviceSyncAttempted = true;
+                    deviceSynchronized = aclrtSynchronizeDevice() == ACL_SUCCESS;
+                }
+                if (!deviceSynchronized)
+                {
+                    // Keep ownership until a retry can prove that no kernel still uses this block.
+                    ++i;
+                    continue;
+                }
+            }
+            if (aclrtFree(block.ptr) != ACL_SUCCESS)
+            {
+                rememberError(ACLSOLVER_STATUS_INTERNAL_ERROR, "cannot release Cholesky scratch");
+                ++i;
+                continue;
+            }
+            h->choleskyScratch.erase(h->choleskyScratch.begin() + i);
+        }
+        if (status != ACLSOLVER_STATUS_SUCCESS)
+        {
+            // Failure always leaves a valid handle; retry also releases an emptied host handle.
+            return status;
+        }
+
+        // The caller owns the stream; only handle-owned scratch is released here.
         h->stream = nullptr;
 
         delete h;
@@ -84,26 +127,26 @@ extern "C"
     {
         if (handle == nullptr)
         {
-            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, "solver handle is null");
         }
 
-        auto *h = ToInternal(handle);
+        auto* h = ToInternal(handle);
         h->stream = stream;
         return ACLSOLVER_STATUS_SUCCESS;
     }
 
-    aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream *stream)
+    aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream* stream)
     {
         if (handle == nullptr)
         {
-            return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, "solver handle is null");
         }
         if (stream == nullptr)
         {
-            return ACLSOLVER_STATUS_INVALID_VALUE;
+            return Cholesky::ReportError(ACLSOLVER_STATUS_INVALID_VALUE, "invalid solver handle or stream output");
         }
 
-        auto *h = ToInternal(handle);
+        auto* h = ToInternal(handle);
         *stream = h->stream;
         return ACLSOLVER_STATUS_SUCCESS;
     }

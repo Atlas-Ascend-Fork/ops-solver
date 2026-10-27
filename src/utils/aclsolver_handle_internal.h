@@ -16,21 +16,30 @@
 #pragma once
 
 #include <acl/acl.h>
+
 #include <cstddef>
+#include <vector>
 
 #include "cann_ops_solver_common.h"
 
 /**
  * @brief aclsolver handle internal structure
  *
- * Contains only the minimal fields required for kernel execution:
- *   - stream: current stream for asynchronous kernel execution
+ * Contains the current stream and reusable Cholesky scratch for asynchronous execution.
  *
  * This struct definition is only visible in implementation files and is completely
  * opaque to external users. The external interface uses void* / void** as handle types.
  */
-struct _aclsolver_handle {
+struct _aclsolver_handle
+{
     /* ========== Stream ========== */
-    aclrtStream stream = nullptr;     ///< Current stream for kernel execution
-
+    aclrtStream stream = nullptr;  ///< Current stream for kernel execution
+    struct Scratch
+    {
+        void* ptr;
+        size_t bytes;
+        aclrtStream stream;
+    };
+    // Device scratch remains alive until all work on its owning stream completes.
+    std::vector<Scratch> choleskyScratch;
 };

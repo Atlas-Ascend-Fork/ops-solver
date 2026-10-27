@@ -125,6 +125,30 @@
     <td>AI Core</td>
     <td>复数矩阵Cholesky分解，计算复数矩阵A的Cholesky分解，根据需求解 A = L * L^H 或 A = U^H * U，L为下三角矩阵，U为上三角矩阵。</td>
   </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cpotrs.md">cpotrs</a></td>
+    <td>✓</td><td>✓</td><td>AI Core</td>
+    <td>利用复数 Cholesky 因子求解线性方程组。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cpotri.md">cpotri</a></td>
+    <td>✓</td><td>✓</td><td>AI Core</td>
+    <td>利用复数 Cholesky 因子计算所选三角的逆矩阵。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cpotrf_batched.md">cpotrf_batched</a></td>
+    <td>✓</td><td>✓</td><td>AI Core</td>
+    <td>设备指针数组的批量复数 Cholesky 分解。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cpotrs_batched.md">cpotrs_batched</a></td>
+    <td>✓</td><td>✓</td><td>AI Core</td>
+    <td>设备指针数组的批量复数 Cholesky 求解（nrhs=1）。</td>
+  </tr>
 </tbody></table>
 
 
@@ -157,3 +181,18 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetrs` | 单精度线性方程组求解 |
 | `aclsolverCgetrs` | 复数线性方程组求解 |
 | `aclsolverCpotrf` | 复数矩阵Cholesky分解 |
+
+### 单精度复数 Cholesky 接口（Ascend950）
+
+| 接口 | 说明 |
+| --- | --- |
+| `aclsolverCpotrf_bufferSize` | 查询分解工作区的复数元素数 |
+| `aclsolverCpotrf` | 原地 Cholesky 分解 |
+| `aclsolverCpotrs` | 因子只读，B 原地更新为解 |
+| `aclsolverCpotri_bufferSize` | 查询求逆工作区的复数元素数 |
+| `aclsolverCpotri` | 因子原地更新为逆矩阵的所选三角 |
+| `aclsolverCpotrfBatched` | 批量分解，逐矩阵 info |
+| `aclsolverCpotrsBatched` | 批量单右端项求解，单个参数 info |
+
+上述接口使用 Device 列主序矩阵；主线 C++ `aclsolverCpotrf` 重载使用 Host 行主序矩阵。
+完整参数及使用约束见[Cholesky 接口说明](zh/cholesky.md)和[两种分解接口的说明](zh/cpotrf.md)。

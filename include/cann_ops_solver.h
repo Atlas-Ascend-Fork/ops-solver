@@ -15,10 +15,11 @@
 
 #pragma once
 #include <acl/acl.h>
-
+#include <stddef.h>
+#include <stdint.h>
+#ifdef __cplusplus
 #include <complex>
-#include <cstddef>
-#include <cstdint>
+#endif
 
 #include "cann_ops_solver_common.h"
 
@@ -32,6 +33,8 @@ extern "C"
      *
      * Allocates an aclsolver handle on the heap and outputs it via @p handle. The internal
      * structure is opaque to users; the returned void* is used with other APIs.
+     * Calls using the same handle, including SetStream and Destroy, must be serialized
+     * by the caller. Distinct handles may be used concurrently in valid CANN contexts.
      *
      * @param handle Output parameter to receive the created handle pointer (void**). *handle
      *               must be nullptr before the call, otherwise it is treated as already existing
@@ -42,16 +45,23 @@ extern "C"
      *         ACLSOLVER_STATUS_NOT_INITIALIZED CANN context not initialized
      *         ACLSOLVER_STATUS_ALLOC_FAILED memory allocation failed
      */
-    aclsolverStatus_t aclsolverCreate(aclsolverHandle_t *handle);
+    aclsolverStatus_t aclsolverCreate(aclsolverHandle_t* handle);
 
     /**
      * @brief Destroy an aclsolver handle
      *
-     * Releases all resources occupied by the handle created by aclsolverCreate.
+     * Waits for streams associated with internal Cholesky scratch and releases the handle.
+     * Those streams must remain valid until this call completes. Do not use the handle
+     * concurrently or after destruction. A null stream denotes the CANN default stream.
+     * On failure, other safely releasable blocks are still reclaimed. A valid handle
+     * remains owned by the caller only for retrying Destroy; releases are not repeated.
+     * Creation, compute and destruction must use the handle's owning CANN context.
      *
      * @param handle The handle to destroy (void*)
      * @return ACLSOLVER_STATUS_SUCCESS success
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR handle is null
+     *         ACLSOLVER_STATUS_EXECUTION_FAILED stream/device synchronization failed
+     *         ACLSOLVER_STATUS_INTERNAL_ERROR a scratch release failed
      */
     aclsolverStatus_t aclsolverDestroy(aclsolverHandle_t handle);
 
@@ -72,7 +82,142 @@ extern "C"
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR handle is null
      *         ACLSOLVER_STATUS_INVALID_VALUE stream output parameter is null
      */
-    aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream *stream);
+    aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream* stream);
+
+    /**
+     * @brief Query the workspace for a complex Hermitian Cholesky factorization.
+     *
+     * No device work is launched. Workspace counts are complex elements, not bytes.
+     * All Cholesky matrices are column major; unselected triangles are not read.
+     * Compute calls and info writes are asynchronous on the handle stream, including
+     * the default stream. Check the host return status before interpreting info:
+     * SUCCESS and completed stream: info=0 or a documented positive numerical result;
+     * INVALID_VALUE with valid handle/stream/info: a negative argument index excluding
+     * handle. For allocation, initialization or execution failures, info is undefined.
+     * Valid dimension bounds do not guarantee that inputs and scratch fit available HBM.
+     * Cholesky handles are not safe for concurrent host-thread use. The caller must
+     * serialize queries, SetStream, compute and Destroy on the same handle; Destroy
+     * must not overlap any other thread using that handle. Different handles are independent.
+     *
+     * @param handle Initialized solver handle; calls on one handle must be serialized.
+     * @param uplo LOWER or UPPER triangle.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param A Device matrix; may be null only for n=0. Not accessed by the query.
+     * @param lda Column stride in complex elements, at least max(1,n).
+     * @param Lwork Host output count; zero is valid and permits a null workspace.
+     * @return SUCCESS, INVALID_VALUE for invalid arguments, or NOT_INITIALIZED for a null handle.
+     */
+    aclsolverStatus_t aclsolverCpotrf_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
+                                                 aclsolverFloatComplex* A, int lda, int* Lwork);
+
+    /**
+     * @brief Factor a complex Hermitian positive definite matrix into L or U in place.
+     * @param handle Initialized, caller-serialized handle; see aclsolverCpotrf_bufferSize for info validity.
+     * @param uplo LOWER computes A=L*L^H; UPPER computes A=U^H*U.
+     * @param n Matrix order, 0 <= n <= 4096; n=0 succeeds without matrix access.
+     * @param A Device matrix; selected triangle is overwritten, lda padding is preserved.
+     * @param lda Column stride in complex elements, at least max(1,n).
+     * @param Workspace Device workspace; may be null when the queried count is zero.
+     * @param Lwork Available workspace count in complex elements, at least the queried count.
+     * @param devInfo Device scalar: zero on success; positive first non-positive pivot (one based);
+     *                negative invalid argument index (excluding handle). Earlier columns are completed.
+     * @return SUCCESS (including numerical failure reported in devInfo), INVALID_VALUE,
+     *         NOT_INITIALIZED, or a handle/stream error. See the shared info validity contract.
+     */
+    aclsolverStatus_t aclsolverCpotrf(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
+                                      aclsolverFloatComplex* A, int lda, aclsolverFloatComplex* Workspace, int Lwork,
+                                      int* devInfo);
+
+    /**
+     * @brief Solve A*X=B using an existing complex Cholesky factor; overwrite B with X.
+     * @param handle Initialized, caller-serialized handle; see aclsolverCpotrf_bufferSize for info validity.
+     * @param uplo Select the stored LOWER factor L or UPPER factor U.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param nrhs Right-hand side count, 0 <= nrhs <= 128. n=0 or nrhs=0 is empty.
+     * @param A Read-only device factor; may be null for an empty problem. Positive definiteness
+     *          must be checked by the preceding factorization, not by this solve.
+     * @param lda Factor column stride in complex elements, at least max(1,n).
+     * @param B Device n-by-nrhs matrix, overwritten by X; may be null for an empty problem.
+     * @param ldb B column stride in complex elements, at least max(1,n); padding is preserved.
+     * @param devInfo Device scalar, zero or negative invalid argument index excluding handle.
+     * @return SUCCESS, INVALID_VALUE, NOT_INITIALIZED, ALLOC_FAILED, or a handle/stream error.
+     *         Internal scratch is retained until handle destruction; its streams must outlive the handle.
+     */
+    aclsolverStatus_t aclsolverCpotrs(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
+                                      const aclsolverFloatComplex* A, int lda, aclsolverFloatComplex* B, int ldb,
+                                      int* devInfo);
+
+    /**
+     * @brief Query workspace for the inverse from a complex Cholesky factor, without device work.
+     * @param handle Initialized, caller-serialized solver handle.
+     * @param uplo Select the stored LOWER or UPPER factor.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param A Device factor; may be null only for n=0. Not accessed by the query.
+     * @param lda Column stride in complex elements, at least max(1,n).
+     * @param Lwork Host output count in complex elements; zero permits a null workspace.
+     * @return SUCCESS, INVALID_VALUE, or NOT_INITIALIZED. See aclsolverCpotrf_bufferSize for shared contracts.
+     */
+    aclsolverStatus_t aclsolverCpotri_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
+                                                 aclsolverFloatComplex* A, int lda, int* Lwork);
+
+    /**
+     * @brief Form the selected triangle of the inverse from a complex Cholesky factor in place.
+     * @param handle Initialized, caller-serialized handle; see aclsolverCpotrf_bufferSize for info validity.
+     * @param uplo Select the stored LOWER or UPPER factor and the inverse triangle to produce.
+     * @param n Matrix order, 0 <= n <= 4096; n=0 succeeds without matrix access.
+     * @param A Device factor; selected triangle is overwritten, lda padding is preserved.
+     * @param lda Column stride in complex elements, at least max(1,n).
+     * @param Workspace Device workspace; may be null when the queried count is zero.
+     * @param Lwork Available workspace count in complex elements, at least the queried count.
+     * @param devInfo Device scalar: zero, positive first zero real diagonal (one based), or
+     *                negative invalid argument index excluding handle.
+     * @return SUCCESS (including numerical failure in devInfo), INVALID_VALUE, NOT_INITIALIZED,
+     *         or a handle/stream error. See the shared info validity contract.
+     */
+    aclsolverStatus_t aclsolverCpotri(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
+                                      aclsolverFloatComplex* A, int lda, aclsolverFloatComplex* Workspace, int Lwork,
+                                      int* devInfo);
+
+    /**
+     * @brief Factor a batch of independent complex Hermitian matrices in place.
+     * @param handle Initialized, caller-serialized handle; see aclsolverCpotrf_bufferSize for info validity.
+     * @param uplo LOWER or UPPER triangle for every matrix.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param Aarray Device array of device matrix pointers; matrices may be disjoint. May be null
+     *               when n=0 or batchSize=0; selected triangles are overwritten.
+     * @param lda Column stride in complex elements, at least max(1,n); padding is preserved.
+     * @param infoArray Device array of max(1,batchSize) integers: one result per matrix;
+     *                  positive first non-positive pivot (one based). Argument errors use infoArray[0].
+     *                  Numerical results require SUCCESS and stream completion; allocation,
+     *                  initialization or execution failure leaves info undefined, even if zero.
+     * @param batchSize Batch count, 0 <= batchSize <= 1000000. Empty batches still require writable info.
+     * @return SUCCESS, INVALID_VALUE, NOT_INITIALIZED, ALLOC_FAILED, or a handle/stream error.
+     *         Inputs and internal workspace must fit available HBM; dimension limits are independent.
+     *         Large n and batchSize maxima cannot generally be combined; see docs/zh/cholesky.md.
+     */
+    aclsolverStatus_t aclsolverCpotrfBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
+                                             aclsolverFloatComplex* Aarray[], int lda, int* infoArray, int batchSize);
+
+    /**
+     * @brief Solve a batch using read-only complex Cholesky factors; overwrite each B with X.
+     * @param handle Initialized, caller-serialized handle; see aclsolverCpotrf_bufferSize for info validity.
+     * @param uplo Select LOWER or UPPER factors for the whole batch.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param nrhs Must be 1 for n>0 and batchSize>0; empty problems accept 0 <= nrhs <= 128.
+     * @param Aarray Read-only device pointer table of read-only factors, including disjoint matrices.
+     *               May be null for n=0 or batchSize=0; factors must already be valid.
+     * @param lda Factor column stride in complex elements, at least max(1,n).
+     * @param Barray Device pointer table of writable n-by-1 matrices; the table is not modified.
+     *               May be null for n=0 or batchSize=0.
+     * @param ldb B column stride in complex elements, at least max(1,n); padding is preserved.
+     * @param info Device scalar, zero or negative invalid argument index excluding handle.
+     * @param batchSize Batch count, 0 <= batchSize <= 1000000; zero performs no matrix access.
+     * @return SUCCESS, INVALID_VALUE, NOT_INITIALIZED, ALLOC_FAILED, or a handle/stream error.
+     *         Inputs and scratch must fit available HBM. Scratch streams must outlive the handle.
+     */
+    aclsolverStatus_t aclsolverCpotrsBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
+                                             const aclsolverFloatComplex* const Aarray[], int lda,
+                                             aclsolverFloatComplex* Barray[], int ldb, int* info, int batchSize);
 
 #ifdef __cplusplus
 }
@@ -85,13 +230,7 @@ typedef enum
     ACLSOLVER_EIG_MODE_VECTOR = 1
 } aclsolverEigMode_t;
 
-/*! \brief Matrix triangle selection mode for Hermitian matrix inputs. */
-typedef enum
-{
-    ACLSOLVER_FILL_MODE_LOWER = 0,
-    ACLSOLVER_FILL_MODE_UPPER = 1
-} aclsolverFillMode_t;
-
+#ifdef __cplusplus
 /**
  * @brief Batched complex matrix inversion for small matrices (n < 32)
  *
@@ -110,8 +249,8 @@ typedef enum
  * @param batchSize number of matrices, valid range (0, 3000]
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float> *A, const int64_t lda,
-                                 std::complex<float> *Ainv, const int64_t lda_inv, int32_t *info, int64_t batchSize);
+aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float>* A, const int64_t lda,
+                                 std::complex<float>* Ainv, const int64_t lda_inv, int32_t* info, int64_t batchSize);
 
 /**
  * @brief Batched complex matrix inversion (n >= 32)
@@ -130,8 +269,8 @@ aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std:
  * @param batchSize number of matrices, valid range (0, 3000]
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float> *A, const int64_t lda,
-                                std::complex<float> *Ainv, const int64_t lda_inv, int32_t *info, int64_t batchSize);
+aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float>* A, const int64_t lda,
+                                std::complex<float>* Ainv, const int64_t lda_inv, int32_t* info, int64_t batchSize);
 
 /**
  * @brief Inversion of a single complex matrix
@@ -147,8 +286,8 @@ aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::
  *             Argument errors are reported via the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex<float> *A, const int64_t lda,
-                         int32_t *info);
+aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex<float>* A, const int64_t lda,
+                         int32_t* info);
 
 /**
  * @brief Inversion of a single real float matrix
@@ -164,7 +303,7 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
  *             Argument errors are reported via the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, const int64_t lda, int32_t *info);
+aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float* A, const int64_t lda, int32_t* info);
 
 /**
  * @brief LU decomposition of a single complex matrix (A = P * L * U)
@@ -183,8 +322,8 @@ aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, co
  *             the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float> *A,
-                         const int64_t lda, int32_t *ipiv, int32_t *info);
+aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float>* A,
+                         const int64_t lda, int32_t* ipiv, int32_t* info);
 
 /**
  * @brief LU decomposition of a single real float matrix (A = P * L * U)
@@ -204,13 +343,11 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
 
+aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_t m, const int64_t n, float* A,
+                         const int64_t lda, int32_t* info);
 
-aclError aclsolverSpotrf(aclsolverHandle_t handle,  const char uplo,const int64_t m, const int64_t n, float *A, const int64_t lda,
-                         int32_t *info);
-
-aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
-                         int32_t *ipiv, int32_t *info);
-
+aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float* A, const int64_t lda,
+                         int32_t* ipiv, int32_t* info);
 
 /**
  * @brief Compute eigenvalues and optionally eigenvectors of a complex Hermitian matrix.
@@ -232,7 +369,7 @@ aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  * @return ACL_SUCCESS on a completed call, otherwise an ACL error code.
  */
 aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, aclsolverFillMode_t uplo, const int64_t n,
-                         std::complex<float> *A, const int64_t lda, float *W, int32_t *info);
+                         std::complex<float>* A, const int64_t lda, float* W, int32_t* info);
 
 /**
  * @brief QR decomposition of a single real float matrix (A = Q * R) using Householder reflections
@@ -251,15 +388,21 @@ aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, acls
  * @param info result info; not written in current version
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverSgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
-                         float *tau, int32_t *info);
+aclError aclsolverSgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float* A, const int64_t lda,
+                         float* tau, int32_t* info);
 
-aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, float *A, const int64_t lda, int32_t *ipiv, float *B, const int64_t ldb, int32_t *info);
+aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, float* A,
+                         const int64_t lda, int32_t* ipiv, float* B, const int64_t ldb, int32_t* info);
 
-aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B, const int64_t ldb, int32_t *info);
+aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
+                         std::complex<float>* A, const int64_t lda, int32_t* ipiv, std::complex<float>* B,
+                         const int64_t ldb, int32_t* info);
 
 /**
  * @brief Cholesky factorization of a single complex Hermitian positive-definite matrix (A = L * L^H or U^H * U)
+ *
+ * This C++ overload uses host row-major matrices. The Ascend950 C API above uses device
+ * column-major matrices and an explicit workspace. The two contracts are independent.
  *
  * @param handle aclsolver handle created by aclsolverCreate
  * @param uplo selects which triangular part of A is stored and where the factor is written:
@@ -277,8 +420,8 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
  * @param info result info; not written in current version
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_t n, std::complex<float> *A,
-                         const int64_t lda, int32_t *info);
+aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_t n, std::complex<float>* A,
+                         const int64_t lda, int32_t* info);
 
 /**
  * @brief QR decomposition of a single complex matrix (A = Q * R)
@@ -294,5 +437,6 @@ aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_
  * @param info result info; not written in current version
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float> *A,
-                         const int64_t lda, std::complex<float> *tau, int32_t *info);
+aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float>* A,
+                         const int64_t lda, std::complex<float>* tau, int32_t* info);
+#endif
