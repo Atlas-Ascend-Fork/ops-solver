@@ -232,8 +232,7 @@ aclError AllocAndUploadMatrix(CpotrfBuffers& buf, int64_t N, int64_t lda, size_t
     CHECK_ACLRT(aclrtMemcpy2dAsync(buf.aDevice, 2 * N * sizeof(float), buf.aHost, 2 * lda * sizeof(float),
                                    2 * N * sizeof(float), N, ACL_MEMCPY_HOST_TO_DEVICE, stream),
                 ReleaseCpotrfBuffers(buf));
-    CHECK_ACLRT(aclrtMalloc((void**)&buf.aDeviceWork, workSize, ACL_MEM_MALLOC_HUGE_FIRST),
-                ReleaseCpotrfBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void**)&buf.aDeviceWork, workSize, ACL_MEM_MALLOC_HUGE_FIRST), ReleaseCpotrfBuffers(buf));
     return ACL_SUCCESS;
 }
 
@@ -252,16 +251,26 @@ aclError AllocAndUploadGemmWork(CpotrfBuffers& buf, int k, size_t offsetSize, ui
                 ReleaseCpotrfBuffers(buf));
     CHECK_ACLRT(aclrtMalloc((void**)&buf.offsetIdxDevice, k * sizeof(int), ACL_MEM_MALLOC_HUGE_FIRST),
                 ReleaseCpotrfBuffers(buf));
+    // GenerateGemmWork 对 k < 3（即 N <= 256）直接返回，四张表保持未写入状态；上传前必须清零，
+    // 否则 kernel 读到堆垃圾 workNum 后会对任意 GM 地址发起 GEMM（issue #263，对齐 spotrf_host 的 memset_s 防护）。
+    if (memset_s(buf.offsetHost1, offsetSize, 0, offsetSize) != EOK ||
+        memset_s(buf.offsetHost2, offsetSize, 0, offsetSize) != EOK ||
+        memset_s(buf.offsetHost3, offsetSize, 0, offsetSize) != EOK ||
+        memset_s(buf.offsetIdxHost, k * sizeof(int), 0, k * sizeof(int)) != EOK)
+    {
+        ReleaseCpotrfBuffers(buf);
+        return ACL_ERROR_INTERNAL_ERROR;
+    }
     GenerateGemmWork(k, blockDim, buf.offsetHost1, buf.offsetHost2, buf.offsetHost3, buf.offsetIdxHost);
-    CHECK_ACLRT(aclrtMemcpyAsync(buf.offsetDevice1, offsetSize, buf.offsetHost1, offsetSize,
-                                 ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                ReleaseCpotrfBuffers(buf));
-    CHECK_ACLRT(aclrtMemcpyAsync(buf.offsetDevice2, offsetSize, buf.offsetHost2, offsetSize,
-                                 ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                ReleaseCpotrfBuffers(buf));
-    CHECK_ACLRT(aclrtMemcpyAsync(buf.offsetDevice3, offsetSize, buf.offsetHost3, offsetSize,
-                                 ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                ReleaseCpotrfBuffers(buf));
+    CHECK_ACLRT(
+        aclrtMemcpyAsync(buf.offsetDevice1, offsetSize, buf.offsetHost1, offsetSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
+        ReleaseCpotrfBuffers(buf));
+    CHECK_ACLRT(
+        aclrtMemcpyAsync(buf.offsetDevice2, offsetSize, buf.offsetHost2, offsetSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
+        ReleaseCpotrfBuffers(buf));
+    CHECK_ACLRT(
+        aclrtMemcpyAsync(buf.offsetDevice3, offsetSize, buf.offsetHost3, offsetSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
+        ReleaseCpotrfBuffers(buf));
     CHECK_ACLRT(aclrtMemcpyAsync(buf.offsetIdxDevice, k * sizeof(int), buf.offsetIdxHost, k * sizeof(int),
                                  ACL_MEMCPY_HOST_TO_DEVICE, stream),
                 ReleaseCpotrfBuffers(buf));
@@ -275,15 +284,14 @@ aclError AllocAndUploadGather(CpotrfBuffers& buf, size_t gatherSize, bool lower,
     CHECK_ACLRT(aclrtMalloc((void**)&buf.gatherDevice, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST),
                 ReleaseCpotrfBuffers(buf));
     GenerateTiling(lower, static_cast<int>(N), static_cast<int>(N), buf.gatherHost);
-    CHECK_ACLRT(aclrtMemcpyAsync(buf.gatherDevice, gatherSize, buf.gatherHost, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE,
-                                 stream),
-                ReleaseCpotrfBuffers(buf));
+    CHECK_ACLRT(
+        aclrtMemcpyAsync(buf.gatherDevice, gatherSize, buf.gatherHost, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
+        ReleaseCpotrfBuffers(buf));
     return ACL_SUCCESS;
 }
 
 // 下发 kernel，等待完成后把结果按 lda 行宽搬回 host
-aclError LaunchCpotrf(CpotrfBuffers& buf, bool transpose, int64_t N, int64_t lda, uint32_t blockDim,
-                      aclrtStream stream)
+aclError LaunchCpotrf(CpotrfBuffers& buf, bool transpose, int64_t N, int64_t lda, uint32_t blockDim, aclrtStream stream)
 {
     CHECK_ACLRT(aclrtGetHardwareSyncAddr((void**)(&buf.sync)), ReleaseCpotrfBuffers(buf));
     cpotrf_kernel_do(buf.sync, transpose, static_cast<int>(N), static_cast<int>(N), buf.aDevice, buf.aDeviceWork,
