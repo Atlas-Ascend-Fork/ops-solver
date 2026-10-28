@@ -326,6 +326,26 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
                          const int64_t lda, int32_t* ipiv, int32_t* info);
 
 /**
+ * @brief Cholesky factorization of a single real float symmetric positive-definite matrix
+ *
+ * @param handle aclsolver handle created by aclsolverCreate
+ * @param uplo 'L' computes the lower triangular factor (A = L * L^T), 'U' the upper factor
+ * @param m rows of matrix A; must equal n (Cholesky requires a square n-by-n matrix)
+ * @param n matrix order, valid range [1, 8192]
+ * @param A input/output matrix, FLOAT32, n * n layout with column stride lda; holds the
+ *          factor in the selected triangle on return
+ * @param lda leading dimension, lda >= n and lda <= 16384 (the kernel stores the row
+ *            gap of DataCopyExtParams in a uint16_t byte counter; with the 'U' factor
+ *            the member column count shrinks per iteration, so the worst-case gap is
+ *            bounded by lda itself, not by lda - n)
+ * @param info result info pointer; must be a valid pointer (not dereferenced in the
+ *             current version, reserved for future use)
+ * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
+ */
+aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_t m, const int64_t n, float* A,
+                         const int64_t lda, int32_t* info);
+
+/**
  * @brief LU decomposition of a single real float matrix (A = P * L * U)
  *
  * @param handle aclsolver handle created by aclsolverCreate
@@ -342,10 +362,6 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  *             the return value, not via info.
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */
-
-aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_t m, const int64_t n, float* A,
-                         const int64_t lda, int32_t* info);
-
 aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float* A, const int64_t lda,
                          int32_t* ipiv, int32_t* info);
 

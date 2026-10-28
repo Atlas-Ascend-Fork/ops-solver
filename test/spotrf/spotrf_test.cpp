@@ -7,42 +7,40 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include <chrono>
-#include <limits>
-#include <vector>
+#include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
-#include <stdexcept>
+#include <limits>
 #include <queue>
-#include <algorithm>
-
-#include "cann_ops_solver.h"
+#include <stdexcept>
+#include <vector>
 
 #include "../utils/test_utils.h"
+#include "acl/acl.h"
+#include "cann_ops_solver.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
-
-
-#include "acl/acl.h"
-
-
-#include <chrono>
 using namespace std::chrono;
 using namespace std;
 
-
-int main(int argc, char **argv) {
-	int deviceId, M, N;
+int main(int argc, char **argv)
+{
+    int deviceId, M, N;
+    char uplo = 'L';
     auto outputAFile = "../output/A_gm.bin";
 
-    deviceId = (argc>1) ? std::atoi(argv[1]) : 0;
-    M = (argc>2) ? std::atoi(argv[2]) : 255;
-    N = (argc>3) ? std::atoi(argv[3]) : 255;
+    deviceId = (argc > 1) ? std::atoi(argv[1]) : 0;
+    M = (argc > 2) ? std::atoi(argv[2]) : 255;
+    N = (argc > 3) ? std::atoi(argv[3]) : 255;
+    if (argc > 4) uplo = argv[4][0];
     // 输入合法性检查
-    if (deviceId < 0 || deviceId > 8192 || M < 1 || M > 8192 || N < 1 || N > 8192 || M != N) {
-        std::cerr << "Error: Invalid input. deviceId: 0-8192, M=N: 1-8192" << std::endl;
+    if (deviceId < 0 || deviceId > 8192 || M < 1 || M > 8192 || N < 1 || N > 8192 || M != N ||
+        (uplo != 'L' && uplo != 'U'))
+    {
+        std::cerr << "Error: Invalid input. deviceId: 0-8192, M=N: 1-8192, uplo: 'L' or 'U'" << std::endl;
         return 1;
     }
 
@@ -57,18 +55,17 @@ int main(int argc, char **argv) {
 
     size_t aMatrixFileSize = M * N * sizeof(float);
 
-    float* A;
-    CHECK_ACL(aclrtMallocHost((void**)(&A), aMatrixFileSize));
+    float *A;
+    CHECK_ACL(aclrtMallocHost((void **)(&A), aMatrixFileSize));
     ReadFile("./test/spotrf/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize);
 
     std::cout << "[Input] A:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)A, M, N, 8, 8);
 
-
     int32_t infoVal = 0;
- 	int32_t *info = &infoVal;
+    int32_t *info = &infoVal;
 
-    auto ret = aclsolverSpotrf(handle,'L', M, N, A, N, info);
+    auto ret = aclsolverSpotrf(handle, uplo, M, N, A, N, info);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverSpotrf failed. ERROR: %d\n", ret); return ret);
 
     PrintPartOfMatrix<float>((uint8_t *)A, M, N, 8, 8);
