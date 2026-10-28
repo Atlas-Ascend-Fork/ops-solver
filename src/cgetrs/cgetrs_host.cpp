@@ -27,11 +27,11 @@
 #include "cgetrs_launchers.hpp"
 #include "tiling/platform/platform_ascendc.h"
 
-#define BLOCK_N 16                 // base case N大小
-#define BLOCK_M 16                 // base case M大小
-#define CACHE_LINE_SIZE_FP32 128   // 128 floats per cache line
-#define ADDITIONAL_PAD_SIZE 4096   // 当一行数据为4096的整数倍时，额外 pad 1个 cache line，提高访存效率
-#define TILE_LENGTH 4096           // 实虚结合时tile大小
+#define BLOCK_N 16                // base case N大小
+#define BLOCK_M 16                // base case M大小
+#define CACHE_LINE_SIZE_FP32 128  // 128 floats per cache line
+#define ADDITIONAL_PAD_SIZE 4096  // 当一行数据为4096的整数倍时，额外 pad 1个 cache line，提高访存效率
+#define TILE_LENGTH 4096          // 实虚结合时tile大小
 
 #define GM_ADDR uint8_t *
 
@@ -60,9 +60,17 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
                          std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B,
                          const int64_t ldb, int32_t *info)
 {
-    SOLVER_ECHECK(n > 0 && nrhs > 0 && lda >= n && ldb >= nrhs && A != nullptr && B != nullptr &&
-                      ipiv != nullptr && info != nullptr,
-                  "aclsolverCgetrs invalid param: n, nrhs, lda, ldb <= 0 or lda < n or ldb < nrhs, "
+    // n > 8192 会使 SplitRealImag 的 alignedN > TILE_LENGTH，CopyIn 第二段超过 UB buffer（issue #266 检视），
+    // 与 aclsolverSgetrf 的文档口径（valid range [1, 8192]）保持一致。
+    // kernel 以 uint16_t 字节计数承载 DataCopyExtParams 行间隙，复数实/虚交织布局每元素占 8 字节：
+    // SplitRealImag::CopyIn 行间隙为 (lda - n) * 8 / (ldb - nrhs) * 8 字节，须 <= 65535，即元素差 <= 8191；
+    // trans == 0 时 restore 的 MergeRealImag::CopyOut 在 nrhs > 4096 的第二段行间隙为
+    // (ldb - nrhs + 4096) * 8 字节，故 nrhs > 4096 时需进一步限制 ldb - nrhs <= 4095（issue #266 检视）。
+    SOLVER_ECHECK(n > 0 && n <= 8192 && nrhs > 0 && lda >= n && ldb >= nrhs && A != nullptr && B != nullptr &&
+                      ipiv != nullptr && info != nullptr && lda - n <= 8191 && ldb - nrhs <= 8191 &&
+                      (nrhs <= 4096 || ldb - nrhs <= 4095),
+                  "aclsolverCgetrs invalid param: n out of [1, 8192], n, nrhs, lda, ldb <= 0, lda < n, "
+                  "ldb < nrhs, lda - n > 8191, ldb - nrhs > 8191 (or > 4095 when nrhs > 4096), "
                   "or A, B, ipiv, info is nullptr.",
                   ACL_ERROR_INVALID_PARAM);
 
@@ -138,8 +146,7 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     CHECK_ACLRT(aclrtMemcpy(aMatrixDevice, aMatrixFileSize, aMatrixHost, aMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
                 cleanup());
 
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, resizedAMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST),
-                cleanup());
+    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, resizedAMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
 
     CHECK_ACLRT(aclrtMalloc((void **)&wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
     CHECK_ACLRT(aclrtMalloc((void **)&pDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
@@ -150,8 +157,7 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     CHECK_ACLRT(aclrtMemcpy(bMatrixDevice, bMatrixFileSize, bMatrixHost, bMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
                 cleanup());
 
-    CHECK_ACLRT(aclrtMalloc((void **)&bMatrixDeviceWork, resizedBMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST),
-                cleanup());
+    CHECK_ACLRT(aclrtMalloc((void **)&bMatrixDeviceWork, resizedBMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
 
     size_t gatherSize = TILE_LENGTH * 2 * sizeof(uint32_t);
     CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost), gatherSize), cleanup());

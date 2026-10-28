@@ -146,7 +146,9 @@
   - 输入矩阵A必须为aclsolverCgetrf分解后的LU矩阵。
   - ipiv必须为aclsolverCgetrf输出的pivot信息。
   - 当前仅支持COMPLEX64数据类型。
-  - lda、ldb、info参数在当前版本实际未启用。
+  - n取值范围为[1, 8192]，超出返回ACL_ERROR_INVALID_PARAM。
+  - lda >= n且lda - n <= 8191；ldb >= nrhs且ldb - nrhs <= 8191（kernel以uint16_t字节计数承载行间隙，复数实/虚交织布局每元素占8字节）；nrhs > 4096时需进一步满足ldb - nrhs <= 4095。
+  - info参数在当前版本实际未启用。
 
 - 调用实现
 
@@ -161,7 +163,7 @@
     #include <vector>
     #include "acl/acl.h"
     #include "cann_ops_solver.h"
-    
+
     int32_t main(int32_t argc, char *argv[])
     {
         // 固定写法，acl初始化
@@ -170,35 +172,35 @@
         aclInit(nullptr);
         aclrtSetDevice(deviceId);
         aclrtCreateStream(&stream);
-    
+
         // 创建solver handle并设置stream
         aclsolverHandle_t handle = nullptr;
         aclsolverCreate(&handle);
         aclsolverSetStream(handle, stream);
-    
+
         // 构造输入数据
         int64_t n = 4;
         int64_t nrhs = 1;
         size_t aMatrixFileSize = n * n * sizeof(std::complex<float>);
         size_t bMatrixFileSize = n * nrhs * sizeof(std::complex<float>);
-    
+
         std::complex<float>* A;
         std::complex<float>* B;
         aclrtMallocHost((void**)(&A), aMatrixFileSize);
         aclrtMallocHost((void**)(&B), bMatrixFileSize);
-    
+
         // 填充A矩阵数据...
         // 填充B矩阵数据...
-    
+
         int32_t *ipiv = new int32_t[n];
         int32_t *info;
-    
+
         // 调用 aclsolverCgetrs
         auto ret = aclsolverCgetrs(handle, 0, n, nrhs, 0, n, nrhs, A, n, ipiv, B, nrhs, info);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCgetrs failed. ERROR: %d\n", ret); return ret);
-    
+
         // B中保存求解结果
-    
+
         // 释放资源
         delete[] ipiv;
         aclrtFreeHost(A);
@@ -207,7 +209,7 @@
         aclrtDestroyStream(stream);
         aclrtResetDevice(deviceId);
         aclFinalize();
-    
+
         return 0;
     }
     ```
