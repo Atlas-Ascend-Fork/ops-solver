@@ -90,6 +90,7 @@ for arg in "$@"; do
             echo "  bash build.sh --ops=cmatinv_batched                # 编译库及指定算子测试"
             echo "  bash build.sh --ops=op1,op2                        # 编译库及多个算子测试（逗号分隔）"
             echo "  bash build.sh --run                                # 编译并运行全部 test"
+            echo "  --soc=<芯片版本>                                    # 目标芯片；未指定时默认 ascend910b，与实际机型不符会编出错误目标包"
             echo "  bash build.sh --ops=cmatinv_batched --run          # 编译并运行指定算子测试"
             echo "  bash build.sh --pkg                                # 编译并打包 run 包"
             echo "  bash build.sh --pkg --soc=ascend950                # 打包指定 SOC 的 run 包"

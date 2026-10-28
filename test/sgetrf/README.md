@@ -129,7 +129,7 @@ Solver Sgetrf算子实现。
 
 - 样例执行
   ```bash
-  bash build.sh --ops=sgetrf --run # --ops=<算子名> --run可选参数，执行测试样例
+  bash build.sh --soc=ascend950 --ops=sgetrf --run # --ops=<算子名> --run可选参数，执行测试样例
   ```
   执行结果如下，说明精度对比成功。
   ```bash
