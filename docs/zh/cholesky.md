@@ -1,6 +1,10 @@
 # 单精度复数 Cholesky 接口
 
-Ascend950 实现使用公开头文件 `include/cann_ops_solver.h` 的 C ABI。
+本文说明 Ascend950 的 C API；A2/A3 C++ 分解接口的参数及调用示例见 [Cpotrf](cpotrf.md)。
+
+Ascend 950PR/Ascend 950DT 共用 dav-3510 / arch35 实现，构建入口均为 `--soc=ascend950`。
+
+该实现使用公开头文件 `include/cann_ops_solver.h` 的 C ABI。
 `aclsolverFloatComplex` 由两个 FP32 分量 real、imag 组成，大小为 8 字节，自然对齐为 4 字节，字段偏移为 0 和 4。
 该布局与仓内 C++ 接口的 `std::complex<float>` 大小及对齐一致，公开头文件在编译期检查。
 设备缓冲区可复用此存储布局；host 对象应复制分量或按值转换，不能通过无关类型解引用。

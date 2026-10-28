@@ -1,5 +1,7 @@
 # 复数 Cholesky 原生测试
 
+适用于 Ascend 950PR/Ascend 950DT，使用 arch35 实现及 `--soc=ascend950` 构建入口。
+
 使用仓库配套 CANN，安装 NumPy 和 SciPy 后，在仓库根目录执行：
 
 ```bash
@@ -8,7 +10,7 @@ bash build.sh --soc=ascend950 --ops=cpotrf_950,cpotrs,cpotri,cpotrf_batched,cpot
 
 `build.sh` 按 `test/<op>/data/gen_data.py`、`<op>_test`、`data/verify_result.py` 的顺序运行。
 `cpotrf_950` 是 950 C API 的标准测试入口；`cpotrf` 保留主线 A2/A3 C++ 接口的样例。
-两者调用参数、Host/Device 地址和行列主序不同，不能相互替代。
+切换接口时需同时调整调用参数、Host/Device 地址及行列主序，具体区别见 [Cpotrf 接口说明](../../../docs/zh/cpotrf.md)。
 五个接口共 259 条测试，覆盖 LOWER/UPPER、非整块维度、合法 lda/ldb padding、空问题、
 非连续批量设备指针、非默认 stream、info、只读因子和两次输出逐位一致。
 另覆盖病态正定矩阵、非正定分解、批内成功与失败混合、奇异因子求逆的正 info；

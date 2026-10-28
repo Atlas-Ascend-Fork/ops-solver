@@ -1,24 +1,36 @@
 # Cpotrf
 
-本页包含两种独立的分解接口，请按产品和内存布局选择，参数与返回值不可混用。
+对 Hermitian 正定复数矩阵进行 Cholesky 分解。按产品选择对应接口，本页分别说明 A2/A3 C++ 接口和 Ascend950 C API 的参数、约束及调用示例。
 
-| 接口 | 产品 | 矩阵 | 工作区和 info |
-| --- | --- | --- | --- |
-| C++ `aclsolverCpotrf(handle, char, n, A, lda, info)` | A2/A3 | Host 行主序 `std::complex<float>` | 内部分配工作区；沿用下文 C++ 接口约束 |
-| C `aclsolverCpotrf(handle, uplo, n, A, lda, Workspace, Lwork, devInfo)` | Ascend950PR | Device 列主序 `aclsolverFloatComplex` | 显式 workspace；Device info 异步写入 |
+## 产品支持情况
 
-## C++ 接口：Host 行主序
+| 产品 | 是否支持 | 适用接口 |
+| --- | :---: | --- |
+| <term>Atlas 200I/500 A2 推理产品</term> | × | — |
+| <term>Atlas 推理系列产品</term> | × | — |
+| <term>Atlas 训练系列产品</term> | × | — |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ | A2/A3 C++ 接口 |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ | A2/A3 C++ 接口 |
+| <term>Ascend 950PR/Ascend 950DT</term> | √ | Ascend950 C API |
 
-### 产品支持情况
+## 接口选择
 
-|产品|是否支持|
-|:---|:---:|
-|<term>Atlas 200I/500 A2 推理产品</term>|×|
-|<term>Atlas 推理系列产品</term>|×|
-|<term>Atlas 训练系列产品</term>|×|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|√|
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|√|
-|<term>Ascend 950PR/Ascend 950DT</term>|×|
+两套接口均在 `cann_ops_solver.h` 中声明，函数名均为 `aclsolverCpotrf`。Ascend950 C API 也可由 C++ 程序调用，应按产品和函数原型选择接口。
+
+| 项目 | A2/A3 C++ 接口 | Ascend950 C API |
+| --- | --- | --- |
+| 计算接口参数个数 | 6 | 8 |
+| uplo | 字符 `'L'` 或 `'U'` | `ACLSOLVER_FILL_MODE_LOWER` 或 `ACLSOLVER_FILL_MODE_UPPER` |
+| 矩阵 A | Host 行主序 `std::complex<float>` | Device 列主序 `aclsolverFloatComplex` |
+| 工作区 | 接口内部分配 | 通过 `aclsolverCpotrf_bufferSize` 查询，调用方分配 Device workspace |
+| info | Host 指针；当前实现未写入 | Device 指针；在调用 stream 上异步写入 |
+| 返回类型 | `aclError` | `aclsolverStatus_t` |
+
+现有 A2/A3 六参数调用保持原有约定。迁移到 Ascend950 时，需将输入准备为 Device 列主序矩阵，查询并分配工作区后按下文的 C API 原型调用，并在 stream 完成后读取 Device info。两套接口的地址、布局、参数和返回值不可混用。
+
+## A2/A3 C++ 接口：Host 行主序
+
+本节的函数原型、参数、约束及调用示例适用于产品表中列出的 A2/A3 产品。
 
 ### 功能说明
 
@@ -282,43 +294,28 @@
     }
     ```
 
-## Ascend950 C API
+## Ascend950 C API：Device 列主序
 
-### 产品支持情况
-
-
-| 产品 | 支持情况 |
-| --- | --- |
-| Ascend950PR（dav-3510 / arch35） | √ |
-| 其他架构 | 本实现未提供 |
-
+本节的函数原型、参数、约束及调用说明适用于 Ascend 950PR/Ascend 950DT，使用 dav-3510 / arch35 实现。
 
 ### 功能说明
 
-
 读取 Hermitian 正定矩阵的所选三角，原地生成 L 或 U。非正定时返回最早失败主子式的一基索引。
-
 
 $$
 A = LL^{H}\quad\text{或}\quad A = U^{H}U
 $$
 
-
 ### 函数原型
-
 
 ```cpp
 #include "cann_ops_solver.h"
 
-
-
 aclsolverStatus_t aclsolverCpotrf_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
     aclsolverFloatComplex* A, int lda, int* Lwork);
 
-
 aclsolverStatus_t aclsolverCpotrf(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, aclsolverFloatComplex* A,
     int lda, aclsolverFloatComplex* Workspace, int Lwork, int* devInfo);
-
 
 ```
 
@@ -326,26 +323,16 @@ aclsolverStatus_t aclsolverCpotrf(aclsolverHandle_t handle, aclsolverFillMode_t 
 
 | 参数 | 方向与位置 | 说明 |
 | --- | --- | --- |
-
 | handle | 输入 / host | 由 aclsolverCreate 创建；使用其绑定的调用方 stream。 |
-
 | uplo | 输入 / host | ACLSOLVER_FILL_MODE_LOWER 或 ACLSOLVER_FILL_MODE_UPPER。 |
-
 | n | 输入 / host | int，矩阵阶数，0≤n≤4096。 |
-
 | A | 输入/输出 / device | 列主序 aclsolverFloatComplex 矩阵，读取并写入所选三角；每元素 8 字节。 |
-
 | lda | 输入 / host | int，A 的相邻两列起点间距，以复数元素计，至少为 max(1,n)；填充区保持不变。 |
-
 | Workspace | 输入 / device | 调用方分配的工作区；实际元素数至少为查询返回的 Lwork。 |
-
 | Lwork | 查询输出 / host；计算输入 / host | int，工作区大小，以 aclsolverFloatComplex 元素计；不是字节数。 |
-
 | devInfo | 输出 / device | 一个 int；异步写入，在调用 stream 完成后读取。 |
 
-
 ### 约束与状态
-
 
 矩阵采用列主序。LOWER 使用 L，UPPER 使用 U；未选择的三角不参与数学计算。只对所选三角承诺计算结果，lda/ldb 填充区保持不变。
 
@@ -359,16 +346,12 @@ aclsolverStatus_t aclsolverCpotrf(aclsolverHandle_t handle, aclsolverFillMode_t 
 
 先调用对应 bufferSize 查询，再分配 Lwork×sizeof(aclsolverFloatComplex) 字节；查询的 Lwork 为主机输出指针，计算的 Workspace 为设备地址。
 
-
 ### 调用说明
 
-
 原生入口：[test/cpotrf_950/cpotrf_950_test.cpp](../../test/cpotrf_950/cpotrf_950_test.cpp)。公开 C API 的完整调用流程由[共享 runner](../../test/utils/cholesky/fixture_runner.cpp) 中的 `InvokeFixture()` 和 `RunCase()` 实现，包含 workspace 查询、stream 等待及输出读取。
-
 
 ```bash
 bash build.sh --soc=ascend950 --ops=cpotrf_950 --run
 ```
-
 
 标准入口、CPU 参考、padding 和确定性校验见[测试指导](../../test/utils/cholesky/README.md)。所有接口共用的布局、生命周期和 info 约束见[共享说明](cholesky.md)。

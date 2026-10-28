@@ -1,37 +1,27 @@
 # 批量 Cholesky 分解（COMPLEX64）
 
-
 ## 产品支持情况
-
 
 | 产品 | 支持情况 |
 | --- | --- |
-| Ascend950PR（dav-3510 / arch35） | √ |
+| <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | 其他架构 | 本实现未提供 |
-
 
 ## 功能说明
 
-
 Aarray 是设备上的矩阵指针数组；各矩阵独立分解，infoArray 为逐矩阵设备状态数组。支持非连续矩阵地址。
-
 
 $$
 A_i=L_iL_i^{H}\quad\text{或}\quad A_i=U_i^{H}U_i
 $$
 
-
 ## 函数原型
-
 
 ```cpp
 #include "cann_ops_solver.h"
 
-
-
 aclsolverStatus_t aclsolverCpotrfBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n,
     aclsolverFloatComplex* Aarray[], int lda, int* infoArray, int batchSize);
-
 
 ```
 
@@ -39,24 +29,15 @@ aclsolverStatus_t aclsolverCpotrfBatched(aclsolverHandle_t handle, aclsolverFill
 
 | 参数 | 方向与位置 | 说明 |
 | --- | --- | --- |
-
 | handle | 输入 / host | 由 aclsolverCreate 创建；使用其绑定的调用方 stream。 |
-
 | uplo | 输入 / host | ACLSOLVER_FILL_MODE_LOWER 或 ACLSOLVER_FILL_MODE_UPPER。 |
-
 | n | 输入 / host | int，矩阵阶数，0≤n≤4096。 |
-
 | Aarray | 输入/输出 / device | 设备指针数组，各元素为列主序 aclsolverFloatComplex 矩阵地址；支持独立分配。 |
-
 | lda | 输入 / host | int，A 的相邻两列起点间距，以复数元素计，至少为 max(1,n)；填充区保持不变。 |
-
 | infoArray | 输出 / device | 批量分解为 batchSize 个 int；参数错误仅写首元素，空批量仍需可写首元素。 |
-
 | batchSize | 输入 / host | int，0≤batchSize≤1000000。 |
 
-
 ## 约束与状态
-
 
 矩阵采用列主序。LOWER 使用 L，UPPER 使用 U；未选择的三角不参与数学计算。只对所选三角承诺计算结果，lda/ldb 填充区保持不变。
 
@@ -75,16 +56,12 @@ Destroy 不能与任何其他线程访问同一 handle 重叠。不同 handle �
 输入、工作区及其他存活分配的总量必须适合实际 HBM；容量公式和 128 GiB 设备示例见
 [批量分解的容量约束](cholesky.md#批量分解的容量约束)。分配失败返回 ALLOC_FAILED，不能依据 info=0 判成功。
 
-
 ## 调用说明
 
-
 原生入口：[test/cpotrf_batched/cpotrf_batched_test.cpp](../../test/cpotrf_batched/cpotrf_batched_test.cpp)。公开 C API 的完整调用流程由[共享 runner](../../test/utils/cholesky/fixture_runner.cpp) 中的 `InvokeFixture()` 和 `RunCase()` 实现，包含 workspace 查询、stream 等待及输出读取。
-
 
 ```bash
 bash build.sh --soc=ascend950 --ops=cpotrf_batched --run
 ```
-
 
 标准入口、CPU 参考、padding 和确定性校验见[测试指导](../../test/utils/cholesky/README.md)。所有接口共用的布局、生命周期和 info 约束见[共享说明](cholesky.md)。
