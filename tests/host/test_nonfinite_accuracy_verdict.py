@@ -8,6 +8,8 @@
 """Run actual Solver CLIs on Host fixtures, never pretend to produce NPU output."""
 
 import os
+import runpy
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -90,11 +92,17 @@ def run_comparison(operator, n, batch, directory):
         if operator.endswith("batched")
         else [str(n)]
     )
-    command = [
-        sys.executable,
-        str(ROOT / "test" / operator / "data/verify_result.py"),
-        *arguments,
-    ]
+    script = ROOT / "test" / operator / "data/verify_result.py"
+    if operator == "cgetri":
+        # The current CLI locates its data beside __file__; copy full production modules.
+        script = directory / "test" / operator / "data/verify_result.py"
+        shutil.copyfile(ROOT / "test" / operator / "data/verify_result.py", script)
+        utilities = directory / "test/utils"
+        utilities.mkdir(exist_ok=True)
+        shutil.copyfile(
+            ROOT / "test/utils/verify_utils.py", utilities / "verify_utils.py"
+        )
+    command = [sys.executable, str(script), *arguments]
     return subprocess.run(
         command,
         cwd=directory,
@@ -117,3 +125,55 @@ def test_nonfinite_accuracy_is_not_a_tolerated_error(operator, case, tmp_path):
     expected = 0 if valid else 1
     assert run.returncode == expected, run.stdout + run.stderr
     assert ("[Success]" if valid else "[Failed]") in run.stdout + run.stderr
+
+
+@pytest.mark.parametrize("sign", (1, -1))
+@pytest.mark.parametrize("steps", (0, 1, 32, 64))
+def test_qr_ulp_cli_keeps_a_finite_hard_limit(sign, steps, tmp_path):
+    """Use controlled finite QR files; no device output is produced by this test."""
+    n = 16
+    maximum = np.float32(np.finfo(np.float32).max * sign)
+    a = np.eye(n, dtype=np.complex64) * maximum
+    result = a.copy()
+    changed = maximum
+    for _ in range(steps):
+        changed = np.nextafter(changed, np.float32(0))
+    result[0, 0] = changed
+    data = tmp_path / "test/cgeqrf/data"
+    (data / "input").mkdir(parents=True)
+    (data / "output").mkdir()
+    a.T.tofile(data / "input/A_gm.bin")
+    result.T.tofile(data / "output/R_gm.bin")
+    np.zeros(n, dtype=np.complex64).tofile(data / "output/tau.bin")
+    # Q is exactly the identity (zero tau); A has condition number one.
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "test/cgeqrf/data/verify_result.py"),
+            str(n),
+            str(n),
+        ],
+        cwd=tmp_path,
+        env=dict(os.environ, OPENBLAS_NUM_THREADS="1"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    valid = steps <= 32
+    assert run.returncode == (0 if valid else 1), run.stdout + run.stderr
+    assert ("[Success]" if valid else "[Failed]") in run.stdout + run.stderr
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (np.finfo(np.float32).max, np.ldexp(1.0, 104)),
+        (-np.finfo(np.float32).max, np.ldexp(1.0, 104)),
+        (1.0, np.ldexp(1.0, -23)),
+        (-1.0, np.ldexp(1.0, -23)),
+        (0.0, np.ldexp(1.0, -149)),
+    ),
+)
+def test_qr_ulp_spacing_matches_float32_grid(value, expected):
+    module = runpy.run_path(str(ROOT / "test/cgeqrf/data/verify_result.py"))
+    assert module["ulp_f32"](value) == expected

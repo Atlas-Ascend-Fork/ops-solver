@@ -13,6 +13,9 @@ Jetbrain = "Jetbrain"
 ASCEND = "ASCEND"
 ascend = "ascend"
 ND = "ND"
+# SDK names used by the existing codespell vocabulary.
+tbe = "tbe"
+alog = "alog"
 
 # AscendC SDK vector index intrinsic.
 [default.extend-identifiers]

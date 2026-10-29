@@ -71,12 +71,22 @@ repos:
       - id: typos
         args: ["--force-exclude"]
 
+  - repo: local
+    hooks:
+      - id: qr-ulp-host-tests
+        name: QR ULP hard limit Host tests
+        entry: python -m pytest -q tests/host/test_nonfinite_accuracy_verdict.py -k qr_ulp
+        language: python
+        additional_dependencies: [numpy, scipy, pytest]
+        pass_filenames: false
+        files: ^test/cgeqrf/data/verify_result\.py$|^tests/host/test_nonfinite_accuracy_verdict\.py$
+
   # OAT 合规性检查 (Open Source Audit Tool)
   - repo: local
     hooks:
       - id: oat-check
         name: OAT Compliance Check
-        entry: bash scripts/oat_check.sh
+        entry: bash scripts/run_oat_check.sh
         language: system
         pass_filenames: true
         types: [file]

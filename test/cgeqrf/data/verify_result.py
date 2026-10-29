@@ -74,14 +74,14 @@ logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 # -------------------- 全局参数设置（官方口径） --------------------
 DTYPE = np.complex64
-RTOL = 2 ** -10              # 2^-10 = 9.765625e-04（相对容差）
-ATOL = 2 ** -16              # 2^-16 = 1.52587890625e-05（绝对容差）
-FAIL_RATIO = 0.01            # 允许的不合格元素最大占比（超过则判定失败）
-ULP_FACTOR = 32              # 硬限中的 32*ULP
-HARD_LIMIT_FLOOR = 1e-2      # 硬限下限 1e-2
-ORTHO_TOL = 1e-4             # 正交性上限：max|Q^H Q - I|
-EPS32 = np.float64(2.0 ** -24)   # 单精度机器 epsilon = 5.9604645e-08
-DQRT01_RATIO_FACTOR = 10.0       # 阈值 = min(cap, max(FACTOR*ratio_cpu, floor))
+RTOL = 2**-10  # 2^-10 = 9.765625e-04（相对容差）
+ATOL = 2**-16  # 2^-16 = 1.52587890625e-05（绝对容差）
+FAIL_RATIO = 0.01  # 允许的不合格元素最大占比（超过则判定失败）
+ULP_FACTOR = 32  # 硬限中的 32*ULP
+HARD_LIMIT_FLOOR = 1e-2  # 硬限下限 1e-2
+ORTHO_TOL = 1e-4  # 正交性上限：max|Q^H Q - I|
+EPS32 = np.float64(2.0**-24)  # 单精度机器 epsilon = 5.9604645e-08
+DQRT01_RATIO_FACTOR = 10.0  # 阈值 = min(cap, max(FACTOR*ratio_cpu, floor))
 DQRT01_RATIO_FLOOR = 10.0
 DQRT01_RATIO_CAP = 30.0
 # ----------------------------------------------------------------
@@ -99,6 +99,7 @@ DEFAULT_N = 256
 @dataclass(frozen=True)
 class VerifyConfig:
     """精度验证容差配置"""
+
     rtol: float = RTOL
     atol: float = ATOL
     fail_ratio: float = FAIL_RATIO
@@ -122,8 +123,7 @@ def load_binary(file_path, shape, dtype=DTYPE, fortran_order=False):
 
     if data.size != expected_size:
         raise ValueError(
-            f"文件 {file_path} 的数据量 {data.size} "
-            f"与预期 {expected_size} 不符"
+            f"文件 {file_path} 的数据量 {data.size} 与预期 {expected_size} 不符"
         )
 
     return data.reshape(shape, order="F" if fortran_order else "C")
@@ -134,7 +134,12 @@ def ulp_f32(value):
     abs_value = np.float32(np.abs(np.float32(value)))
     if not np.isfinite(abs_value):
         return np.float32(np.inf)
-    return np.float32(np.spacing(abs_value))
+    with np.errstate(over="ignore"):
+        spacing = np.spacing(abs_value)
+    if np.isinf(spacing):
+        # The largest finite value has no finite successor; use its grid predecessor.
+        spacing = abs_value - np.nextafter(abs_value, np.float32(0))
+    return np.float32(spacing)
 
 
 def hard_limit(anchor_abs, config=DEFAULT_VERIFY_CONFIG):
@@ -178,8 +183,7 @@ def build_q(qr_compact, tau):
         q_func = lapack.cungqr
     except AttributeError:
         logging.info(
-            "警告: lapack.cungqr 不可用，使用 zungqr "
-            "(双精度复数) 并转换为 complex64"
+            "警告: lapack.cungqr 不可用，使用 zungqr (双精度复数) 并转换为 complex64"
         )
         qr_for_q = qr_for_q.astype(np.complex128)
         tau_for_q = tau_for_q.astype(np.complex128)
@@ -252,8 +256,7 @@ def validate_dqrt01(a_original, qr_compact, q_matrix, config=DEFAULT_VERIFY_CONF
     k_dim = min(m_rows, n_cols)
     a_norm = matrix_one_norm(a_original)
     logging.info(
-        f"  m = {m_rows}, ||A||_1 = {a_norm:.6e}, "
-        f"eps32 = {float(config.eps32):.6e}"
+        f"  m = {m_rows}, ||A||_1 = {a_norm:.6e}, eps32 = {float(config.eps32):.6e}"
     )
 
     ratio = dqrt01_ratio(
@@ -274,10 +277,7 @@ def validate_dqrt01(a_original, qr_compact, q_matrix, config=DEFAULT_VERIFY_CONF
     else:
         ratio_cpu_eff = ratio_cpu
         logging.info(f"  npu ratio      = {ratio:.6e}")
-        logging.info(
-            f"  cpu ratio_cpu  = {ratio_cpu:.6e} "
-            f"(f32 LAPACK cgeqrf + cungqr)"
-        )
+        logging.info(f"  cpu ratio_cpu  = {ratio_cpu:.6e} (f32 LAPACK cgeqrf + cungqr)")
 
     limit = min(
         config.dqrt01_cap,
@@ -430,20 +430,15 @@ def validate_orthogonality(q_matrix, config=DEFAULT_VERIFY_CONFIG):
 
     logging.info(f"  Q 形状: {q_matrix.shape}，k = min(m, n) = {k_dim}")
     logging.info(
-        f"  最大绝对偏差 |Q^H Q - I|: {max_abs:.6e} "
-        f"(上限: {config.ortho_tol:.6e})"
+        f"  最大绝对偏差 |Q^H Q - I|: {max_abs:.6e} (上限: {config.ortho_tol:.6e})"
     )
     logging.info(f"  最大偏差位置: {max_idx}")
     logging.info(f"  平均绝对偏差: {mean_abs:.6e}")
-    logging.info(
-        f"  Frobenius 相对偏差 "
-        f"||Q^H Q - I||_F / sqrt(k): {frob_rel:.6e}"
-    )
+    logging.info(f"  Frobenius 相对偏差 ||Q^H Q - I||_F / sqrt(k): {frob_rel:.6e}")
 
     passed = max_abs <= config.ortho_tol
     logging.info(
-        "  判定结果: "
-        + ("✅ 通过（Q 正交）" if passed else "❌ 不通过（Q 非正交）")
+        "  判定结果: " + ("✅ 通过（Q 正交）" if passed else "❌ 不通过（Q 非正交）")
     )
     return passed
 
@@ -467,10 +462,7 @@ def main():
     tau = np.fromfile(TAU_PATH, dtype=DTYPE)
 
     if tau.size != k:
-        logging.info(
-            f"警告: tau 文件长度 {tau.size} "
-            f"与 min(m,n)={k} 不符，将截断/填充"
-        )
+        logging.info(f"警告: tau 文件长度 {tau.size} 与 min(m,n)={k} 不符，将截断/填充")
         if tau.size < k:
             tau = np.pad(
                 tau,
