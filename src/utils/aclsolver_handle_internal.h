@@ -25,18 +25,69 @@
 /**
  * @brief aclsolver handle internal structure
  *
- * Contains the current stream and reusable Cholesky scratch for asynchronous execution.
+ * Contains the caller stream and reusable LU and Cholesky scratch for asynchronous execution.
  *
  * This struct definition is only visible in implementation files and is completely
  * opaque to external users. The external interface uses void* / void** as handle types.
  */
+struct _real_lu_workspace
+{
+    aclrtContext context = nullptr;
+    void *data = nullptr;
+    size_t capacity = 0;
+    aclrtEvent completion = nullptr;
+    bool recorded = false;
+    // Preserve ownership if both recording completion and synchronizing fail.
+    aclrtStream pendingStream = nullptr;
+    bool untracked = false;
+    // Validation copies have a separate completion obligation from scratch.
+    // A failed stream synchronization transfers their buffers to this slot.
+    aclrtStream validationStream = nullptr;
+    bool validationPending = false;
+    void *validationHost = nullptr;
+    void *validationFlags = nullptr;
+};
+
+inline aclsolverStatus_t RealLuDrainValidation(_real_lu_workspace &cache)
+{
+    if (cache.validationPending)
+    {
+        if (aclrtSynchronizeStream(cache.validationStream) != ACL_SUCCESS)
+        {
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+        cache.validationPending = false;
+        cache.validationStream = nullptr;
+    }
+    if (cache.validationHost != nullptr)
+    {
+        if (aclrtFreeHost(cache.validationHost) != ACL_SUCCESS)
+        {
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+        cache.validationHost = nullptr;
+    }
+    if (cache.validationFlags != nullptr)
+    {
+        if (aclrtFree(cache.validationFlags) != ACL_SUCCESS)
+        {
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+        cache.validationFlags = nullptr;
+    }
+    return ACLSOLVER_STATUS_SUCCESS;
+}
+
 struct _aclsolver_handle
 {
     /* ========== Stream ========== */
     aclrtStream stream = nullptr;  ///< Current stream for kernel execution
+    // Large out-of-place inverse scratch is reused per context and released
+    // when this handle is destroyed. Events protect reuse across caller streams.
+    std::vector<_real_lu_workspace> realLuWorkspaces;
     struct Scratch
     {
-        void* ptr;
+        void *ptr;
         size_t bytes;
         aclrtStream stream;
     };

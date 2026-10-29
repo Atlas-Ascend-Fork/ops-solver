@@ -221,6 +221,32 @@ if [ "${RUN_TEST}" == "ON" ]; then
             continue
         fi
 
+        # Real LU tests prepare small inputs and check actual Device results in
+        # the executable. Full official cases are run by the separate selftest
+        # project against the supplied package and fixed adapter libraries.
+        case "${op}" in
+            sgetrf|sgetri|sgetri_batched|smatinv_batched)
+                if LD_LIBRARY_PATH="${BUILD_PATH}:${LD_LIBRARY_PATH}" "${TEST_BIN}"; then
+                    if [ "${op}" == "sgetrf" ]; then
+                        SUBNORMAL_TEST_BIN="${BUILD_DIR}/test/sgetrf/sgetrf_subnormal_pivot_test"
+                        if [ ! -x "${SUBNORMAL_TEST_BIN}" ] ||
+                           ! LD_LIBRARY_PATH="${BUILD_PATH}:${LD_LIBRARY_PATH}" "${SUBNORMAL_TEST_BIN}"; then
+                            echo "[FAIL] sgetrf_subnormal_pivot_test"
+                            FAILED_OPS+=("${op}")
+                            continue
+                        fi
+                        echo "[PASS] sgetrf_subnormal_pivot_test"
+                    fi
+                    echo "[PASS] ${op}_test (basic functionality and boundaries)"
+                    PASSED_OPS+=("${op}")
+                else
+                    echo "[FAIL] ${op}_test"
+                    FAILED_OPS+=("${op}")
+                fi
+                continue
+                ;;
+        esac
+
         echo "step 1: generate test data..."
         python3 "${GEN_SCRIPT}"
 

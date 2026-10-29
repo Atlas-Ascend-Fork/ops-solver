@@ -85,6 +85,31 @@ extern "C"
     aclsolverStatus_t aclsolverGetStream(aclsolverHandle_t handle, aclrtStream* stream);
 
     /**
+     * FLOAT32 dense real solver C APIs. Matrix, workspace, pivot and info buffers
+     * are Device memory. Matrices use column-major storage with caller-provided
+     * leading dimensions. Lwork is a Host output, measured in float elements;
+     * query A may be null. Null pivots select factorization/solve without pivoting.
+     * getrf returns packed LU and 1-based row pivots. getri consumes those factors
+     * and pivots, then overwrites A with its inverse. Batched APIs use Device arrays
+     * of Device pointers and independent output matrices. matinv accepts n<=32.
+     * info is 0 on success, -i for an illegal argument excluding handle, or the
+     * first positive zero U diagonal. Errors in an unusable info buffer cannot
+     * be written to that buffer. Device metadata/value checks require caller-stream
+     * synchronization to return INVALID_VALUE; matrix arithmetic stays on AI Core.
+     */
+    aclsolverStatus_t aclsolverSgetrf_bufferSize(aclsolverHandle_t handle, int m, int n, float* A, int lda, int* Lwork);
+    aclsolverStatus_t aclsolverSgetrf(aclsolverHandle_t handle, int m, int n, float* A, int lda, float* Workspace,
+                                      int* devIpiv, int* devInfo);
+    aclsolverStatus_t aclsolverSgetri_bufferSize(aclsolverHandle_t handle, int n, float* A, int lda, int* Lwork);
+    aclsolverStatus_t aclsolverSgetri(aclsolverHandle_t handle, int n, float* A, int lda, int* devIpiv,
+                                      float* Workspace, int Lwork, int* devInfo);
+    aclsolverStatus_t aclsolverSgetriBatched(aclsolverHandle_t handle, int n, const float* const Aarray[], int lda,
+                                             const int* PivotArray, float* const Carray[], int ldc, int* infoArray,
+                                             int batchSize);
+    aclsolverStatus_t aclsolverSmatinvBatched(aclsolverHandle_t handle, int n, const float* const A[], int lda,
+                                              float* const Ainv[], int lda_inv, int* info, int batchSize);
+
+    /**
      * @brief Query the workspace for a complex Hermitian Cholesky factorization.
      *
      * No device work is launched. Workspace counts are complex elements, not bytes.
@@ -290,22 +315,6 @@ aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex
                          int32_t* info);
 
 /**
- * @brief Inversion of a single real float matrix
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param n order of the square matrix, valid range [1, 8192]
- * @param A input matrix: the original matrix A to invert. The operator performs
- *             LU decomposition internally (it does NOT consume LU factors from
- *             aclsolverSgetrf; passing packed LU output would silently produce
- *             a pivot-permuted result). FLOAT32, contiguous n * n layout
- * @param lda leading dimension; current version requires lda == n
- * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
- *             Argument errors are reported via the return value, not via info.
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float* A, const int64_t lda, int32_t* info);
-
-/**
  * @brief LU decomposition of a single complex matrix (A = P * L * U)
  *
  * @param handle aclsolver handle created by aclsolverCreate
@@ -344,26 +353,6 @@ aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_
  */
 aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_t m, const int64_t n, float* A,
                          const int64_t lda, int32_t* info);
-
-/**
- * @brief LU decomposition of a single real float matrix (A = P * L * U)
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param m rows of matrix A, valid range [1, 8192]
- * @param n columns of matrix A, valid range [1, 8192]
- * @param A input/output matrix, FLOAT32, contiguous m * n layout; holds L and U on return
- * @param lda leading dimension; current version requires lda == n
- * @param ipiv output pivot indices (1-based), length min(m, n). If the matrix is
- *             singular, the entry at the first singular column stays 0 (sentinel).
- * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
- *             On success reports the 1-based index of the first singular column
- *             (LAPACK positive-info convention) if the matrix is singular, else
- *             remains 0. Argument errors (including n > 8192) are reported via
- *             the return value, not via info.
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float* A, const int64_t lda,
-                         int32_t* ipiv, int32_t* info);
 
 /**
  * @brief Compute eigenvalues and optionally eigenvectors of a complex Hermitian matrix.

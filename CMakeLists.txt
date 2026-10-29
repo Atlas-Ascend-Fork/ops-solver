@@ -83,6 +83,36 @@ set_source_files_properties(
     PROPERTIES LANGUAGE ASC
 )
 
+# Real LU accepts every finite FLOAT32 value, including subnormal pivots.
+# The 950 compiler defaults to flushing these values to zero.
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+    # CANN 9.0 cannot dynamically index VF register arrays. Generate the small
+    # straight-line variants in the build tree instead of storing expanded code.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(REAL_LU_VF_DIR "${CMAKE_CURRENT_BINARY_DIR}/real_lu_generated")
+    set(REAL_LU_VF_HEADER "${REAL_LU_VF_DIR}/real_lu_fixed_vf.hpp")
+    add_custom_command(OUTPUT "${REAL_LU_VF_HEADER}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_real_lu_fixed_vf.py"
+                --output "${REAL_LU_VF_HEADER}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_real_lu_fixed_vf.py"
+        VERBATIM)
+    add_custom_target(real_lu_fixed_vf DEPENDS "${REAL_LU_VF_HEADER}")
+    add_dependencies(${OPS_SOLVER} real_lu_fixed_vf)
+    target_include_directories(${OPS_SOLVER} PRIVATE "${REAL_LU_VF_DIR}")
+    set(REAL_LU_VF_STACK_BYTES 16384)
+    target_compile_definitions(${OPS_SOLVER} PRIVATE
+        REAL_LU_REGISTER_LAYOUT_950=1 REAL_LU_VF_STACK_BYTES=${REAL_LU_VF_STACK_BYTES})
+    set_property(SOURCE
+        src/sgetrf/sgetrf_kernel.cpp
+        src/sgetrf/real_lu_blocked_kernel.cpp
+        src/sgetri/sgetri_kernel.cpp
+        src/sgetri/real_lu_blocked_inverse_kernel.cpp
+        APPEND PROPERTY COMPILE_OPTIONS --cce-ftz=false
+    )
+    set_property(SOURCE src/sgetri/sgetri_kernel.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "-mllvm" "-cce-vf-stack-size=${REAL_LU_VF_STACK_BYTES}")
+endif()
+
 if(SOC_VERSION_LOWER MATCHES "^ascend950")
     set_source_files_properties(src/cpotrf/arch35/cholesky_kernels.cpp
         src/cpotrf/arch35/cholesky_factor.cpp
@@ -113,6 +143,7 @@ target_compile_options(${OPS_SOLVER} PRIVATE
 target_link_libraries(${OPS_SOLVER} PRIVATE
     tiling_api
     platform
+    register
 )
 
 # ========= 安装规则（CPack 打包时放入 lib64 和 include） =========

@@ -7,170 +7,118 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include "../utils/real_lu_common.h"
+#include "tiling/platform/platform_ascendc.h"
 
-/*!
- * \file sgetrf_host.cpp
- * \brief
- */
-
-#include <securec.h>
-
-#include <algorithm>
-#include <cstdint>
-
-#include "../utils/assert.h"
-#include "../utils/gm_addr.h"
-#include "../utils/lu_host_common.h"
-#include "acl/acl.h"
-#include "cann_ops_solver.h"
-
-extern void sgetrf_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work,
-                             GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm, uint32_t numBlocks,
-                             void *stream);
-
-aclError aclsolverSgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float *A, const int64_t lda,
-                         int32_t *ipiv, int32_t *info)
+extern "C" int real_lu_vector_cores()
 {
-    // info 遵循 LAPACK 语义（issue #164）：成功为 0，参数错误由下方 ECHECK 以负值
-    // 语义返回（aclError）；奇异信息见各 kernel 主元哨兵约定
-    if (info != nullptr)
+    auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
+    return platform == nullptr ? 1 : std::max(1, static_cast<int>(platform->GetCoreNumAiv()));
+}
+extern "C" int real_lu_cube_cores()
+{
+    auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
+    return platform == nullptr ? 1 : std::max(1, static_cast<int>(platform->GetCoreNumAic()));
+}
+
+aclsolverStatus_t aclsolverSgetrf_bufferSize(aclsolverHandle_t handle, int m, int n, float *A, int lda, int *Lwork)
+{
+    if (handle == nullptr)
     {
-        *info = 0;
+        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
     }
-    // info 允许为空（issue #180）：对齐 LAPACK 惯例，调用方不关心奇异信息时
-    // 可传 nullptr；此处的判空初始化与奇异列上报处的判空防护因此都是可达分支
-    SOLVER_ECHECK(m > 0 && n > 0 && lda > 0 && A != nullptr && ipiv != nullptr,
-                  "aclsolverSgetrf invalid param: m, n, lda <= 0, or A, ipiv is nullptr.", ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(m <= INT32_MAX && n <= INT32_MAX, "aclsolverSgetrf invalid param: m or n exceeds int32 range.",
-                  ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(m * n <= INT32_MAX, "aclsolverSgetrf invalid param: m * n exceeds INT32_MAX elements.",
-                  ACL_ERROR_INVALID_PARAM);
-    // n 上限校验（issue #230，对齐 cgetrf 的 LU_CGETRF_MAX_N 口径与头文档声明）：
-    // n > 8192 时 kernel 侧 PadCustom::Process 的 linesPerIter = TILE_LENGTH/alignedN
-    // 为 0，随后 lines/linesPerIter 整数除零（未定义行为）
-    SOLVER_ECHECK(n <= LU_CGETRF_MAX_N, "aclsolverSgetrf invalid param: n exceeds the kernel design limit 8192.",
-                  ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(m <= LU_MAX_ROW, "aclsolverSgetrf invalid param: m exceeds the 8192-row kernel limit.",
-                  ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(
-        lda == n,
-        "aclsolverSgetrf only supports lda == n in current version, matrix A must be stored contiguously as m * n.",
-        ACL_ERROR_INVALID_PARAM);
-    aclrtStream stream = nullptr;
-    if (handle != nullptr)
+    if (m < 0 || m > 8192 || n < 0 || lda < std::max(1, m) || Lwork == nullptr || real_lu::Device(Lwork) ||
+        (A != nullptr && !real_lu::Device(A)))
     {
-        aclsolverGetStream(handle, &stream);
+        return ACLSOLVER_STATUS_INVALID_VALUE;
     }
-    // kernel hardcoded gemm1BlockNum=8, gemm2BlockNum=20-8, must use 20 blocks
-    const uint32_t numBlocks = LU_MAX_NUM_BLOCKS;
-
-    const int64_t blockN = LU_BLOCK_N;
-    const int64_t tileM = LU_TILE_M;
-    // 尺寸推导统一在 int64_t 域计算，避免 m/n 较大时 int 乘加溢出导致缓冲尺寸回绕
-    int64_t t = (std::min(m, n) + blockN - 1) / blockN * blockN;
-    int64_t alignedM = LuAlignUp(m, LU_ROW_ALIGNED);
-    int64_t strideN = LuAlignUp(n, LU_COL_ALIGNED);
-
-    size_t aMatrixFileSize = static_cast<size_t>(m) * n * sizeof(float);
-    size_t wFileSize = t * sizeof(int);
-
-    uint8_t *aMatrixHost = reinterpret_cast<uint8_t *>(A);
-    uint8_t *aMatrixDevice = nullptr;
-    uint8_t *aMatrixDeviceWork = nullptr;
-    uint8_t *wHost = nullptr;
-    uint8_t *wDevice = nullptr;
-    uint8_t *workDevice = nullptr;
-    uint8_t *gatherHost1 = nullptr, *gatherHost2 = nullptr;
-    uint8_t *gatherDevice1 = nullptr, *gatherDevice2 = nullptr;
-    uint8_t *sync = nullptr;
-
-    auto cleanup = [&]()
+    int size = real_lu::FactorWorkspace(m, n);
+    if (size < 0)
     {
-        if (aMatrixDevice) aclrtFree(aMatrixDevice);
-        if (aMatrixDeviceWork) aclrtFree(aMatrixDeviceWork);
-        if (wDevice) aclrtFree(wDevice);
-        if (wHost) aclrtFreeHost(wHost);
-        if (workDevice) aclrtFree(workDevice);
-        if (gatherDevice1) aclrtFree(gatherDevice1);
-        if (gatherDevice2) aclrtFree(gatherDevice2);
-        if (gatherHost1) aclrtFreeHost(gatherHost1);
-        if (gatherHost2) aclrtFreeHost(gatherHost2);
-    };
-
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDevice, aMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemcpy(aMatrixDevice, aMatrixFileSize, aMatrixHost, aMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
-                cleanup());
-
-    size_t aMatrixWorkSize = static_cast<size_t>(strideN) * static_cast<size_t>(alignedM) * sizeof(float);
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, aMatrixWorkSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    CHECK_ACLRT(aclrtMallocHost((void **)(&wHost), wFileSize), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemset(wDevice, wFileSize, -1, wFileSize), cleanup());
-
-    int64_t workM = LuAlignUp(m, LU_TILE_M);
-    size_t workSize = static_cast<size_t>(workM) * blockN * sizeof(float);
-    CHECK_ACLRT(aclrtMalloc((void **)&workDevice, workSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    size_t gatherSize = tileM * blockN * sizeof(float);
-    CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost1), gatherSize), cleanup());
-    CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost2), gatherSize), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&gatherDevice1, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&gatherDevice2, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    // gather1/gather2 重排表收敛为 utils 共享实现（issue #144）
-    if (!GenerateGatherTables(tileM, blockN, n, strideN, alignedM, gatherHost1, gatherHost2, nullptr, nullptr,
-                              EYE_FLOATS_PER_REAL_ELEMENT))
-    {
-        cleanup();
-        return ACL_ERROR_INTERNAL_ERROR;
+        return ACLSOLVER_STATUS_INVALID_VALUE;
     }
-    CHECK_ACLRT(aclrtMemcpyAsync(gatherDevice1, gatherSize, gatherHost1, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                cleanup());
-    CHECK_ACLRT(aclrtMemcpyAsync(gatherDevice2, gatherSize, gatherHost2, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                cleanup());
+    *Lwork = m == 0 || n == 0 ? 0 : size;
+    return ACLSOLVER_STATUS_SUCCESS;
+}
 
-    CHECK_ACLRT(aclrtGetHardwareSyncAddr((void **)&sync), cleanup());
-    sgetrf_kernel_do(sync, m, n, blockN, tileM, aMatrixDevice, aMatrixDeviceWork, wDevice, workDevice, gatherDevice1,
-                     gatherDevice2, numBlocks, stream);
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), cleanup());
-
-    CHECK_ACLRT(aclrtMemcpy(aMatrixHost, aMatrixFileSize, aMatrixDevice, aMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
-                cleanup());
-
-    // Copy pivot information back to ipiv
-    int32_t *wHostInt = reinterpret_cast<int32_t *>(wHost);
-    CHECK_ACLRT(aclrtMemcpy(wHost, wFileSize, wDevice, wFileSize, ACL_MEMCPY_DEVICE_TO_HOST), cleanup());
-    for (int64_t i = 0; i < std::min(m, n); ++i)
+namespace
+{
+int FactorArgument(int m, int n, float *a, int lda, float *workspace, int *piv, int *info)
+{
+    if (m < 0 || m > 8192)
     {
-        // W 主元哨兵初始化为 -1（0xFFFFFFFF），kernel 只回写真实主元行号；
-        // 残留哨兵说明该列主元为零（矩阵奇异），按 LAPACK 语义上报首个
-        // 奇异列号（1-based）。与复数孪生算子 cgetrf_host.cpp 口径对齐，
-        // 修复实矩阵奇异时静默返回成功且 info==0 的不对称行为（issue #205）
-        if (info != nullptr && *info == 0 && wHostInt[i] == -1)
+        return 1;
+    }
+    if (n < 0 || real_lu::FactorWorkspace(m, n) < 0)
+    {
+        return 2;
+    }
+    if (m > 0 && n > 0 && !real_lu::Device(a))
+    {
+        return 3;
+    }
+    if (lda < std::max(1, m))
+    {
+        return 4;
+    }
+    if (m > 0 && n > 0 && !real_lu::Device(workspace))
+    {
+        return 5;
+    }
+    if (piv != nullptr && !real_lu::Device(piv))
+    {
+        return 6;
+    }
+    return real_lu::Device(info) ? 0 : 7;
+}
+aclsolverStatus_t LaunchFactor(aclsolverHandle_t handle, int m, int n, float *a, int lda, float *workspace, int *piv,
+                               int *info)
+{
+    if (real_lu::ThinFactor(m, n))
+    {
+        real_lu_thin_factor_do(a, workspace, m, n, lda, piv, info, real_lu::Stream(handle));
+    }
+    else if (real_lu::BlockedFactor(m, n))
+    {
+        if (real_lu_blocked_factor_do(a, workspace, piv, info, m, n, lda, real_lu::Stream(handle)) != 0)
         {
-            *info = static_cast<int32_t>(i + 1);
-        }
-        ipiv[i] = wHostInt[i] + 1;  // Convert to 1-based indexing
-    }
-    // 奇异性判定补充（issue #231）：kernel 侧 choosePivot 对零主元列也会回写
-    // 真实行号（值域 [offsetM, offsetM+blockM-1]，永不为 -1），上面的哨兵扫描
-    // 实际不可达；改用 LAPACK getrf 同款判据——分解后 U 的对角元为零即奇异，
-    // 从回读的 A（列主序，lda==n）取对角元 |U[i][i]| == 0 上报首个奇异列
-    if (info != nullptr && *info == 0)
-    {
-        const float *aF = reinterpret_cast<const float *>(aMatrixHost);
-        for (int64_t i = 0; i < std::min(m, n); ++i)
-        {
-            if (aF[i * n + i] == 0.0f)
-            {
-                *info = static_cast<int32_t>(i + 1);
-                break;
-            }
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
         }
     }
+    else
+    {
+        real_lu_factor_do(a, m, n, lda, piv, info, real_lu::Stream(handle));
+    }
+    return real_lu::Launched();
+}
+}  // namespace
 
-    cleanup();
-
-    return ACL_SUCCESS;
+aclsolverStatus_t aclsolverSgetrf(aclsolverHandle_t handle, int m, int n, float *A, int lda, float *Workspace,
+                                  int *devIpiv, int *devInfo)
+{
+    if (handle == nullptr)
+    {
+        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+    }
+    int arg = FactorArgument(m, n, A, lda, Workspace, devIpiv, devInfo);
+    if (arg)
+    {
+        return real_lu::Invalid(handle, devInfo, 1, arg);
+    }
+    if (m == 0 || n == 0)
+    {
+        return real_lu::EmptyInfo(handle, devInfo, 1);
+    }
+    auto status =
+        real_lu::CheckSingle(handle, m, n, A, lda, devIpiv, Workspace, real_lu::FactorWorkspace(m, n), devInfo, false);
+    if (status != ACLSOLVER_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    status = real_lu::CheckFinite(handle, A, m, n, lda, 1, false, devInfo, 3);
+    if (status != ACLSOLVER_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    return LaunchFactor(handle, m, n, A, lda, Workspace, devIpiv, devInfo);
 }

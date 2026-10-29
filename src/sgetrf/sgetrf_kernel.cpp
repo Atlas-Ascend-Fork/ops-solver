@@ -7,356 +7,506 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include <acl/acl.h>
 
-/*!
- * \file sgetrf_kernel.cpp
- * \brief
- */
+#include <algorithm>
 
-#ifndef SGETRF_MIX_H
-#define SGETRF_MIX_H
+#include "../utils/kernel/real_lu.hpp"
+using namespace RealLuKernel;
+extern "C" int real_lu_vector_cores();
 
-#include <lib/matrix/matmul/matmul.h>
-
-#include <cstdint>
-
-#include "../utils/kernel/c32/pad.hpp"
-#include "../utils/kernel/c32/trsm.hpp"
-#include "./kernel/getf2.hpp"
-#include "kernel_operator.h"
-
-using namespace AscendC;
-using namespace matmul;
-
-template <typename T>
-class GTRF2Solver
+namespace
 {
-    TransPose<T> optranspose;
-    LUCustom1<T> opLU1;
-    LUCustom3<T> opLU3;
-    GlobalTensor<T> aGlobal;
-    GlobalTensor<T> workGlobal;
-    GlobalTensor<uint32_t> wGlobal;
-    GlobalTensor<uint32_t> gather1, gather2;
-    TQue<QuePosition::VECIN, 1> inQueueSrc;
-    TQue<QuePosition::VECOUT, 1> outQueueDst;
-    int M, N;
-    int orgM;
-    int blockN;
-    int workM;
-    int tileM;
-    int blockIdx;
-    TBufPool<TPosition::VECCALC, 16> *pipe;
-    static constexpr int TILE_LENGTH = 8192;
-
-   public:
-    __aicore__ inline GTRF2Solver() {}
-    __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe, GlobalTensor<T> aGlobal,
-                                GlobalTensor<T> workGlobal, GlobalTensor<uint32_t> wGlobal,
-                                GlobalTensor<uint32_t> gather1, GlobalTensor<uint32_t> gather2, int M, int orgM, int N,
-                                int blockN, int workM, int tileM)
-    {
-        this->pipe = pipe;
-        this->aGlobal = aGlobal;
-        this->workGlobal = workGlobal;
-        this->wGlobal = wGlobal;
-        this->gather1 = gather1;
-        this->gather2 = gather2;
-        this->M = M;
-        this->N = N;
-        this->orgM = orgM;
-        this->blockN = blockN;
-        this->workM = workM;
-        this->tileM = tileM;
-        this->blockIdx = GetBlockIdx();
-    }
-    __aicore__ inline void Process(int offsetM, int offsetN, int blockM, int realN)
-    {
-        if (blockM > 512)
-        {
-            if (blockIdx >= 8)
-            {
-                CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-                CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-                return;
-            }
-            if (!offsetM)
-            {
-                pipe->InitBuffer(inQueueSrc, 1, 8192 * sizeof(T));
-                pipe->InitBuffer(outQueueDst, 1, 8192 * sizeof(T));
-                optranspose.Init(pipe, inQueueSrc, outQueueDst, aGlobal, workGlobal, gather1, gather2, workM, N, tileM,
-                                 blockN);
-                opLU3.Init(pipe, inQueueSrc, workGlobal, wGlobal, workM, blockN, blockN);
-            }
-            int totalBlocks = (blockM + tileM - 1) / tileM;
-            int transposeM1 = 0, transposeM2 = 0;
-            if ((blockIdx + 1) * tileM <= blockM)
-                transposeM1 = tileM;
-            else if (blockIdx * tileM <= blockM)
-                transposeM1 = blockM % tileM;
-            if ((blockIdx + 9) * tileM <= blockM)
-                transposeM2 = tileM;
-            else if ((blockIdx + 8) * tileM <= blockM)
-                transposeM2 = blockM % tileM;
-
-            int srcOffset = (offsetM + blockIdx * tileM) * N + offsetN;
-            int dstOffset = (totalBlocks - 1 - blockIdx) * tileM;
-
-            // > 4096 need to do twice
-            if (transposeM1)
-            {
-                optranspose.Process1(srcOffset, dstOffset, transposeM1);
-                if (transposeM2)
-                {
-                    optranspose.Process1(srcOffset + 8 * tileM * N, dstOffset - 8 * tileM, transposeM2);
-                }
-            }
-            // need all core sync
-            CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-            CrossCoreWaitFlag(0x6);
-
-            opLU3.Process((tileM - blockM % tileM) % tileM, offsetM, offsetN, blockM, blockM + orgM - M, realN);
-
-            CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-            CrossCoreWaitFlag(0x6);
-
-            if (transposeM1)
-            {
-                optranspose.Process2(srcOffset, dstOffset, transposeM1);
-                if (transposeM2)
-                {
-                    optranspose.Process2(srcOffset + 8 * tileM * N, dstOffset - 8 * tileM, transposeM2);
-                }
-            }
-        }
-        else
-        {
-            if (blockIdx) return;
-
-            int srcOffset = offsetM * N + offsetN;
-            int dstOffset = 0;
-            if (blockM == 512 || !offsetM)
-            {
-                pipe->Reset();
-                pipe->InitBuffer(inQueueSrc, 1, 8192 * sizeof(T));
-                pipe->InitBuffer(outQueueDst, 1, 8192 * sizeof(T));
-                optranspose.Init(pipe, inQueueSrc, outQueueDst, aGlobal, workGlobal, gather1, gather2, workM, N, tileM,
-                                 blockN);
-                opLU1.Init(pipe, inQueueSrc, workGlobal, wGlobal, workM, blockN, blockN);
-            }
-            optranspose.Process1(srcOffset, dstOffset, blockM);
-            int32_t eventIDMTE3ToMTE2 =
-                static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-            opLU1.Process(tileM - blockM, offsetM, offsetN, blockM, blockM + orgM - M, realN);
-
-            eventIDMTE3ToMTE2 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-
-            optranspose.Process2(srcOffset, dstOffset, blockM);
-        }
-    }
-};
-
-__aicore__ inline void custom_lu(int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work, GM_ADDR W,
-                                 GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm)
+__aicore__ inline void PrepareFiniteMask(LocalTensor<float> scratch, LocalTensor<uint8_t> mask, int lda, int m,
+                                         int chunk)
 {
-    int M = (orgM + 15) / 16 * 16;
-    int strideN = (orgN + 127) / 128 * 128;
-    int N = (orgN + 15) / 16 * 16;
-    int t = min(M, N);
-    int cnt = t / blockN;
-    int blockM = 16;
-    int blockNum = GetBlockNum();
-    int blockIdx = GetBlockIdx();
-    int coreIdx = blockIdx >> 1;
-    int workM = (M + tileM - 1) / tileM * tileM;
+    if (lda == 0)
+    {
+        return;
+    }
+    if (lda < 0 || lda == m)
+    {
+        return;
+    }
+    for (int i = 0; i < chunk; ++i)
+    {
+        scratch.SetValue(i, i % lda < m ? 1.0f : 0.0f);
+    }
+    Fence<HardEvent::S_V>();
+    CompareScalar(mask, scratch, 0.5f, CMPMODE::GT, chunk);
+    PipeBarrier<PIPE_V>();
+}
+__aicore__ inline int LoadFiniteColumn(LocalTensor<float> raw, GlobalTensor<uint64_t> pointers, GM_ADDR input,
+                                       bool arrays, int64_t job, int m, int n, int lda)
+{
+    if (n == 0)
+    {
+        return 0;
+    }
+    if (n < 0)
+    {
+        return 0;
+    }
+    int index = job / n, column = job % n;
+    GlobalTensor<float> matrix;
+    uint64_t address = arrays
+                           ? pointers.GetValue(index)
+                           : reinterpret_cast<uint64_t>(input) + static_cast<uint64_t>(index) * lda * n * sizeof(float);
+    matrix.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(address));
+    Load(raw, matrix[static_cast<int64_t>(column) * lda], m);
+    return m;
+}
+__aicore__ inline bool NonFiniteChunk(LocalTensor<float> raw, LocalTensor<float> diff, LocalTensor<float> scratch,
+                                      LocalTensor<float> sum, LocalTensor<uint8_t> mask, int count, bool padding)
+{
+    Fence<HardEvent::S_V>();
+    Sub(diff, raw, raw, count);
+    PipeBarrier<PIPE_V>();
+    if (padding)
+    {
+        Duplicate(raw, 0.0f, count);
+        PipeBarrier<PIPE_V>();
+        Select(diff, mask, diff, raw, SELMODE::VSEL_TENSOR_TENSOR_MODE, count);
+        PipeBarrier<PIPE_V>();
+    }
+    ReduceSum(sum, diff, scratch, count);
+    Fence<HardEvent::V_S>();
+    float value = sum.GetValue(0);
+    return value != value;
+}
+__aicore__ inline int LoadFiniteChunk(LocalTensor<float> raw, GlobalTensor<float> a, GlobalTensor<uint64_t> pointers,
+                                      GM_ADDR input, bool arrays, bool linear, int64_t job, int64_t total, int chunk,
+                                      int m, int n, int lda)
+{
+    if (linear)
+    {
+        int64_t first = job * chunk;
+        int count = total - first < chunk ? total - first : chunk;
+        Load(raw, a[first], count);
+        return count;
+    }
+    return LoadFiniteColumn(raw, pointers, input, arrays, job, m, n, lda);
+}
+__aicore__ inline void StoreFiniteResult(GM_ADDR flags, LocalTensor<int> scratch, int bad)
+{
+    GlobalTensor<int> result;
+    result.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(flags));
+    StoreInt(result[GetBlockIdx()], scratch, bad);
+}
+}  // namespace
 
-    GlobalTensor<float> aGlobalOrg;
-    GlobalTensor<float> aGlobal;
-    GlobalTensor<uint32_t> wGlobal;
-    GlobalTensor<float> workGlobal;
-    GlobalTensor<uint32_t> gather1;
-    GlobalTensor<uint32_t> gather2;
-
-    aGlobalOrg.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(A_org));
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(A_work));
-    wGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(W));
-    workGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(work_gm));
-    gather1.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gather1_gm));
-    gather2.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gather2_gm));
-
+__global__ __aicore__ void real_lu_finite_kernel(GM_ADDR input, GM_ADDR flags, int m, int n, int lda, int batch,
+                                                 bool arrays)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    if (lda == 0)
+    {
+        return;
+    }
+    if (m <= 0 || n <= 0 || lda < 0 || batch <= 0)
+    {
+        return;
+    }
     TPipe pipe;
-    TBufPool<TPosition::VECCALC, 16> tbufPool;
-    MatmulCustom<float> opmm;
-    SolveTrsm<float> optrsm;
-
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
-    pipe.InitBufPool(tbufPool, 192 * 1024);
-
-    PadCustom<float> oppad;
-    oppad.Init(&tbufPool);
-    oppad.SetMatrix(aGlobalOrg, aGlobal, orgN, orgN, strideN);
-    oppad.PadCustomWork(M, blockNum << 1, blockIdx);
-    tbufPool.Reset();
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-
-    GTRF2Solver<float> getf2solver;
-    getf2solver.Init(&tbufPool, aGlobal, workGlobal, wGlobal, gather1, gather2, M, orgM, strideN, blockN, workM, tileM);
-    getf2solver.Process(0, 0, M, min(orgN, blockN));
-
-    SwapRows<float> opswap;
-    if (blockIdx == 8) opswap.Init(&tbufPool, aGlobal);
-
-    NegateCustom<float> opng;
-    if (coreIdx >= 4)
+    TBuf<TPosition::VECCALC> rawBuf, diffBuf, scratchBuf, sumBuf, maskBuf;
+    pipe.InitBuffer(rawBuf, 8192 * sizeof(float));
+    pipe.InitBuffer(diffBuf, 8192 * sizeof(float));
+    pipe.InitBuffer(scratchBuf, 8192 * sizeof(float));
+    pipe.InitBuffer(sumBuf, 32);
+    pipe.InitBuffer(maskBuf, 1024);
+    auto raw = rawBuf.Get<float>(), diff = diffBuf.Get<float>(), scratch = scratchBuf.Get<float>();
+    auto sum = sumBuf.Get<float>();
+    auto mask = maskBuf.Get<uint8_t>();
+    GlobalTensor<float> a;
+    a.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(input));
+    GlobalTensor<uint64_t> pointers;
+    pointers.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(input));
+    bool linear = !arrays && lda <= 8192;
+    int chunk = linear ? 8192 / lda * lda : m;
+    if (chunk <= 0)
     {
-        optrsm.Init(&tbufPool, blockM);
-        if (blockIdx & 1) opng.Init(&tbufPool);
+        return;
     }
-    for (int i = 1, offset = blockN; i < cnt; ++i, offset += blockN)
+    if (linear)
     {
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);
-        DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            wGlobal[offset - blockN]);
-        if (blockIdx == 8)
+        PrepareFiniteMask(scratch, mask, lda, m, chunk);
+    }
+    int64_t total = static_cast<int64_t>(batch) * lda * n;
+    int64_t jobs = linear ? (total + chunk - 1) / chunk : static_cast<int64_t>(batch) * n;
+    int bad = 0;
+    for (int64_t job = GetBlockIdx(); job < jobs; job += GetBlockNum())
+    {
+        int count = LoadFiniteChunk(raw, a, pointers, input, arrays, linear, job, total, chunk, m, n, lda);
+        if (NonFiniteChunk(raw, diff, scratch, sum, mask, count, linear && lda != m))
         {
-            for (int j = offset - blockN; j < offset; ++j)
-            {
-                int p = wGlobal.GetValue(j);
-                opswap.Process(offset + j * strideN, offset + p * strideN, N - offset);
-                opswap.Process(j * strideN, p * strideN, offset - blockN);
-            }
-        }
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);
-        int trsmTotalN = min((i & -i) * blockN, t - offset);
-        int trsmM = (i & -i) * blockN;
-        int trsmBlocks = min(blockNum - 4, (trsmTotalN + 15) / 16);
-        int trsmBlockN = ((trsmTotalN + trsmBlocks - 1) / trsmBlocks + 15) / 16 * 16;
-        int trsmOffsetN = trsmBlockN * (coreIdx - 4);
-        int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-        if (coreIdx >= 4 && trsmOffsetN < trsmTotalN)
-        {
-            solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                             aGlobal[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                             aGlobal[offset - trsmM + (offset - trsmM) * strideN]);
-            CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-        }
-        CrossCoreWaitFlag(0x5);
-        getf2solver.Process(offset, offset, M - offset, min(orgN - offset, blockN));
-        if (coreIdx >= 4 && blockIdx & 1 && trsmOffsetN < trsmTotalN)
-        {
-            opng.SetMatrix(aGlobal[trsmOffsetN + offset + (offset - trsmM) * strideN], strideN);
-            opng.Process(trsmM, realBlockN);
-        }
-        if (blockIdx >= 8 && M - offset > 512)
-        {
-            CrossCoreWaitFlag(0x6);
-            CrossCoreWaitFlag(0x6);
+            bad = 1;
+            break;
         }
     }
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-    DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(wGlobal[t - blockN]);
-    if (blockIdx == 8)
-    {
-        for (int j = t - blockN; j < min(orgM, orgN); ++j)
-        {
-            int p = wGlobal.GetValue(j);
-            opswap.Process(t + j * strideN, t + p * strideN, N - t);
-            opswap.Process(j * strideN, p * strideN, t - blockN);
-        }
-    }
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
+    StoreFiniteResult(flags, sumBuf.Get<int>(), bad);
+}
+extern "C" void real_lu_finite_do(GM_ADDR a, GM_ADDR flags, int m, int n, int lda, int batch, bool arrays, int blocks,
+                                  aclrtStream stream)
+{
+    real_lu_finite_kernel<<<blocks, nullptr, stream>>>(a, flags, m, n, lda, batch, arrays);
+}
 
-    if (N > M)
+__global__ __aicore__ void real_lu_fill_info_kernel(GM_ADDR info, int count, int value)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    TPipe pipe;
+    TBuf<TPosition::VECCALC> buffer;
+    pipe.InitBuffer(buffer, 4096);
+    auto local = buffer.Get<int>();
+    GlobalTensor<int> output;
+    output.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(info));
+    Duplicate(local, value, 1024);
+    Fence<HardEvent::V_MTE3>();
+    for (int64_t begin = static_cast<int64_t>(GetBlockIdx()) * 1024; begin < count;
+         begin += static_cast<int64_t>(GetBlockNum()) * 1024)
     {
-        int trsmTotalN = N - M;
-        int trsmM = M;
-        int trsmBlocks = min(blockNum - 4, (trsmTotalN + 15) / 16);
-        int trsmBlockN = ((trsmTotalN + trsmBlocks - 1) / trsmBlocks + 15) / 16 * 16;
-        int trsmOffsetN = trsmBlockN * (coreIdx - 4);
-        int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-        if (coreIdx >= 4 && trsmOffsetN < trsmTotalN)
-        {
-            solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM, aGlobal[M + trsmOffsetN], aGlobal[0]);
-        }
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);
-        if (coreIdx >= 4 && blockIdx & 1 && trsmOffsetN < trsmTotalN)
-        {
-            opng.SetMatrix(aGlobal[M + trsmOffsetN], strideN);
-            opng.Process(trsmM, realBlockN);
-        }
+        int size = count - begin < 1024 ? count - begin : 1024;
+        DataCopyExtParams copy{1, static_cast<uint32_t>(size * sizeof(int)), 0, 0, 0};
+        DataCopyPad(output[begin], local, copy);
     }
-
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-    tbufPool.Reset();
-    oppad.Init(&tbufPool);
-    oppad.SetMatrix(aGlobal, aGlobalOrg, orgN, strideN, orgN);
-    oppad.PadCustomWork(orgM, blockNum << 1, blockIdx);
-
-#elif defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
-    opmm.Init(&pipe);
-    SetAtomicAdd<float>();
-    for (int i = 1, offset = blockN; i < cnt; ++i, offset += blockN)
+    Fence<HardEvent::MTE3_S>();
+}
+namespace
+{
+__aicore__ inline void ConfigureFactorLayout(int m, int n, int steps, int &stride, bool &localMatrix)
+{
+#if defined(REAL_LU_REGISTER_LAYOUT_950)
+    // The full local matrix needs one scratch column. The unused GM-path
+    // second column is a 32-byte stub; account for it and the info buffer.
+    // A failed VF-capacity check keeps the original local/GM fallback.
+    constexpr int FACTOR_950_LOCAL_BYTES = 237568;
+    int vectorStride = (m + 63) / 64 * 64;
+    int64_t vectorLocalBytes = (static_cast<int64_t>(vectorStride) * (n + 1) + Align(steps) + 16) * sizeof(float);
+    if (vectorLocalBytes <= FACTOR_950_LOCAL_BYTES)
     {
-        int trsmTotalN = min((i & -i) * blockN, t - offset);
-        int trsmM = (i & -i) * blockN;
-        int trsmBlocks = min(blockNum - 4, (trsmTotalN + 15) / 16);
-        int trsmBlockN = ((trsmTotalN + trsmBlocks - 1) / trsmBlocks + 15) / 16 * 16;
-        int trsmOffsetN = trsmBlockN * (blockIdx - 4);
-        if (blockIdx >= 4 && trsmOffsetN < trsmTotalN)
-        {
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                             aGlobal[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                             aGlobal[offset - trsmM + (offset - trsmM) * strideN]);
-            CrossCoreWaitFlag(0x3);
-            opmm.SetMatrix(aGlobal[offset - trsmM + offset * strideN],
-                           aGlobal[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                           aGlobal[trsmOffsetN + offset + offset * strideN], strideN, strideN);
-            opmm.Process(0, 0, 0, M - offset, realBlockN, trsmM);
-        }
-        CrossCoreSetFlag<0x0, PIPE_FIX>(0x4);
-        CrossCoreWaitFlag(0x4);
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0x5);
+        stride = vectorStride;
+        localMatrix = true;
     }
-    if (N > M)
-    {
-        int trsmTotalN = N - M;
-        int trsmM = M;
-        int trsmBlocks = min(blockNum - 4, (trsmTotalN + 15) / 16);
-        int trsmBlockN = ((trsmTotalN + trsmBlocks - 1) / trsmBlocks + 15) / 16 * 16;
-        int trsmOffsetN = trsmBlockN * (blockIdx - 4);
-        int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-        if (blockIdx >= 4 && trsmOffsetN < trsmTotalN)
-        {
-            solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM, aGlobal[M + trsmOffsetN], aGlobal[0]);
-        }
-    }
+#else
+    (void)m;
+    (void)n;
+    (void)steps;
+    (void)stride;
+    (void)localMatrix;
 #endif
 }
-
-__global__ __aicore__ void sgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org,
-                                         GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm,
-                                         GM_ADDR gather2_gm)
+__aicore__ inline void UpdateGlobalFactorColumns(GlobalTensor<float> a, LocalTensor<float> col,
+                                                 LocalTensor<float> other, int m, int n, int lda, int k, int p,
+                                                 float diagonal)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    custom_lu(orgM, orgN, blockN, tileM, A_org, A_work, W, work_gm, gather1_gm, gather2_gm);
+    for (int j = 0; j < n; ++j)
+    {
+        if (j == k || (j < k && p == k))
+        {
+            continue;
+        }
+        Load(other, a[static_cast<int64_t>(j) * lda], m);
+        Swap(other, k, p);
+        if (j > k && diagonal != 0 && k + 1 < m)
+        {
+            UpdateColumn(other, col, k, m, other.GetValue(k));
+        }
+        Store(a[static_cast<int64_t>(j) * lda], other, m);
+    }
+}
+__aicore__ inline int FactorGlobal(GlobalTensor<float> a, LocalTensor<float> col, LocalTensor<float> other,
+                                   LocalTensor<float> reduction, LocalTensor<int> piv, int m, int n, int lda, int steps,
+                                   bool pivoting)
+{
+    int state = 0;
+    for (int k = 0; k < steps; ++k)
+    {
+        Load(col, a[static_cast<int64_t>(k) * lda], m);
+        int p = PivotRF(col, other, reduction, k, m, pivoting);
+        piv.SetValue(k, p + 1);
+        Swap(col, k, p);
+        float diagonal = col.GetValue(k);
+        if (diagonal == 0 && state == 0)
+        {
+            state = k + 1;
+        }
+        if (diagonal != 0 && k + 1 < m)
+        {
+            ScaleColumnRF(col, other, reduction, k, m, diagonal);
+        }
+        Store(a[static_cast<int64_t>(k) * lda], col, m);
+        UpdateGlobalFactorColumns(a, col, other, m, n, lda, k, p, diagonal);
+    }
+    return state;
+}
+__aicore__ inline int FactorLoadedMatrix(GlobalTensor<float> a, LocalTensor<float> mat, LocalTensor<float> col,
+                                         LocalTensor<int> piv, LocalTensor<float> reduction, int m, int n, int lda,
+                                         int stride, bool pivoting)
+{
+    for (int j = 0; j < n; ++j)
+    {
+        Load(mat[j * stride], a[static_cast<int64_t>(j) * lda], m);
+    }
+    int state = FactorLocalRF(mat, col, m, n, stride, piv, pivoting, reduction);
+    for (int j = 0; j < n; ++j)
+    {
+        Store(a[static_cast<int64_t>(j) * lda], mat[j * stride], m);
+    }
+    return state;
+}
+}  // namespace
+
+__global__ __aicore__ void real_lu_factor_kernel(GM_ADDR matrix, int m, int n, int lda, GM_ADDR pivot, GM_ADDR info)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    TPipe pipe;
+    int stride = Align(m), steps = m < n ? m : n;
+    bool localMatrix = static_cast<int64_t>(stride) * n <= 32768;
+    ConfigureFactorLayout(m, n, steps, stride, localMatrix);
+    TBuf<TPosition::VECCALC> matrixBuf, colBuf, otherBuf, pivBuf, infoBuf;
+    pipe.InitBuffer(matrixBuf, localMatrix ? stride * n * sizeof(float) : 32);
+    pipe.InitBuffer(colBuf, stride * sizeof(float));
+    pipe.InitBuffer(otherBuf, localMatrix ? 32 : stride * sizeof(float));
+    pipe.InitBuffer(pivBuf, Align(steps) * sizeof(int));
+    pipe.InitBuffer(infoBuf, 32);
+    auto mat = matrixBuf.Get<float>();
+    auto col = colBuf.Get<float>();
+    auto other = otherBuf.Get<float>();
+    auto piv = pivBuf.Get<int>();
+    auto tmp = infoBuf.Get<int>();
+    GlobalTensor<float> a;
+    a.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(matrix));
+    int state = localMatrix
+                    ? FactorLoadedMatrix(a, mat, col, piv, infoBuf.Get<float>(), m, n, lda, stride, pivot != nullptr)
+                    : FactorGlobal(a, col, other, infoBuf.Get<float>(), piv, m, n, lda, steps, pivot != nullptr);
+    if (pivot != nullptr)
+    {
+        GlobalTensor<int> out;
+        out.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(pivot));
+        Fence<HardEvent::S_MTE3>();
+        DataCopyExtParams copy{1, static_cast<uint32_t>(steps * sizeof(int)), 0, 0, 0};
+        DataCopyPad(out, piv, copy);
+        Fence<HardEvent::MTE3_S>();
+    }
+    GlobalTensor<int> result;
+    result.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(info));
+    StoreInt(result, tmp, state);
+}
+extern "C" void real_lu_fill_info_do(GM_ADDR info, int count, int value, aclrtStream stream)
+{
+    int blocks = std::min<int64_t>(real_lu_vector_cores(), (static_cast<int64_t>(count) + 1023) / 1024);
+    real_lu_fill_info_kernel<<<blocks, nullptr, stream>>>(info, count, value);
+}
+extern "C" void real_lu_factor_do(GM_ADDR a, int m, int n, int lda, GM_ADDR piv, GM_ADDR info, aclrtStream stream)
+{
+    real_lu_factor_kernel<<<1, nullptr, stream>>>(a, m, n, lda, piv, info);
 }
 
-void sgetrf_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work, GM_ADDR W,
-                      GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm, uint32_t numBlocks, void *stream)
+// A short first panel determines the pivots and unit-lower factor. Independent
+// trailing column tiles then apply P and solve L*U=P*A in parallel.
+__global__ __aicore__ void real_lu_thin_panel_kernel(GM_ADDR matrix, GM_ADDR workspace, GM_ADDR pivot, GM_ADDR info,
+                                                     int m, int lda)
 {
-    sgetrf_kernel<<<numBlocks, nullptr, stream>>>(sync, orgM, orgN, blockN, tileM, A_org, A_work, W, work_gm,
-                                                  gather1_gm, gather2_gm);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    TPipe pipe;
+    int stride = 8;
+    while (stride < m)
+    {
+        stride *= 2;
+    }
+    TBuf<TPosition::VECCALC> factorBuf, columnBuf, pivBuf, infoBuf;
+    pipe.InitBuffer(factorBuf, stride * m * sizeof(float));
+    pipe.InitBuffer(columnBuf, stride * sizeof(float));
+    pipe.InitBuffer(pivBuf, stride * sizeof(int));
+    pipe.InitBuffer(infoBuf, 32);
+    auto factor = factorBuf.Get<float>(), column = columnBuf.Get<float>();
+    auto piv = pivBuf.Get<int>();
+    GlobalTensor<float> a, w;
+    a.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(matrix));
+    w.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
+    for (int col = 0; col < m; ++col)
+    {
+        Load(factor[col * stride], a[static_cast<int64_t>(col) * lda], m);
+    }
+    int state = FactorLocal(factor, column, m, m, stride, piv, pivot != nullptr);
+    Store(w, factor, stride * m);
+    for (int col = 0; col < m; ++col)
+    {
+        Store(a[static_cast<int64_t>(col) * lda], factor[col * stride], m);
+    }
+    GlobalTensor<int> internal, external, result;
+    internal.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(workspace) + stride * m);
+    result.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(info));
+    Fence<HardEvent::S_MTE3>();
+    DataCopyExtParams copy{1, static_cast<uint32_t>(m * sizeof(int)), 0, 0, 0};
+    DataCopyPad(internal, piv, copy);
+    if (pivot != nullptr)
+    {
+        external.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(pivot));
+        DataCopyPad(external, piv, copy);
+    }
+    Fence<HardEvent::MTE3_S>();
+    StoreInt(result, infoBuf.Get<int>(), state);
 }
-#endif  // SGETRF_MIX_H
+
+namespace
+{
+class ThinColumns
+{
+   public:
+    __aicore__ inline ThinColumns(TPipe &pipe, GM_ADDR matrix, GM_ADDR workspace, int m, int lda) : m(m), lda(lda)
+    {
+        while (stride < m)
+        {
+            stride *= 2;
+        }
+        entries = stride * lanes;
+        for (int s = stride; s > 1; s /= 2)
+        {
+            ++shift;
+        }
+        pipe.InitBuffer(rawBuf, entries * sizeof(float));
+        pipe.InitBuffer(rowsBuf, entries * sizeof(float));
+        pipe.InitBuffer(indexBuf, entries * sizeof(int));
+        pipe.InitBuffer(factorBuf, stride * m * sizeof(float));
+        pipe.InitBuffer(tmpBuf, lanes * sizeof(float));
+        pipe.InitBuffer(pivBuf, stride * sizeof(int));
+        raw = rawBuf.Get<float>();
+        rows = rowsBuf.Get<float>();
+        factor = factorBuf.Get<float>();
+        tmp = tmpBuf.Get<float>();
+        index = indexBuf.Get<uint32_t>();
+        piv = pivBuf.Get<int>();
+        a.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(matrix));
+        w.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
+        p.SetGlobalBuffer(reinterpret_cast<__gm__ int *>(workspace) + stride * m);
+        Load(factor, w, stride * m);
+        DataCopyExtParams pivotCopy{1, static_cast<uint32_t>(m * sizeof(int)), 0, 0, 0};
+        DataCopyPadExtParams<int> pivotPad{true, 0, static_cast<uint8_t>(Align(m) - m), 0};
+        DataCopyPad(piv, p, pivotCopy, pivotPad);
+        Fence<HardEvent::MTE2_S>();
+    }
+    __aicore__ inline void Run(int first, int count)
+    {
+        LoadRows(first, count);
+        ApplyPivots();
+        SolveRows();
+        StoreColumns(first, count);
+    }
+
+   private:
+    __aicore__ inline void LoadRows(int first, int count)
+    {
+        CreateVecIndex(index.ReinterpretCast<int>(), 0, lanes);
+        PipeBarrier<PIPE_V>();
+        ShiftLeft(index, index, static_cast<uint32_t>(shift + 2), lanes);
+        PipeBarrier<PIPE_V>();
+        for (int row = 1; row < stride; ++row)
+        {
+            Adds(index[row * lanes].ReinterpretCast<int>(), index.ReinterpretCast<int>(), row * 4, lanes);
+        }
+        Fence<HardEvent::V_MTE2>();
+        DataCopyExtParams copy{static_cast<uint16_t>(count), static_cast<uint32_t>(m * sizeof(float)),
+                               static_cast<uint32_t>((lda - m) * sizeof(float)),
+                               static_cast<uint32_t>((stride - Align(m)) / 8), 0};
+        DataCopyPadExtParams<float> pad{true, 0, static_cast<uint8_t>(Align(m) - m), 0};
+        DataCopyPad(raw, a[static_cast<int64_t>(first) * lda], copy, pad);
+        Fence<HardEvent::MTE2_V>();
+        Gather(rows, raw, index, 0, entries);
+        Fence<HardEvent::V_S>();
+    }
+    __aicore__ inline void ApplyPivots()
+    {
+        for (int k = 0; k < m; ++k)
+        {
+            int selected = piv.GetValue(k) - 1;
+            if (selected == k)
+            {
+                continue;
+            }
+            Fence<HardEvent::S_V>();
+            Adds(tmp, rows[k * lanes], 0.0f, lanes);
+            PipeBarrier<PIPE_V>();
+            Adds(rows[k * lanes], rows[selected * lanes], 0.0f, lanes);
+            Adds(rows[selected * lanes], tmp, 0.0f, lanes);
+            Fence<HardEvent::V_S>();
+        }
+    }
+    __aicore__ inline void SolveRows()
+    {
+        for (int k = 0; k < m; ++k)
+        {
+            if (factor.GetValue(k * stride + k) == 0.0f)
+            {
+                continue;
+            }
+            for (int row = k + 1; row < m; ++row)
+            {
+                float coefficient = -factor.GetValue(k * stride + row);
+                Fence<HardEvent::S_V>();
+                Axpy(rows[row * lanes], rows[k * lanes], coefficient, lanes);
+                Fence<HardEvent::V_S>();
+            }
+        }
+    }
+    __aicore__ inline void StoreColumns(int first, int count)
+    {
+        // Build packed-column output indices without overwriting the row data.
+        Fence<HardEvent::S_V>();
+        CreateVecIndex(index.ReinterpretCast<int>(), 0, entries);
+        Duplicate(tmp.ReinterpretCast<int>(), stride - 1, lanes);
+        PipeBarrier<PIPE_V>();
+        ShiftRight(raw.ReinterpretCast<uint32_t>(), index, static_cast<uint32_t>(shift), entries);
+        for (int start = 0; start < entries; start += lanes)
+        {
+            And(index[start].ReinterpretCast<int>(), index[start].ReinterpretCast<int>(), tmp.ReinterpretCast<int>(),
+                lanes);
+        }
+        PipeBarrier<PIPE_V>();
+        ShiftLeft(index, index, 9u, entries);
+        PipeBarrier<PIPE_V>();
+        Add(index.ReinterpretCast<int>(), index.ReinterpretCast<int>(), raw.ReinterpretCast<int>(), entries);
+        PipeBarrier<PIPE_V>();
+        ShiftLeft(index, index, 2u, entries);
+        PipeBarrier<PIPE_V>();
+        Gather(raw, rows, index, 0, entries);
+        Fence<HardEvent::V_MTE3>();
+        DataCopyExtParams store{static_cast<uint16_t>(count), static_cast<uint32_t>(m * sizeof(float)),
+                                static_cast<uint32_t>((stride - Align(m)) / 8),
+                                static_cast<uint32_t>((lda - m) * sizeof(float)), 0};
+        DataCopyPad(a[static_cast<int64_t>(first) * lda], raw, store);
+        Fence<HardEvent::MTE3_S>();
+    }
+    static constexpr int lanes = 512;
+    int m, lda, stride = 8, entries = 0, shift = 0;
+    TBuf<TPosition::VECCALC> rawBuf, rowsBuf, indexBuf, factorBuf, tmpBuf, pivBuf;
+    LocalTensor<float> raw, rows, factor, tmp;
+    LocalTensor<uint32_t> index;
+    LocalTensor<int> piv;
+    GlobalTensor<float> a, w;
+    GlobalTensor<int> p;
+};
+}  // namespace
+
+__global__ __aicore__ void real_lu_thin_columns_kernel(GM_ADDR matrix, GM_ADDR workspace, int m, int n, int lda)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    TPipe pipe;
+    ThinColumns op(pipe, matrix, workspace, m, lda);
+    constexpr int lanes = 512;
+    int tiles = (n - m + lanes - 1) / lanes;
+    for (int tile = GetBlockIdx(); tile < tiles; tile += GetBlockNum())
+    {
+        int first = m + tile * lanes;
+        int count = n - first < lanes ? n - first : lanes;
+        op.Run(first, count);
+    }
+}
+
+extern "C" void real_lu_thin_factor_do(GM_ADDR a, GM_ADDR workspace, int m, int n, int lda, GM_ADDR piv, GM_ADDR info,
+                                       aclrtStream stream)
+{
+    real_lu_thin_panel_kernel<<<1, nullptr, stream>>>(a, workspace, piv, info, m, lda);
+    real_lu_thin_columns_kernel<<<std::min(real_lu_vector_cores(), (n - m + 511) / 512), nullptr, stream>>>(
+        a, workspace, m, n, lda);
+}

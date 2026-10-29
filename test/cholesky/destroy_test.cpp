@@ -33,6 +33,7 @@ struct Allocation
     aclrtStream stream;
     int attempts = 0;
     bool released = false;
+    aclrtContext context = nullptr;
 };
 std::map<void*, Allocation> allocations;
 std::map<aclrtStream, bool> completed;
@@ -42,6 +43,15 @@ bool deviceFailure = false;
 void* failingFree = nullptr;
 int freeFailures = 0;
 int deviceSyncCalls = 0;
+aclrtContext currentContext = nullptr;
+bool restoreFailure = false;
+bool eventFailure = false;
+bool eventDestroyFailure = false;
+int eventSyncCalls = 0;
+int eventDestroyCalls = 0;
+
+aclrtContext OwningContext() { return reinterpret_cast<aclrtContext>(&deviceSyncCalls); }
+aclrtContext OtherContext() { return reinterpret_cast<aclrtContext>(&freeFailures); }
 
 void Require(bool condition, const char* message)
 {
@@ -66,6 +76,9 @@ _aclsolver_handle* NewHandle()
     failingFree = nullptr;
     freeFailures = 0;
     deviceSyncCalls = 0;
+    currentContext = OwningContext();
+    restoreFailure = eventFailure = eventDestroyFailure = false;
+    eventSyncCalls = eventDestroyCalls = 0;
     aclsolverHandle_t handle = nullptr;
     Require(aclsolverCreate(&handle) == ACLSOLVER_STATUS_SUCCESS, "create failed");
     return static_cast<_aclsolver_handle*>(handle);
@@ -76,8 +89,27 @@ void* AddBlock(_aclsolver_handle* handle, aclrtStream stream)
     void* ptr = std::malloc(TEST_BLOCK_BYTES);
     Require(ptr != nullptr, "mock allocation failed");
     allocations.emplace(ptr, Allocation{stream});
+    allocations.at(ptr).context = currentContext;
     completed[stream] = false;
     handle->choleskyScratch.push_back({ptr, TEST_BLOCK_BYTES, stream});
+    return ptr;
+}
+
+void* AddRealBlock(_aclsolver_handle* handle, bool recorded)
+{
+    void* ptr = std::malloc(TEST_BLOCK_BYTES);
+    Require(ptr != nullptr, "mock LU allocation failed");
+    allocations.emplace(ptr, Allocation{OtherStream(), 0, false, OtherContext()});
+    completed[OtherStream()] = false;
+    _real_lu_workspace cache;
+    cache.context = OtherContext();
+    cache.data = ptr;
+    cache.capacity = TEST_BLOCK_BYTES;
+    cache.recorded = recorded;
+    cache.completion = recorded ? reinterpret_cast<aclrtEvent>(ptr) : nullptr;
+    cache.untracked = !recorded;
+    cache.pendingStream = recorded ? nullptr : OtherStream();
+    handle->realLuWorkspaces.push_back(cache);
     return ptr;
 }
 
@@ -142,6 +174,62 @@ void IncompleteStream()
     Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "pending stream retry failed");
     RequireReleased();
 }
+
+void MixedSuccess()
+{
+    auto* handle = NewHandle();
+    AddBlock(handle, nullptr);
+    AddRealBlock(handle, true);
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "mixed cleanup failed");
+    Require(currentContext == OwningContext(), "LU cleanup did not restore the owning context");
+    Require(eventSyncCalls == 1 && eventDestroyCalls == 1, "LU event lifecycle changed");
+    RequireReleased();
+}
+
+void MixedLuFailure(bool event, bool destroyEvent)
+{
+    auto* handle = NewHandle();
+    void* chol = AddBlock(handle, nullptr);
+    void* real = AddRealBlock(handle, event);
+    failingStream = OtherStream();
+    streamFailure = !event;
+    eventFailure = event && !destroyEvent;
+    eventDestroyFailure = destroyEvent;
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_EXECUTION_FAILED, "LU cleanup error was hidden");
+    Require(allocations[chol].attempts == 0 && !completed[nullptr], "Cholesky ran after failed LU cleanup");
+    streamFailure = eventFailure = eventDestroyFailure = false;
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "mixed LU retry failed");
+    Require(allocations[real].attempts == 1, "LU retry released a completed block twice");
+    RequireReleased();
+}
+
+void MixedRestoreFailure()
+{
+    auto* handle = NewHandle();
+    void* chol = AddBlock(handle, nullptr);
+    AddRealBlock(handle, false);
+    restoreFailure = true;
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_EXECUTION_FAILED, "context restore error was hidden");
+    Require(currentContext == OtherContext() && allocations[chol].attempts == 0,
+            "Cholesky cleanup used the wrong context");
+    restoreFailure = false;
+    Require(aclrtSetCurrentContext(OwningContext()) == ACL_SUCCESS, "caller context recovery failed");
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "context recovery retry failed");
+    RequireReleased();
+}
+
+void MixedCholeskyFailure()
+{
+    auto* handle = NewHandle();
+    failingFree = AddBlock(handle, nullptr);
+    void* real = AddRealBlock(handle, false);
+    freeFailures = 1;
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_INTERNAL_ERROR, "Cholesky release error was hidden");
+    Require(allocations[real].released, "LU cleanup was lost");
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "mixed Cholesky retry failed");
+    Require(allocations[real].attempts == 1, "Cholesky retry released the LU block twice");
+    RequireReleased();
+}
 }  // namespace
 
 namespace Cholesky
@@ -151,7 +239,36 @@ aclsolverStatus_t ReportError(aclsolverStatus_t status, const char*) { return st
 
 extern "C" aclError aclrtGetCurrentContext(aclrtContext* context)
 {
-    *context = reinterpret_cast<aclrtContext>(&deviceSyncCalls);
+    *context = currentContext;
+    return ACL_SUCCESS;
+}
+extern "C" aclError aclrtSetCurrentContext(aclrtContext context)
+{
+    if (restoreFailure && context == OwningContext() && currentContext != context)
+    {
+        return MOCK_RUNTIME_ERROR;
+    }
+    currentContext = context;
+    return ACL_SUCCESS;
+}
+extern "C" aclError aclrtSynchronizeEvent(aclrtEvent event)
+{
+    ++eventSyncCalls;
+    if (eventFailure)
+    {
+        return MOCK_RUNTIME_ERROR;
+    }
+    completed[allocations.at(event).stream] = true;
+    return ACL_SUCCESS;
+}
+extern "C" aclError aclrtDestroyEvent(aclrtEvent)
+{
+    ++eventDestroyCalls;
+    return eventDestroyFailure ? MOCK_RUNTIME_ERROR : ACL_SUCCESS;
+}
+extern "C" aclError aclrtFreeHost(void* ptr)
+{
+    std::free(ptr);
     return ACL_SUCCESS;
 }
 extern "C" aclError aclrtSynchronizeStream(aclrtStream stream)
@@ -180,6 +297,7 @@ extern "C" aclError aclrtFree(void* ptr)
 {
     auto& allocation = allocations.at(ptr);
     Require(!allocation.released && completed[allocation.stream], "unsafe or duplicate release");
+    Require(currentContext == allocation.context, "release used the wrong context");
     ++allocation.attempts;
     if (ptr == failingFree && freeFailures != 0)
     {
@@ -215,7 +333,13 @@ int main()
         Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "empty handle cleanup touched Runtime");
         Require(deviceSyncCalls == 0, "empty handle performed a device barrier");
         Require(aclsolverDestroy(nullptr) == ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, "null handle status changed");
-        std::cout << "Destroy ownership, fallback, retry and safe release: 10 cases PASS\n";
+        MixedSuccess();
+        MixedLuFailure(false, false);
+        MixedLuFailure(true, false);
+        MixedLuFailure(true, true);
+        MixedRestoreFailure();
+        MixedCholeskyFailure();
+        std::cout << "Destroy ownership, fallback, retry and safe release: 16 cases PASS\n";
         return 0;
     }
     catch (const std::exception& error)

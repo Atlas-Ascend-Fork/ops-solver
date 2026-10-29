@@ -43,7 +43,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>单精度矩阵LU分解，计算单精度矩阵A的LU分解，A = P * L * U，其中P为置换矩阵，L为下三角矩阵，U为上三角矩阵。</td>
+    <td>单精度实数矩阵LU分解，P * A = L * U；支持950PR Device列主序、workspace查询和Device主元/INFO。</td>
   </tr>
   <tr>
     <td>solver</td>
@@ -75,7 +75,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>单精度矩阵求逆，利用LU分解计算单精度矩阵的逆矩阵。</td>
+    <td>单精度实数矩阵求逆，输入已分解LU及主元，原地输出逆矩阵；支持950PR Device接口和workspace查询。</td>
   </tr>
   <tr>
     <td>solver</td>
@@ -149,6 +149,22 @@
     <td>✓</td><td>✓</td><td>AI Core</td>
     <td>设备指针数组的批量复数 Cholesky 求解（nrhs=1）。</td>
   </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/sgetri_batched.md">sgetri_batched</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>单精度实数批量求逆，输入LU和主元；950PR Device列主序，独立输出，逐矩阵INFO。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/smatinv_batched.md">smatinv_batched</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>单精度实数小矩阵直接批量求逆，n≤32；950PR Device列主序，独立输出，逐矩阵INFO。</td>
+  </tr>
 </tbody></table>
 
 
@@ -170,11 +186,15 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 |------|------|
 | `aclsolverCgetrf` | 复数矩阵LU分解 |
 | `aclsolverCgetri` | 复数矩阵求逆 |
-| `aclsolverSgetrf` | 单精度矩阵LU分解 |
+| `aclsolverSgetrf_bufferSize` | 单矩阵LU分解workspace查询，返回FLOAT32元素数 |
+| `aclsolverSgetrf` | 单精度实数矩阵LU分解，Device列主序 |
 | `aclsolverSpotrf` | 单精度矩阵LL^T分解 |
 | `aclsolverSgeqrf` | 单精度矩阵QR分解 |
 | `aclsolverCgeqrf` | 复数矩阵QR分解 |
-| `aclsolverSgetri` | 单精度矩阵求逆 |
+| `aclsolverSgetri_bufferSize` | 单矩阵求逆workspace查询，返回FLOAT32元素数 |
+| `aclsolverSgetri` | 单精度实数矩阵求逆，输入LU和主元 |
+| `aclsolverSgetriBatched` | 单精度实数批量求逆，输入LU和主元 |
+| `aclsolverSmatinvBatched` | 单精度实数小矩阵直接批量求逆，n≤32 |
 | `aclsolverCmatinvBatched` | 批量复数矩阵求逆（小矩阵，n≤32） |
 | `aclsolverCgetriBatched` | 批量复数矩阵求逆（大矩阵，n>32） |
 | `aclsolverCheevj` | 单精度复数Hermitian矩阵特征值分解 |

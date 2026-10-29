@@ -29,6 +29,137 @@ namespace
  */
 inline _aclsolver_handle* ToInternal(aclsolverHandle_t handle) { return reinterpret_cast<_aclsolver_handle*>(handle); }
 
+inline aclsolverStatus_t ReleaseWorkspace(_real_lu_workspace& cache)
+{
+    if (RealLuDrainValidation(cache) != ACLSOLVER_STATUS_SUCCESS)
+    {
+        return ACLSOLVER_STATUS_EXECUTION_FAILED;
+    }
+    if (cache.untracked)
+    {
+        if (aclrtSynchronizeStream(cache.pendingStream) != ACL_SUCCESS)
+        {
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+        cache.untracked = false;
+        cache.recorded = false;
+        cache.pendingStream = nullptr;
+    }
+    if (cache.recorded && aclrtSynchronizeEvent(cache.completion) != ACL_SUCCESS)
+    {
+        return ACLSOLVER_STATUS_EXECUTION_FAILED;
+    }
+    cache.recorded = false;
+    if (cache.data != nullptr)
+    {
+        if (aclrtFree(cache.data) != ACL_SUCCESS)
+        {
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+        cache.data = nullptr;
+        cache.capacity = 0;
+    }
+    if (cache.completion != nullptr)
+    {
+        if (aclrtDestroyEvent(cache.completion) != ACL_SUCCESS)
+        {
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+        cache.completion = nullptr;
+    }
+    return ACLSOLVER_STATUS_SUCCESS;
+}
+
+inline bool HasWorkspaceResources(const _real_lu_workspace& cache)
+{
+    return cache.data != nullptr || cache.completion != nullptr || cache.recorded || cache.untracked ||
+           cache.validationPending || cache.validationHost != nullptr || cache.validationFlags != nullptr;
+}
+
+inline aclsolverStatus_t ReleaseHandleWorkspaces(_aclsolver_handle& handle)
+{
+    aclsolverStatus_t status = ACLSOLVER_STATUS_SUCCESS;
+    if (handle.realLuWorkspaces.empty())
+    {
+        return status;
+    }
+    aclrtContext original = nullptr;
+    if (aclrtGetCurrentContext(&original) != ACL_SUCCESS)
+    {
+        return ACLSOLVER_STATUS_EXECUTION_FAILED;
+    }
+    aclrtContext active = original;
+    for (auto& cache : handle.realLuWorkspaces)
+    {
+        if (!HasWorkspaceResources(cache))
+        {
+            continue;
+        }
+        if (cache.context != active && aclrtSetCurrentContext(cache.context) != ACL_SUCCESS)
+        {
+            status = ACLSOLVER_STATUS_EXECUTION_FAILED;
+            continue;
+        }
+        active = cache.context;
+        if (ReleaseWorkspace(cache) != ACLSOLVER_STATUS_SUCCESS)
+        {
+            status = ACLSOLVER_STATUS_EXECUTION_FAILED;
+        }
+    }
+    if (original != nullptr && aclrtSetCurrentContext(original) != ACL_SUCCESS)
+    {
+        status = ACLSOLVER_STATUS_EXECUTION_FAILED;
+    }
+    return status;
+}
+
+inline aclsolverStatus_t ReleaseCholeskyWorkspaces(_aclsolver_handle& handle)
+{
+    aclsolverStatus_t status = ACLSOLVER_STATUS_SUCCESS;
+    auto rememberError = [&status](aclsolverStatus_t error, const char* message)
+    {
+        Cholesky::ReportError(error, message);
+        if (status == ACLSOLVER_STATUS_SUCCESS)
+        {
+            status = error;
+        }
+    };
+    bool deviceSyncAttempted = false;
+    bool deviceSynchronized = false;
+    for (size_t i = 0; i < handle.choleskyScratch.size();)
+    {
+        const auto& block = handle.choleskyScratch[i];
+        if (!deviceSynchronized && aclrtSynchronizeStream(block.stream) != ACL_SUCCESS)
+        {
+            rememberError(ACLSOLVER_STATUS_EXECUTION_FAILED, "cannot synchronize Cholesky scratch stream");
+            if (!deviceSyncAttempted)
+            {
+                deviceSyncAttempted = true;
+                deviceSynchronized = aclrtSynchronizeDevice() == ACL_SUCCESS;
+            }
+            if (!deviceSynchronized)
+            {
+                // Keep ownership until a retry can prove that no kernel still uses this block.
+                ++i;
+                continue;
+            }
+        }
+        if (aclrtFree(block.ptr) != ACL_SUCCESS)
+        {
+            rememberError(ACLSOLVER_STATUS_INTERNAL_ERROR, "cannot release Cholesky scratch");
+            ++i;
+            continue;
+        }
+        handle.choleskyScratch.erase(handle.choleskyScratch.begin() + i);
+    }
+    if (status != ACLSOLVER_STATUS_SUCCESS)
+    {
+        // Failure always leaves a valid handle; retry also releases an emptied host handle.
+        return status;
+    }
+    return status;
+}
+
 }  // namespace
 
 extern "C"
@@ -73,46 +204,16 @@ extern "C"
 
         auto* h = ToInternal(handle);
 
-        aclsolverStatus_t status = ACLSOLVER_STATUS_SUCCESS;
-        auto rememberError = [&status](aclsolverStatus_t error, const char* message)
-        {
-            Cholesky::ReportError(error, message);
-            if (status == ACLSOLVER_STATUS_SUCCESS)
-            {
-                status = error;
-            }
-        };
-        bool deviceSyncAttempted = false;
-        bool deviceSynchronized = false;
-        for (size_t i = 0; i < h->choleskyScratch.size();)
-        {
-            const auto& block = h->choleskyScratch[i];
-            if (!deviceSynchronized && aclrtSynchronizeStream(block.stream) != ACL_SUCCESS)
-            {
-                rememberError(ACLSOLVER_STATUS_EXECUTION_FAILED, "cannot synchronize Cholesky scratch stream");
-                if (!deviceSyncAttempted)
-                {
-                    deviceSyncAttempted = true;
-                    deviceSynchronized = aclrtSynchronizeDevice() == ACL_SUCCESS;
-                }
-                if (!deviceSynchronized)
-                {
-                    // Keep ownership until a retry can prove that no kernel still uses this block.
-                    ++i;
-                    continue;
-                }
-            }
-            if (aclrtFree(block.ptr) != ACL_SUCCESS)
-            {
-                rememberError(ACLSOLVER_STATUS_INTERNAL_ERROR, "cannot release Cholesky scratch");
-                ++i;
-                continue;
-            }
-            h->choleskyScratch.erase(h->choleskyScratch.begin() + i);
-        }
+        aclsolverStatus_t status = ReleaseHandleWorkspaces(*h);
+        // LU cleanup can switch contexts. On failure, preserve ownership and
+        // let the caller restore the owning context before retrying Destroy.
         if (status != ACLSOLVER_STATUS_SUCCESS)
         {
-            // Failure always leaves a valid handle; retry also releases an emptied host handle.
+            return status;
+        }
+        status = ReleaseCholeskyWorkspaces(*h);
+        if (status != ACLSOLVER_STATUS_SUCCESS)
+        {
             return status;
         }
 

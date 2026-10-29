@@ -7,169 +7,114 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include "../utils/real_lu_common.h"
 
-/*!
- * \file sgetri_host.cpp
- * \brief
- */
-
-#include <securec.h>
-
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-
-#include "../utils/assert.h"
-#include "../utils/eye_matrix.h"
-#include "../utils/gm_addr.h"
-#include "../utils/lu_host_common.h"
-#include "acl/acl.h"
-#include "cann_ops_solver.h"
-
-extern void sgetri_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM, GM_ADDR A_org,
-                             GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm,
-                             GM_ADDR eye_gm, uint32_t numBlocks, void *stream);
-// gather 表与 eye 矩阵生成收敛为 utils 共享实现（issue #144）；
-// eye 的初始化范围扩展到 paddedM 行，消除 +128 行 padding 区未初始化上设备（issue #136）
-
-aclError aclsolverSgetri(aclsolverHandle_t handle, const int64_t n, float *A, const int64_t lda, int32_t *info)
+aclsolverStatus_t aclsolverSgetri_bufferSize(aclsolverHandle_t handle, int n, float *A, int lda, int *Lwork)
 {
-    // info 遵循 LAPACK 语义（issue #164）：成功为 0，参数错误由返回值上报；
-    // info 允许为空（issue #244，对齐 getrf 族 #180 的 nullptr 容错口径），
-    // 原先"前置判空容错 + ECHECK 必传"的自相矛盾分支已统一为本口径
-    if (info != nullptr)
+    if (handle == nullptr)
     {
-        *info = 0;
+        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
     }
-    SOLVER_ECHECK(n > 0 && lda > 0 && A != nullptr, "aclsolverSgetri invalid param: n, lda <= 0, or A is nullptr.",
-                  ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(n <= INT32_MAX, "aclsolverSgetri invalid param: n exceeds int32 range.", ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(n * n <= INT32_MAX, "aclsolverSgetri invalid param: n * n exceeds INT32_MAX elements.",
-                  ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(n <= LU_MAX_GETRI_N, "aclsolverSgetri invalid param: n exceeds the kernel design limit 8192.",
-                  ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(
-        lda == n,
-        "aclsolverSgetri only supports lda == n in current version, matrix A must be stored contiguously as n * n.",
-        ACL_ERROR_INVALID_PARAM);
-    aclrtStream stream = nullptr;
-    if (handle != nullptr)
+    if (n < 0 || n > 4096 || lda < std::max(1, n) || Lwork == nullptr || real_lu::Device(Lwork) ||
+        (A != nullptr && !real_lu::Device(A)))
     {
-        // GetStream 返回值校验（issue #255，对齐 closed #4/#36 口径）：失败被吞时
-        // 内核静默落在默认流并按 nullptr 同步，破坏调用方流语义且真实错误被掩盖
-        const aclError streamRet = aclsolverGetStream(handle, &stream);
-        SOLVER_ECHECK(streamRet == ACL_SUCCESS, "aclsolverSgetri failed to get stream from handle.",
-                      ACL_ERROR_INTERNAL_ERROR);
+        return ACLSOLVER_STATUS_INVALID_VALUE;
     }
+    *Lwork = real_lu::InverseWorkspace(n);
+    return ACLSOLVER_STATUS_SUCCESS;
+}
 
-    uint8_t *aMatrixDevice = nullptr;
-    uint8_t *aMatrixDeviceWork = nullptr;
-    uint8_t *wDevice = nullptr;
-    uint8_t *workDevice = nullptr;
-    uint8_t *eyeMatrixHost = nullptr;
-    uint8_t *eyeMatrixDevice = nullptr;
-    uint8_t *gatherHost1 = nullptr, *gatherHost2 = nullptr;
-    uint8_t *gatherDevice1 = nullptr, *gatherDevice2 = nullptr;
-    uint8_t *sync = nullptr;
-
-    auto cleanup = [&]()
+namespace
+{
+int InverseArgument(int n, float *a, int lda, int *piv, float *workspace, int workElements, int *info)
+{
+    if (n < 0 || n > 4096)
     {
-        if (aMatrixDevice) aclrtFree(aMatrixDevice);
-        if (aMatrixDeviceWork) aclrtFree(aMatrixDeviceWork);
-        if (eyeMatrixDevice) aclrtFree(eyeMatrixDevice);
-        if (eyeMatrixHost) aclrtFreeHost(eyeMatrixHost);
-        if (wDevice) aclrtFree(wDevice);
-        if (workDevice) aclrtFree(workDevice);
-        if (gatherDevice1) aclrtFree(gatherDevice1);
-        if (gatherDevice2) aclrtFree(gatherDevice2);
-        if (gatherHost1) aclrtFreeHost(gatherHost1);
-        if (gatherHost2) aclrtFreeHost(gatherHost2);
-    };
-
-    // 与 sgetrf/cgetrf 对齐：kernel 侧 LU 实现按固定 20 块设计（blockIdx 8/10 负责
-    // A/eye 主元行交换、coreIdx>=4 承担 trsm/gemm），块数不足时这些角色无人执行而
-    // 求逆结果静默错误，故必须固定使用 LU_MAX_NUM_BLOCKS（issue #147）
-    const uint32_t numBlocks = LU_MAX_NUM_BLOCKS;
-
-    const int64_t blockM = LU_ROW_ALIGNED;
-    const int64_t blockN = LU_BLOCK_N;
-    const int64_t tileM = LU_TILE_M;
-    // 尺寸推导统一在 int64_t 域计算，避免 n 较大时 int 乘加溢出导致缓冲尺寸回绕
-    int64_t t = (n + blockN - 1) / blockN * blockN;
-    int64_t alignedM = LuAlignUp(n, LU_ROW_ALIGNED);
-    int64_t strideN = LuAlignUp(n, LU_COL_ALIGNED);
-    // eye/工作区按 (alignedM + 128 行 padding) 布局，padding 区需清零后上设备（issue #136）
-    const int64_t paddedM = alignedM + EYE_ROW_PADDING;
-
-    size_t aMatrixFileSize = static_cast<size_t>(n) * n * sizeof(float);
-    size_t wFileSize = t * sizeof(int);
-
-    uint8_t *aMatrixHost = reinterpret_cast<uint8_t *>(A);
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDevice, aMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemcpy(aMatrixDevice, aMatrixFileSize, aMatrixHost, aMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
-                cleanup());
-
-    size_t aMatrixWorkSize = static_cast<size_t>(strideN) * paddedM * sizeof(float);
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, aMatrixWorkSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    CHECK_ACLRT(aclrtMalloc((void **)&wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemset(wDevice, wFileSize, -1, wFileSize), cleanup());
-
-    int64_t workM = LuAlignUp(n, LU_TILE_M);
-    size_t workSize = static_cast<size_t>(workM) * blockN * sizeof(float);
-    CHECK_ACLRT(aclrtMalloc((void **)&workDevice, workSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    CHECK_ACLRT(aclrtMallocHost((void **)(&eyeMatrixHost), aMatrixWorkSize), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&eyeMatrixDevice, aMatrixWorkSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    size_t gatherSize = tileM * blockN * sizeof(float);
-    CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost1), gatherSize), cleanup());
-    CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost2), gatherSize), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&gatherDevice1, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&gatherDevice2, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    if (!GenerateGatherTables(tileM, blockN, n, strideN, paddedM, gatherHost1, gatherHost2, nullptr, eyeMatrixHost,
-                              EYE_FLOATS_PER_REAL_ELEMENT))
-    {
-        cleanup();
-        return ACL_ERROR_INTERNAL_ERROR;
+        return 1;
     }
-    CHECK_ACLRT(aclrtMemcpyAsync(gatherDevice1, gatherSize, gatherHost1, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                cleanup());
-    CHECK_ACLRT(aclrtMemcpyAsync(gatherDevice2, gatherSize, gatherHost2, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE, stream),
-                cleanup());
-    CHECK_ACLRT(
-        aclrtMemcpy(eyeMatrixDevice, aMatrixWorkSize, eyeMatrixHost, aMatrixWorkSize, ACL_MEMCPY_HOST_TO_DEVICE),
-        cleanup());
-
-    CHECK_ACLRT(aclrtGetHardwareSyncAddr((void **)&sync), cleanup());
-
-    sgetri_kernel_do(sync, n, n, blockM, blockN, tileM, aMatrixDevice, aMatrixDeviceWork, wDevice, workDevice,
-                     gatherDevice1, gatherDevice2, eyeMatrixDevice, numBlocks, stream);
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), cleanup());
-
-    CHECK_ACLRT(aclrtMemcpy(aMatrixHost, aMatrixFileSize, aMatrixDevice, aMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
-                cleanup());
-
-    // 奇异上报（issue #254，落地 docs/zh/sgetri.md 承诺的 LAPACK 语义）：内核 trsm
-    // 阶段以 U 对角元作除数，奇异输入（主元为 0）时 1/0 产生 Inf 并扩散为 NaN，
-    // 此前既无通道也无检查，接口返回成功且 info=0。host 侧在结果 D2H 后扫描 A_work
-    // 的 U 对角线（工作区布局：分解结果位于 work 副本对角），首个非有限/零对角元的
-    // 1-based 列号写入 info，同 getrf 体口径；正常路径数值与返回值不变
-    const int32_t n32 = static_cast<int32_t>(n);
-    for (int32_t col = 0; col < n32; ++col)
+    if (n > 0 && !real_lu::Device(a))
     {
-        const float pivot = aMatrixHost[static_cast<size_t>(col) * n32 + col];
-        if (pivot == 0.0f || !std::isfinite(pivot))
+        return 2;
+    }
+    if (lda < std::max(1, n))
+    {
+        return 3;
+    }
+    if (piv != nullptr && !real_lu::Device(piv))
+    {
+        return 4;
+    }
+    if (n > 0 &&
+        (!real_lu::Device(workspace) || real_lu::Overlap(a, static_cast<size_t>(lda) * n * sizeof(float), workspace,
+                                                         static_cast<size_t>(n) * n * sizeof(float))))
+    {
+        return 5;
+    }
+    if (workElements < real_lu::InverseWorkspace(n))
+    {
+        return 6;
+    }
+    return real_lu::Device(info) ? 0 : 7;
+}
+aclsolverStatus_t LaunchInverse(aclsolverHandle_t handle, int n, float *a, int lda, int *piv, float *workspace,
+                                int *info, bool identity)
+{
+    auto stream = real_lu::Stream(handle);
+    if (real_lu::BlockedInverse(n))
+    {
+        if (real_lu_blocked_inverse_do(a, a, piv, info, workspace, n, lda, lda, 1, false, identity, stream) != 0)
         {
-            if (info != nullptr)
-            {
-                *info = col + 1;
-            }
-            break;
+            return ACLSOLVER_STATUS_EXECUTION_FAILED;
         }
     }
+    else
+    {
+        if (lda == n && (n == 4 || n == 8))
+        {
+            real_lu_small_do(a, workspace, piv, info, n, 1, false, identity, stream);
+        }
+        else
+        {
+            real_lu_inverse_do(a, workspace, piv, info, n, lda, n, 1, false, false, stream);
+        }
+        real_lu_copy_do(workspace, a, info, n, lda, stream);
+    }
+    return real_lu::Launched();
+}
+}  // namespace
 
-    cleanup();
-
-    return ACL_SUCCESS;
+aclsolverStatus_t aclsolverSgetri(aclsolverHandle_t handle, int n, float *A, int lda, int *devIpiv, float *Workspace,
+                                  int Lwork, int *devInfo)
+{
+    if (handle == nullptr)
+    {
+        return ACLSOLVER_STATUS_HANDLE_IS_NULLPTR;
+    }
+    int arg = InverseArgument(n, A, lda, devIpiv, Workspace, Lwork, devInfo);
+    if (arg)
+    {
+        return real_lu::Invalid(handle, devInfo, 1, arg);
+    }
+    if (n == 0)
+    {
+        return real_lu::EmptyInfo(handle, devInfo, 1);
+    }
+    auto status =
+        real_lu::CheckSingle(handle, n, n, A, lda, devIpiv, Workspace, real_lu::InverseWorkspace(n), devInfo, true);
+    if (status != ACLSOLVER_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    bool identity = true;
+    status = real_lu::CheckPivots(handle, devIpiv, n, devInfo, 1, &identity);
+    if (status != ACLSOLVER_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    status = real_lu::CheckFinite(handle, A, n, n, lda, 1, false, devInfo, 2);
+    if (status != ACLSOLVER_STATUS_SUCCESS)
+    {
+        return status;
+    }
+    return LaunchInverse(handle, n, A, lda, devIpiv, Workspace, devInfo, identity);
 }

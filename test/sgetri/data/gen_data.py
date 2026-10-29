@@ -10,13 +10,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import sys, os
+import sys
+import os
 import numpy as np
 
 np.random.seed(42)
 
 # 从命令行读取矩阵维度 n
-n = int(sys.argv[1]) if len(sys.argv) > 1 else 32 # 使用方式: python script.py <n>
+n = int(sys.argv[1]) if len(sys.argv) > 1 else 32  # 使用方式: python script.py <n>
 
 # 生成随机实数矩阵 (float32)
 a = np.random.randn(n, n).astype(np.float32)
@@ -32,34 +33,10 @@ for i in range(n):
     a[i, i] = row_sum + np.random.rand() * 10
 
 
-# 计算逆矩阵 (float32)
-inv_a = np.linalg.inv(a).astype(np.float32)
-
 os.makedirs(os.path.dirname("./test/sgetri/data/input/A_gm.bin"), exist_ok=True)
-os.makedirs(os.path.dirname("./test/sgetri/data/output/golden.bin"), exist_ok=True)
 
 # 写入输入数据 (原始矩阵)
 with open("./test/sgetri/data/input/A_gm.bin", "wb") as f:
     f.write(a.tobytes())
 
-# 写入输出数据 (逆矩阵)
-with open("./test/sgetri/data/output/golden.bin", "wb") as f:
-    f.write(inv_a.tobytes())
-
-print(f"Generated {n}x{n} float matrix and its inverse")
-
-# # 可选：打印矩阵形状和部分数据用于验证
-# print("Input matrix (first 3x3):\n", a[:3, :3])
-# print("Inverse matrix (first 3x3):\n", inv_a[:3, :3])
-
-# product = np.matmul(a, inv_a)
-# identity = np.eye(n, dtype=np.float32)
-
-# # 计算误差
-# abs_error = np.abs(product - identity)
-# max_error = np.max(abs_error)
-# mean_error = np.mean(abs_error)
-# print("Verification results:")
-# print(f"Max absolute error: {max_error:.3e}")
-# print(f"Mean absolute error: {mean_error:.3e}")
-# print("Product of A and inv(A) (first 3x3):\n", product[:3, :3])
+print(f"Generated {n}x{n} float matrix")
