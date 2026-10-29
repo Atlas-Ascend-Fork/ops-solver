@@ -33,29 +33,6 @@ git clone -b ${tag_version} https://gitcode.com/cann/ops-solver.git
 
 说明：对于CANNLab云开发环境，已默认提供最新商发CANN版本配套的源码，如需获取其他版本源码，参考上述命令获取。
 
-## Atlas 950PR单精度实数LU与求逆
-
-新增950PR实数Device接口及测试接入，使用上表配套CANN环境：
-
-| 接口 | 功能 |
-| --- | --- |
-| [Sgetrf](docs/zh/sgetrf.md) | 单矩阵LU分解及workspace查询 |
-| [Sgetri](docs/zh/sgetri.md) | 从LU和主元求逆及workspace查询 |
-| [SgetriBatched](docs/zh/sgetri_batched.md) | 从批量LU和主元求逆 |
-| [SmatinvBatched](docs/zh/smatinv_batched.md) | n≤32的原始小矩阵批量求逆 |
-
-矩阵使用Device列主序，主元、INFO和workspace在Device；批量接口接收Device上的Device指针数组。
-单矩阵workspace查询的Lwork在Host，以FLOAT32元素计。参数约束、调用示例和各产品验证范围见接口文档。
-
-在仓库根目录构建库、adapter并运行四接口基础测试：
-
-```bash
-bash build.sh --soc=ascend950 --ops=sgetrf,sgetri,sgetri_batched,smatinv_batched --run
-```
-
-构建需要Python3；`scripts/generate_real_lu_fixed_vf.py`在构建目录生成950小矩阵向量代码。
-各接口测试README说明adapter和基础测试入口；官方任务包全量测试工具、参考数据和原始结果随自验证材料交付。
-
 ## 📖学习教程
 
 - [快速入门](docs/QUICKSTART.md)：从零开始快速体验项目核心基础能力，涵盖源码编译、算子调用、开发与调试等操作。
