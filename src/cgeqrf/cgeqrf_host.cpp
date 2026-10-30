@@ -169,6 +169,9 @@ aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_
                 cleanup());
 
     CHECK_ACLRT(aclrtMalloc(reinterpret_cast<void**>(&aPadDevice), aPadSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
+    // Pad() 只写有效行列，padding 区必须预先清零，否则未初始化内存中的 NaN/Inf
+    // 会经中间量污染面板，与 sgeqrf 同族防护口径一致
+    CHECK_ACLRT(aclrtMemsetAsync(aPadDevice, aPadSize, 0, aPadSize, stream), cleanup());
     CHECK_ACLRT(aclrtMalloc(reinterpret_cast<void**>(&tauDevice), tauDeviceSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
     CHECK_ACLRT(aclrtMemsetAsync(tauDevice, tauDeviceSize, 0, tauDeviceSize, stream), cleanup());
     CHECK_ACLRT(aclrtMalloc(reinterpret_cast<void**>(&workDevice), workSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());

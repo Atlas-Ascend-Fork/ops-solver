@@ -21,7 +21,7 @@
     $$
     A = Q \cdot R
     $$
-    其中$A$为$m \times n$阶单精度浮点矩阵，$Q$为正交矩阵，$R$为上三角矩阵。  
+    其中$A$为$m \times n$阶单精度浮点矩阵，$Q$为正交矩阵，$R$为上三角矩阵。
     该接口使用Householder反射表示$Q$矩阵，输出的$R$矩阵和$Q$矩阵的Householder向量合并存储在$A$中，Householder反射系数存储在$tau$中。
 
 - 示例 \
@@ -149,10 +149,10 @@
         size_t tauFileSize = std::min(m, n) * sizeof(float);
         float* tau;
         aclrtMallocHost((void**)(&tau), tauFileSize);
-        int32_t *info;
+        int32_t info = 0;
 
         // 调用 aclsolverSgeqrf
-        auto ret = aclsolverSgeqrf(handle, m, n, A, m, tau, info);
+        auto ret = aclsolverSgeqrf(handle, m, n, A, m, tau, &info);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverSgeqrf failed. ERROR: %d\n", ret); return ret);
 
         // 释放资源

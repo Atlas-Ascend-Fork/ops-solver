@@ -34,7 +34,6 @@
 using namespace std::chrono;
 using namespace std;
 
-#define debug(x) std::cerr << #x << ": " << x << std::endl
 constexpr int BLOCKDIM_MAX = 20;
 
 namespace
@@ -134,10 +133,6 @@ static void DrainPendingTiles(int i, int &wl, std::priority_queue<L, std::vector
     {
         L top = pq.top();
         pq.pop();
-        if (top.x <= i)
-        {
-            printf("i: %d,x: %d, y: %d, z: %d\n", i, top.x, top.y, top.z);
-        }
         if (top.z < wl)
         {
             // z < workload[i]，workload[i] 减去 z，删除结构
