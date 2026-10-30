@@ -93,4 +93,8 @@ struct _aclsolver_handle
     };
     // Device scratch remains alive until all work on its owning stream completes.
     std::vector<Scratch> choleskyScratch;
+
+    // Independent event-backed scratch for the real Cholesky interfaces.
+    void* solverScratch = nullptr;
+    void (*releaseScratch)(void*) = nullptr;
 };

@@ -244,6 +244,144 @@ extern "C"
                                              const aclsolverFloatComplex* const Aarray[], int lda,
                                              aclsolverFloatComplex* Barray[], int ldb, int* info, int batchSize);
 
+
+    /**
+     * @brief Query the workspace for a real symmetric Cholesky factorization on Ascend 950PR/950DT.
+     *
+     * No device work is launched. Workspace counts are float elements, not bytes.
+     * Real Cholesky matrices are column major; unselected triangles and padding are preserved.
+     * Compute calls and info writes are asynchronous on the handle stream. Check the host
+     * status and synchronize the stream before reading outputs. A successful enqueue can
+     * still report a numerical failure in info. Info is undefined after allocation or
+     * execution failures. Invalid argument indices exclude handle; a null handle writes no info.
+     * Calls sharing a handle must be serialized, and scratch streams must outlive the handle.
+     * Non-950 builds return ARCH_MISMATCH without modifying outputs; a null handle is checked first.
+     *
+     * @param handle Solver handle created by aclsolverCreate; calls on one handle must be serialized.
+     * @param uplo Select the LOWER or UPPER triangle.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param A Device FLOAT32 matrix; may be null only for n=0. Not accessed by the query.
+     * @param lda Column stride in float elements, at least max(1,n).
+     * @param Lwork Non-null host output count in float elements; zero means no workspace is required.
+     * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE,
+     *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
+     */
+    aclsolverStatus_t aclsolverSpotrf_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A,
+                                                 int lda, int *Lwork);
+
+    /**
+     * @brief Factor a real symmetric positive definite matrix into L or U in place.
+     * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
+     * @param uplo LOWER computes A=L*L^T; UPPER computes A=U^T*U.
+     * @param n Matrix order, 0 <= n <= 4096; n=0 performs no matrix access.
+     * @param A Device FLOAT32 matrix; selected triangle is overwritten. May be null for n=0.
+     * @param lda Column stride in float elements, at least max(1,n); padding is preserved.
+     * @param Workspace Device workspace; may be null when Lwork=0 and the queried count is zero.
+     * @param Lwork Available workspace count in float elements, at least the queried count.
+     * @param devInfo Device scalar: zero on success, positive first non-positive pivot (one based),
+     *                or negative first invalid argument index excluding handle. Earlier factor columns are retained.
+     * @return ACLSOLVER_STATUS_SUCCESS (including numerical failure reported in devInfo),
+     *         ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_EXECUTION_FAILED,
+     *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
+     */
+    aclsolverStatus_t aclsolverSpotrf(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A, int lda,
+                                      float *Workspace, int Lwork, int *devInfo);
+
+    /**
+     * @brief Solve A*X=B using an existing real Cholesky factor; overwrite B with X.
+     * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
+     * @param uplo Select the stored LOWER factor L or UPPER factor U.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param nrhs Right-hand side count, 0 <= nrhs <= 128; n=0 or nrhs=0 is empty.
+     * @param A Read-only device FLOAT32 factor; may be null for an empty problem. The preceding
+     *          factorization must have succeeded; this solve does not check positive definiteness or zero diagonals.
+     * @param lda Factor column stride in float elements, at least max(1,n); all factor storage is preserved.
+     * @param B Device n-by-nrhs matrix, overwritten by X; may be null for an empty problem.
+     * @param ldb B column stride in float elements, at least max(1,n); padding is preserved.
+     * @param devInfo Device scalar, zero or negative first invalid argument index excluding handle.
+     * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_ALLOC_FAILED,
+     *         ACLSOLVER_STATUS_EXECUTION_FAILED, ACLSOLVER_STATUS_HANDLE_IS_NULLPTR,
+     *         or ACLSOLVER_STATUS_ARCH_MISMATCH. Internal scratch is retained until handle destruction.
+     */
+    aclsolverStatus_t aclsolverSpotrs(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
+                                      const float *A, int lda, float *B, int ldb, int *devInfo);
+
+    /**
+     * @brief Query workspace for the inverse from a real Cholesky factor, without device work.
+     * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
+     * @param uplo Select the stored LOWER or UPPER factor.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param A Device FLOAT32 factor; may be null only for n=0. Not accessed by the query.
+     * @param lda Column stride in float elements, at least max(1,n).
+     * @param Lwork Non-null host output count in float elements; zero is returned for n=0.
+     * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE,
+     *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
+     */
+    aclsolverStatus_t aclsolverSpotri_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A,
+                                                 int lda, int *Lwork);
+
+    /**
+     * @brief Form the selected triangle of the inverse from a real Cholesky factor in place.
+     * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
+     * @param uplo Select the stored LOWER or UPPER factor and the inverse triangle to produce.
+     * @param n Matrix order, 0 <= n <= 4096; n=0 performs no matrix access.
+     * @param A Device FLOAT32 factor; selected triangle is overwritten. May be null for n=0.
+     * @param lda Column stride in float elements, at least max(1,n); padding is preserved.
+     * @param Workspace Device workspace; query aclsolverSpotri_bufferSize independently of factorization.
+     *                  May be null when n=0 and Lwork=0.
+     * @param Lwork Available workspace count in float elements, at least the queried count.
+     * @param devInfo Device scalar: zero on success, positive first non-finite or non-positive factor
+     *                diagonal (one based), or negative first invalid argument index excluding handle.
+     *                A is unchanged when the input diagonal check fails.
+     * @return ACLSOLVER_STATUS_SUCCESS (including numerical failure reported in devInfo),
+     *         ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_EXECUTION_FAILED,
+     *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
+     */
+    aclsolverStatus_t aclsolverSpotri(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A, int lda,
+                                      float *Workspace, int Lwork, int *devInfo);
+
+    /**
+     * @brief Factor a batch of real symmetric positive definite matrices in place using device pointer arrays.
+     * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
+     * @param uplo Select the LOWER or UPPER triangle of every matrix.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param Aarray Device array of device FLOAT32 matrix pointers, including separately allocated matrices.
+     *               Selected triangles are overwritten; pointer slots, other triangles and padding are preserved.
+     *               May be null for n=0 or batchSize=0. A null slot sets only its infoArray entry to -3.
+     * @param lda Matrix column stride in float elements, at least max(1,n).
+     * @param infoArray Device array of batchSize entries: zero, positive first non-positive pivot (one based),
+     *                  or negative invalid argument index excluding handle. Host argument errors fill all entries
+     *                  when batchSize>0; batchSize=0 writes none. A successful enqueue can include failed slots.
+     * @param batchSize Non-negative batch count; matrices and internal scratch must fit available device memory.
+     * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_ALLOC_FAILED,
+     *         ACLSOLVER_STATUS_EXECUTION_FAILED, ACLSOLVER_STATUS_HANDLE_IS_NULLPTR,
+     *         or ACLSOLVER_STATUS_ARCH_MISMATCH. Internal scratch is retained until handle destruction.
+     */
+    aclsolverStatus_t aclsolverSpotrfBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *Aarray[],
+                                             int lda, int *infoArray, int batchSize);
+
+    /**
+     * @brief Solve a batch of real systems from Cholesky factors; overwrite each right-hand side with its solution.
+     * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
+     * @param uplo Select the stored LOWER or UPPER factor of every matrix.
+     * @param n Matrix order, 0 <= n <= 4096.
+     * @param nrhs Must be 1 when n>0 and batchSize>0; empty problems accept any non-negative value.
+     * @param Aarray Device array of read-only device factors. All factor storage and pointer slots are preserved.
+     *               May be null for n=0 or batchSize=0; every factor must have been successfully computed.
+     * @param lda Factor column stride in float elements, at least max(1,n).
+     * @param Barray Device array of device right-hand sides, overwritten by their solutions; pointer slots are
+     *               preserved. May be null for n=0 or batchSize=0. Output buffers must be disjoint.
+     * @param ldb Right-hand side column stride in float elements, at least max(1,n); padding is preserved.
+     * @param info Device scalar, zero or negative invalid argument index excluding handle. Any null Aarray slot
+     *             sets -4; otherwise any null Barray slot sets -6. These slot errors leave all right-hand sides intact.
+     * @param batchSize Non-negative batch count, constrained by available device memory.
+     * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_EXECUTION_FAILED,
+     *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
+     */
+    aclsolverStatus_t aclsolverSpotrsBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
+                                             float *Aarray[], int lda, float *Barray[], int ldb, int *info,
+                                             int batchSize);
+
 #ifdef __cplusplus
 }
 #endif

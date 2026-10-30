@@ -33,8 +33,8 @@ manifest.tsv 前七列为 index/n/nrhs/batch/upper/lda/ldb，第八列 expectedS
 期望 info 沿用各用例的 `*-info.bin`，批量分解只写首槽，其他槽保留初始哨兵。
 非法尺寸使用独立合法的底层存储，不把负维度转换为分配字节数。
 
-Destroy 的十条 Host 回归使用真实生命周期实现和模拟 Runtime，覆盖默认 stream、同步降级、
-释放失败后继续回收、首错保留、未完成任务的内存保护及重试；不访问设备。加载 CANN 头文件环境后执行：
+Destroy 的十四条 Host 回归使用真实生命周期实现和模拟 Runtime，覆盖默认 stream、同步降级、
+释放失败后继续回收、首错保留、未完成任务的内存保护及重试，另覆盖实数池回调与复数缓冲区的共存、失败保留和重试释放；不访问设备。加载 CANN 头文件环境后执行：
 
 ```bash
 g++ -std=c++17 -fsanitize=address -fno-omit-frame-pointer -g \

@@ -1,6 +1,119 @@
-## Spotrf
+# Spotrf
 
-## 产品支持情况
+`aclsolverSpotrf` 有两套不同的接口原型，调用时须同时匹配参数数量、类型和内存约定：
+
+| 接口 | 产品 | 参数与内存约定 |
+|:---|:---|:---|
+| [Ascend 950 接口](#ascend-950-接口) | Ascend 950PR | `aclsolverFillMode_t`、32 位维数、8 个参数，包含 Device workspace；矩阵与 info 在 Device，矩阵为列主序，返回 `aclsolverStatus_t` |
+| [A2/A3 接口](#a2a3-接口) | Atlas A2/A3 | `char uplo`、64 位 `m,n`、7 个参数，不含 workspace；沿用 Host 矩阵输入及原有调用约定，返回 `aclError` |
+
+950 接口保留 C 链接符号；A2/A3 接口保留已有 C++ 链接符号。
+C++ 调用按完整原型选择对应重载，不根据设备隐式转换参数或数据布局。
+两套接口的实现、参数校验、返回值和存储约定分别如下。
+
+## Ascend 950 接口
+
+### 产品支持情况
+
+| 产品 | 是否支持 |
+|:---|:---:|
+| Atlas 200I/500 A2 推理产品、Atlas 推理系列产品、Atlas 训练系列产品 | × |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 | × |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品 | × |
+| Ascend 950PR | √ |
+| Ascend 950DT | √ |
+
+### 功能说明
+
+`aclsolverSpotrf` 对单精度实数对称正定矩阵进行 Cholesky 分解：
+
+$$
+A=L L^T\quad(\mathrm{LOWER}),\qquad A=U^T U\quad(\mathrm{UPPER}).
+$$
+
+只读取和覆盖 `uplo` 指定的三角，另一三角和 leading-dimension padding 保持不变。
+`aclsolverSpotrf_bufferSize` 查询调用者需要提供的 workspace 大小。
+
+### 函数原型
+
+```cpp
+aclsolverStatus_t aclsolverSpotrf_bufferSize(
+    aclsolverHandle_t handle, aclsolverFillMode_t uplo,
+    int n, float *A, int lda, int *Lwork);
+
+aclsolverStatus_t aclsolverSpotrf(
+    aclsolverHandle_t handle, aclsolverFillMode_t uplo,
+    int n, float *A, int lda, float *Workspace, int Lwork, int *devInfo);
+```
+
+### 参数说明
+
+| 参数 | 输入/输出 | 内存位置及说明 |
+|:---|:---:|:---|
+| `handle` | 输入 | 由 `aclsolverCreate` 创建并通过 `aclsolverSetStream` 关联计算流的句柄 |
+| `uplo` | 输入 | `ACLSOLVER_FILL_MODE_LOWER` 或 `ACLSOLVER_FILL_MODE_UPPER` |
+| `n` | 输入 | 矩阵阶数，`0 <= n <= 4096` |
+| `A` | 输入/输出 | Device FLOAT32，列主序；`A[i+j*lda]` 为第 i 行、第 j 列，存储至少 `lda*n` 个元素；查询接口不修改 A |
+| `lda` | 输入 | 相邻两列起始地址之间的 float 元素数，`lda >= max(1,n)` |
+| `Lwork`（查询） | 输出 | Host `int*`，返回所需 float 元素个数 |
+| `Workspace` | 输入 | Device FLOAT32 临时缓冲区，至少 `Lwork` 个元素 |
+| `Lwork`（计算） | 输入 | 实际提供的 workspace 元素个数，不能按字节传入 |
+| `devInfo` | 输出 | Device `int*`，一个状态值；同步流后读取 |
+
+### 返回值
+
+接口返回 `aclsolverStatus_t`，具体取值见[公共约定](cholesky.md#接口公共约定)。
+计算接口的 `devInfo=0` 表示分解成功；正值 `k` 表示首个非正定主元位置（从 1 开始），
+保留此前完成的列；负值表示参数非法，编号按 `uplo,n,A,lda,Workspace,Lwork,devInfo`
+从 1 开始，多个参数非法时报告首个。空句柄通过返回值报告，不写 `devInfo`。
+查询接口无 `devInfo`，参数错误仅通过返回值报告。
+
+### 算子约束
+
+- 有效计算的输入须为对称正定矩阵，数据类型仅支持 FLOAT32。
+- `n=0` 仍校验枚举、`lda`、workspace 参数和 `devInfo`，允许 `A=nullptr`；查询返回 0。
+- 非空查询要求 `A` 为非空 Device 指针，`Lwork` 输出指针始终不能为空。
+- `n<=64` 时所需 workspace 为 0，可传 `Workspace=nullptr,Lwork=0`；
+  其余规模按查询结果分配。若主动传入正的 `Lwork`，`Workspace` 不能为空。
+- A、workspace 与 info 的有效存储不得重叠，并须保持有效直到计算流完成。
+
+### 调用示例
+
+完整初始化、Device 分配、数据传输和资源释放见
+[`cholesky_test.cpp` 的 `Run`](../../test/cholesky/cholesky_test.cpp)。
+下面片段沿用样例的 `Check(int)` 错误检查函数；`handle` 已关联 `stream`，
+`dA` 已存放输入，`dInfo` 已分配为 Device `int`。
+
+```cpp
+int lwork = 0;
+Check(aclsolverSpotrf_bufferSize(handle, uplo, n, dA, lda, &lwork));
+float *workspace = nullptr;
+if (lwork > 0) {
+    Check(aclrtMalloc(reinterpret_cast<void **>(&workspace),
+                      size_t(lwork) * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
+}
+Check(aclsolverSpotrf(handle, uplo, n, dA, lda, workspace, lwork, dInfo));
+Check(aclrtSynchronizeStream(stream));
+int info = 0;
+Check(aclrtMemcpy(&info, sizeof(info), dInfo, sizeof(info), ACL_MEMCPY_DEVICE_TO_HOST));
+// info == 0 时 dA 的选定三角可以继续传给 Spotrs 或 Spotri。
+if (workspace) Check(aclrtFree(workspace));
+```
+
+### 编译运行
+
+本接口与其余 Cholesky 接口共用 `src/cholesky/arch35/` 和 `test/cholesky/`。
+在 solver 仓根目录运行：
+
+```bash
+bash build.sh --soc=ascend950 --ops=cholesky --run
+```
+
+环境、离线依赖和三段测试流程见[调用样例说明](../../test/cholesky/README.md#编译运行)。
+
+## A2/A3 接口
+
+### 产品支持情况
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
@@ -12,7 +125,7 @@
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
 
 
-## 功能说明
+### 功能说明
 
 - 接口功能\
     aclsolverSpotrf：对实数正定对称矩阵进行cholesky分解。
@@ -42,12 +155,13 @@
     ```
 
 
-## 函数原型
+### 函数原型
 - 函数定义
     ```
     aclError aclsolverSpotrf(
         aclsolverHandle_t handle,
-        cost char uplo,
+        const char uplo,
+        const int64_t m,
         const int64_t n,
         float *A,
         const int64_t lda,
@@ -100,7 +214,7 @@
 - 调用实现
     使用内核调用符<<<>>>调用核函数。
 
-## 调用示例
+### 调用示例
 - 完整代码示例：[aclsolverSpotrf矩阵cholesky分解示例](../../test/spotrf/spotrf_test.cpp)
 - 核心调用步骤：
 

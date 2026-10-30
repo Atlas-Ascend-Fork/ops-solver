@@ -67,6 +67,8 @@ option(ENABLE_PACKAGE "Enable build package" OFF)
 
 # ========= 构建动态库 =========
 find_package(ASC REQUIRED)
+set(CMAKE_SHARED_LIBRARY_RUNTIME_ASC_FLAG "-Wl,-rpath,")
+set(CMAKE_SHARED_LIBRARY_RUNTIME_ASC_FLAG_SEP ":")
 
 # solver
 set(ALL_SOLVER_SRC_FILES "")
@@ -76,7 +78,22 @@ add_subdirectory(src)
 
 project(${OPS_SOLVER} LANGUAGES ASC CXX)
 
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+  list(FILTER ALL_SOLVER_SRC_FILES EXCLUDE REGEX "/cholesky/cholesky_unsupported.cpp$")
+  # Pure SIMT has its own device link mode; keep it separate from SIMD/Cube code.
+  list(FILTER ALL_SOLVER_SRC_FILES EXCLUDE REGEX "/cholesky/arch35/cholesky_simt.cpp$")
+  add_library(cholesky_simt SHARED src/cholesky/arch35/cholesky_simt.cpp)
+  set_source_files_properties(src/cholesky/arch35/cholesky_simt.cpp PROPERTIES LANGUAGE ASC)
+  set_target_properties(cholesky_simt PROPERTIES LINKER_LANGUAGE ASC BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+  target_include_directories(cholesky_simt PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include ${ASCEND_CANN_PACKAGE_PATH}/include)
+  target_compile_options(cholesky_simt PRIVATE --npu-arch=${NPU_ARCH} --enable-simt -O2)
+  target_link_options(cholesky_simt PRIVATE --npu-arch=${NPU_ARCH} --enable-simt)
+  target_link_directories(cholesky_simt PRIVATE ${ASCEND_CANN_PACKAGE_PATH}/lib64)
+  target_link_libraries(cholesky_simt PRIVATE ascendcl)
+endif()
+
 add_library(${OPS_SOLVER} SHARED ${ALL_SOLVER_SRC_FILES})
+set_target_properties(${OPS_SOLVER} PROPERTIES LINKER_LANGUAGE ASC BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
 
 set_source_files_properties(
     ${ALL_SOLVER_SRC_FILES}
@@ -127,9 +144,15 @@ if(SOC_VERSION_LOWER MATCHES "^ascend950")
     set_source_files_properties(src/cpotrf/arch35/cholesky_schur.cpp
         PROPERTIES COMPILE_OPTIONS "-O3")
 endif()
+set_source_files_properties(
+    src/utils/aclsolver_auxiliary.cpp
+    src/cholesky/arch35/cholesky_host.cpp
+    src/cholesky/cholesky_unsupported.cpp
+    PROPERTIES LANGUAGE CXX)
 
 target_include_directories(${OPS_SOLVER} BEFORE PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
+    ${ASCEND_CANN_PACKAGE_PATH}/include
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common/
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base/
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/
@@ -139,17 +162,31 @@ target_compile_options(${OPS_SOLVER} PRIVATE
     $<$<COMPILE_LANGUAGE:ASC>:--npu-arch=${NPU_ARCH}>
     $<$<COMPILE_LANGUAGE:ASC>:-iquote${CMAKE_CURRENT_LIST_DIR}/include>
 )
+target_link_options(${OPS_SOLVER} PRIVATE --npu-arch=${NPU_ARCH})
+
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+  target_link_libraries(${OPS_SOLVER} PRIVATE cholesky_simt)
+  set_source_files_properties(
+    src/cholesky/arch35/cholesky_cube.cpp
+    src/cholesky/arch35/cholesky_vector.cpp
+    PROPERTIES COMPILE_OPTIONS "-O3")
+endif()
 
 target_link_libraries(${OPS_SOLVER} PRIVATE
     tiling_api
     platform
     register
+    ascendcl
 )
+target_link_directories(${OPS_SOLVER} PRIVATE ${ASCEND_CANN_PACKAGE_PATH}/lib64)
 
 # ========= 安装规则（CPack 打包时放入 lib64 和 include） =========
 install(TARGETS ${OPS_SOLVER}
     LIBRARY DESTINATION lib64
 )
+if(TARGET cholesky_simt)
+  install(TARGETS cholesky_simt LIBRARY DESTINATION lib64)
+endif()
 install(FILES
     include/cann_ops_solver.h
     include/cann_ops_solver_common.h
@@ -159,6 +196,7 @@ install(FILES
 # ========= 构建测试程序 =========
 option(BUILD_TEST "Build test programs" OFF)
 if(BUILD_TEST)
+    enable_testing()
     add_subdirectory(test)
 endif()
 

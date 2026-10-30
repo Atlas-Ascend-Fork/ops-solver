@@ -43,6 +43,8 @@ bool deviceFailure = false;
 void* failingFree = nullptr;
 int freeFailures = 0;
 int deviceSyncCalls = 0;
+int realReleaseCalls = 0;
+void* realScratch = nullptr;
 aclrtContext currentContext = nullptr;
 bool restoreFailure = false;
 bool eventFailure = false;
@@ -69,6 +71,8 @@ _aclsolver_handle* NewHandle()
     {
         Require(entry.second.released, "previous case retained an allocation");
     }
+    Require(realScratch == nullptr, "previous case retained real scratch");
+    realReleaseCalls = 0;
     allocations.clear();
     completed.clear();
     streamFailure = false;
@@ -111,6 +115,21 @@ void* AddRealBlock(_aclsolver_handle* handle, bool recorded)
     cache.pendingStream = recorded ? nullptr : OtherStream();
     handle->realLuWorkspaces.push_back(cache);
     return ptr;
+}
+
+void ReleaseRealScratch(void* ptr)
+{
+    Require(ptr == realScratch && realReleaseCalls == 0, "real scratch released incorrectly");
+    delete static_cast<int*>(ptr);
+    realScratch = nullptr;
+    ++realReleaseCalls;
+}
+
+void AddRealScratch(_aclsolver_handle* handle)
+{
+    realScratch = new int(7);
+    handle->solverScratch = realScratch;
+    handle->releaseScratch = ReleaseRealScratch;
 }
 
 void RequireReleased()
@@ -230,6 +249,38 @@ void MixedCholeskyFailure()
     Require(allocations[real].attempts == 1, "Cholesky retry released the LU block twice");
     RequireReleased();
 }
+
+void RealScratchOnly()
+{
+    auto* handle = NewHandle();
+    AddRealScratch(handle);
+    Require(aclsolverDestroy(handle) == ACLSOLVER_STATUS_SUCCESS, "real-only cleanup failed");
+    Require(realReleaseCalls == 1 && realScratch == nullptr, "real-only callback was lost");
+}
+
+void MixedScratch(bool failFree, bool failSync)
+{
+    auto* handle = NewHandle();
+    failingFree = AddBlock(handle, nullptr);
+    AddBlock(handle, OtherStream());
+    AddRealScratch(handle);
+    freeFailures = failFree ? 1 : 0;
+    streamFailure = deviceFailure = failSync;
+    auto status = aclsolverDestroy(handle);
+    if (failFree || failSync)
+    {
+        Require(status == (failSync ? ACLSOLVER_STATUS_EXECUTION_FAILED : ACLSOLVER_STATUS_INTERNAL_ERROR),
+                "mixed cleanup lost the first error");
+        Require(realReleaseCalls == 0 && handle->solverScratch == realScratch,
+                "failed complex cleanup discarded real ownership");
+        streamFailure = deviceFailure = false;
+        freeFailures = 0;
+        status = aclsolverDestroy(handle);
+    }
+    Require(status == ACLSOLVER_STATUS_SUCCESS, "mixed cleanup retry failed");
+    Require(realReleaseCalls == 1 && realScratch == nullptr, "mixed cleanup lost or repeated real release");
+    RequireReleased();
+}
 }  // namespace
 
 namespace Cholesky
@@ -339,7 +390,11 @@ int main()
         MixedLuFailure(true, true);
         MixedRestoreFailure();
         MixedCholeskyFailure();
-        std::cout << "Destroy ownership, fallback, retry and safe release: 16 cases PASS\n";
+        RealScratchOnly();
+        MixedScratch(false, false);
+        MixedScratch(true, false);
+        MixedScratch(false, true);
+        std::cout << "Destroy ownership, fallback, retry and mixed scratch: 20 cases PASS\n";
         return 0;
     }
     catch (const std::exception& error)

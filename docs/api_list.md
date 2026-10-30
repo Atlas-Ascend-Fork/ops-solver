@@ -165,6 +165,14 @@
     <td>AI Core</td>
     <td>单精度实数小矩阵直接批量求逆，n≤32；950PR Device列主序，独立输出，逐矩阵INFO。</td>
   </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cholesky.md#单精度实数-cholesky">cholesky（950）</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>单精度实数正定矩阵的 <a href="./zh/spotrf.md#ascend-950-接口">Spotrf 分解</a>、<a href="./zh/spotrs.md">Spotrs 求解</a>、<a href="./zh/spotri.md">Spotri 求逆</a>，以及 <a href="./zh/spotrf_batched.md">SpotrfBatched 批量分解</a>和 <a href="./zh/spotrs_batched.md">SpotrsBatched 批量单 RHS 求解</a>。源码和测试共用 cholesky 目录。</td>
+  </tr>
 </tbody></table>
 
 
@@ -188,7 +196,7 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverCgetri` | 复数矩阵求逆 |
 | `aclsolverSgetrf_bufferSize` | 单矩阵LU分解workspace查询，返回FLOAT32元素数 |
 | `aclsolverSgetrf` | 单精度实数矩阵LU分解，Device列主序 |
-| `aclsolverSpotrf` | 单精度矩阵LL^T分解 |
+| [`aclsolverSpotrf`](zh/spotrf.md) | 单精度 Cholesky 分解；A2/A3 与 Ascend 950 使用不同原型，详见接口说明 |
 | `aclsolverSgeqrf` | 单精度矩阵QR分解 |
 | `aclsolverCgeqrf` | 复数矩阵QR分解 |
 | `aclsolverSgetri_bufferSize` | 单矩阵求逆workspace查询，返回FLOAT32元素数 |
@@ -216,3 +224,15 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 
 上述接口使用 Device 列主序矩阵；主线 C++ `aclsolverCpotrf` 重载使用 Host 行主序矩阵。
 完整参数及使用约束见[Cholesky 接口说明](zh/cholesky.md)和[两种分解接口的说明](zh/cpotrf.md)。
+
+### 单精度实数 Cholesky 接口（Ascend950）
+
+| 接口 | 说明 |
+| --- | --- |
+| [`aclsolverSpotrf`](zh/spotrf.md#ascend-950-接口) | Device 列主序单精度实数 Cholesky 分解 |
+| [`aclsolverSpotrf_bufferSize`](zh/spotrf.md#函数原型) | Cholesky 分解 workspace 元素数查询 |
+| [`aclsolverSpotrs`](zh/spotrs.md) | 基于 Cholesky 因子求解，因子只读 |
+| [`aclsolverSpotri_bufferSize`](zh/spotri.md#函数原型) | 基于 Cholesky 因子求逆的 workspace 元素数查询 |
+| [`aclsolverSpotri`](zh/spotri.md) | 原地输出逆矩阵的指定三角 |
+| [`aclsolverSpotrfBatched`](zh/spotrf_batched.md) | Device 指针数组批量 Cholesky 分解 |
+| [`aclsolverSpotrsBatched`](zh/spotrs_batched.md) | Device 指针数组批量求解，仅支持单 RHS |

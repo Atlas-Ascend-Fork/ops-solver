@@ -217,6 +217,12 @@ extern "C"
             return status;
         }
 
+        // Keep real scratch owned as well while complex cleanup requires a retry.
+        if (h->releaseScratch)
+        {
+            h->releaseScratch(h->solverScratch);
+        }
+
         // The caller owns the stream; only handle-owned scratch is released here.
         h->stream = nullptr;
 
