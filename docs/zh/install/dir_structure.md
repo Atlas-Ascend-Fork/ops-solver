@@ -38,8 +38,7 @@
 │       └── ${api_doc}.md                               # 各接口中文说明（随算子扩展）
 ├── scripts                                             # 辅助脚本（打包、版本信息、检查等）
 │   ├── package
-│   ├── util
-│   └── oat_check.sh
+│   └── util
 ├── test                                                # 算子级测试（BUILD_TEST=ON 且配置 TEST_NAMES 时参与构建）
 │   ├── CMakeLists.txt                                  # 按 TEST_NAMES 批量 add_subdirectory
 │   └── ${op_name}
