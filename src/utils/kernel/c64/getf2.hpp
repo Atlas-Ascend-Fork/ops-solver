@@ -148,7 +148,7 @@ class LUCustom1
         ReduceMax(workLocal, workLocal, workLocal, blockM - k, true);
         PipeBarrier<PIPE_ALL>();
         T maxIndex = workLocal.GetValue(1);
-        return *reinterpret_cast<uint32_t *>(&maxIndex);
+        return __builtin_bit_cast(uint32_t, maxIndex);
     }
     __aicore__ inline void swap(int a, int b, LocalTensor<T> &colLocal)
     {
@@ -362,7 +362,7 @@ class LUCustom3
         PipeBarrier<PIPE_ALL>();
         T maxIndex = workLocal.GetValue(1);
         inQueueAugReal.FreeTensor(workLocal);
-        return *reinterpret_cast<uint32_t *>(&maxIndex);
+        return __builtin_bit_cast(uint32_t, maxIndex);
     }
     __aicore__ inline void swap(int a, int b, LocalTensor<T> &colLocal)
     {
