@@ -62,14 +62,15 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
 {
     // n > 8192 会使 SplitRealImag 的 alignedN > TILE_LENGTH，CopyIn 第二段超过 UB buffer（issue #266 检视），
     // 与 aclsolverSgetrf 的文档口径（valid range [1, 8192]）保持一致。
+    // nrhs 无上界时 int64 → int 静默截断可致按错值分配与寻址，与 aclsolverSgetrs 的 nrhs 契约保持一致（issue #277）。
     // kernel 以 uint16_t 字节计数承载 DataCopyExtParams 行间隙，复数实/虚交织布局每元素占 8 字节：
     // SplitRealImag::CopyIn 行间隙为 (lda - n) * 8 / (ldb - nrhs) * 8 字节，须 <= 65535，即元素差 <= 8191；
     // trans == 0 时 restore 的 MergeRealImag::CopyOut 在 nrhs > 4096 的第二段行间隙为
     // (ldb - nrhs + 4096) * 8 字节，故 nrhs > 4096 时需进一步限制 ldb - nrhs <= 4095（issue #266 检视）。
-    SOLVER_ECHECK(n > 0 && n <= 8192 && nrhs > 0 && lda >= n && ldb >= nrhs && A != nullptr && B != nullptr &&
-                      ipiv != nullptr && info != nullptr && lda - n <= 8191 && ldb - nrhs <= 8191 &&
+    SOLVER_ECHECK(n > 0 && n <= 8192 && nrhs > 0 && nrhs <= 8192 && lda >= n && ldb >= nrhs && A != nullptr &&
+                      B != nullptr && ipiv != nullptr && info != nullptr && lda - n <= 8191 && ldb - nrhs <= 8191 &&
                       (nrhs <= 4096 || ldb - nrhs <= 4095),
-                  "aclsolverCgetrs invalid param: n out of [1, 8192], n, nrhs, lda, ldb <= 0, lda < n, "
+                  "aclsolverCgetrs invalid param: n, nrhs out of [1, 8192], n, nrhs, lda, ldb <= 0, lda < n, "
                   "ldb < nrhs, lda - n > 8191, ldb - nrhs > 8191 (or > 4095 when nrhs > 4096), "
                   "or A, B, ipiv, info is nullptr.",
                   ACL_ERROR_INVALID_PARAM);
@@ -173,8 +174,6 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
                      bMatrixDevice, bMatrixDeviceWork, gatherDevice, blockDim, stream);
 
     CHECK_ACLRT(aclrtSynchronizeStream(stream), cleanup());
-
-    std::cout << "finish" << std::endl;
 
     CHECK_ACLRT(aclrtMemcpy(bMatrixHost, bMatrixFileSize, bMatrixDevice, bMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
                 cleanup());

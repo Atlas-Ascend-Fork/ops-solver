@@ -48,12 +48,12 @@
 #include <iterator>
 #include <vector>
 
+#include "../utils/aicore_num.h"
 #include "../utils/assert.h"
 #include "../utils/gm_addr.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "cgeqrf_launchers.hpp"
-#include "tiling/platform/platform_ascendc.h"
 
 typedef std::complex<float> complex64;
 
@@ -111,12 +111,8 @@ aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_
     aclsolverGetStream(handle, &stream);
     SOLVER_ECHECK(stream != nullptr, "aclsolverCgeqrf invalid param: handle has no bound stream.",
                   ACL_ERROR_INVALID_PARAM);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-    uint32_t numBlocks = 0;
-    if (ascendcPlatform != nullptr)
-    {
-        numBlocks = ascendcPlatform->GetCoreNumAic();
-    }
+    uint32_t numBlocks = GetAiCoreNumOrZero();
+    SOLVER_ECHECK(numBlocks > 0, "No available AIcore found on current device.", ACL_ERROR_RT_FEATURE_NOT_SUPPORT);
     int64_t M, N, minMN, padM, padN;
     M = m;
     N = n;

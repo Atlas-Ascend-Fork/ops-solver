@@ -147,6 +147,7 @@
   - ipiv必须为aclsolverCgetrf输出的pivot信息。
   - 当前仅支持COMPLEX64数据类型。
   - n取值范围为[1, 8192]，超出返回ACL_ERROR_INVALID_PARAM。
+  - nrhs取值范围为[1, 8192]，超出返回ACL_ERROR_INVALID_PARAM。
   - lda >= n且lda - n <= 8191；ldb >= nrhs且ldb - nrhs <= 8191（kernel以uint16_t字节计数承载行间隙，复数实/虚交织布局每元素占8字节）；nrhs > 4096时需进一步满足ldb - nrhs <= 4095。
   - info参数在当前版本实际未启用。
 

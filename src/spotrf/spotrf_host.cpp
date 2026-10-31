@@ -22,12 +22,12 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../utils/aicore_num.h"
 #include "../utils/assert.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "spotrf_launchers.hpp"
-#include "tiling/platform/platform_ascendc.h"
 
 #define GM_ADDR uint8_t *
 
@@ -328,12 +328,8 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
     {
         isTranse = true;
     }
-    auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-    uint32_t numBlocks = 0;
-    if (ascendcPlatform != nullptr)
-    {
-        numBlocks = ascendcPlatform->GetCoreNumAic();
-    }
+    uint32_t numBlocks = GetAiCoreNumOrZero();
+    SOLVER_ECHECK(numBlocks > 0, "No available AIcore found on current device.", ACL_ERROR_RT_FEATURE_NOT_SUPPORT);
 
     int N = static_cast<int>(n);
     int blockN = 32;
