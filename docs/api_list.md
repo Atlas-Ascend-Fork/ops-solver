@@ -173,6 +173,38 @@
     <td>AI Core</td>
     <td>单精度实数正定矩阵的 <a href="./zh/spotrf.md#ascend-950-接口">Spotrf 分解</a>、<a href="./zh/spotrs.md">Spotrs 求解</a>、<a href="./zh/spotri.md">Spotri 求逆</a>，以及 <a href="./zh/spotrf_batched.md">SpotrfBatched 批量分解</a>和 <a href="./zh/spotrs_batched.md">SpotrsBatched 批量单 RHS 求解</a>。源码和测试共用 cholesky 目录。</td>
   </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/sorgqr.md">sorgqr</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>由 Sgeqrf 输出的 Householder 表示生成正交因子 Q 的前 n 列，Q = H(1) H(2) ... H(k)。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/sormqr.md">sormqr</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>用 QR 分解的正交因子 Q 乘矩阵 C，支持从左/右施加以及是否转置共六种组合，Q 以 Householder 表示给出、不需显式展开。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/xlarft.md">xlarft</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>由 k 个基本反射子构造块反射子的三角因子 T，I - V T V^T 即对应的块反射子，支持 FORWARD/BACKWARD 两种次序。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/sgels.md">sgels</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>单精度实数超定最小二乘求解，min ||A X - B||（m >= n），内部走 QR 分解：A = Q R 后解 X = R^-1 (Q^T B)(1:n, :)。</td>
+  </tr>
 </tbody></table>
 
 

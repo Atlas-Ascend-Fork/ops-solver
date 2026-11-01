@@ -172,6 +172,37 @@ if(SOC_VERSION_LOWER MATCHES "^ascend950")
     PROPERTIES COMPILE_OPTIONS "-O3")
 endif()
 
+# >>> CATLASS (QR series) >>>
+# ========= 可选依赖：CATLASS（arch35 下 QR 系列算子的 GEMM 层）=========
+# CATLASS 不随 CANN 发布，也不在本仓内，需显式提供仓根目录：
+#   cmake ... -DCATLASS_HOME=/path/to/catlass
+# 不提供时本仓其余算子照常构建；QR 系列（sgeqrf/sorgqr/sormqr/xlarft/ssgels）
+# 需要它，缺失时在这里直接报错，不要留到编译阶段才暴露成一堆找不到头文件。
+set(CATLASS_HOME "" CACHE STRING "CATLASS repository root, required by arch35 QR kernels")
+# 也接受环境变量，这样仓里自带的 build.sh（它不转发额外的 cmake 选项）可以直接用：
+#   CATLASS_HOME=/path/to/catlass bash build.sh --ops=sgeqrf --soc=Ascend950PR_9579 --run
+if(NOT CATLASS_HOME AND DEFINED ENV{CATLASS_HOME})
+    set(CATLASS_HOME $ENV{CATLASS_HOME})
+endif()
+if(CATLASS_HOME)
+    if(NOT EXISTS ${CATLASS_HOME}/include/catlass)
+        message(FATAL_ERROR "CATLASS_HOME=${CATLASS_HOME} 下找不到 include/catlass")
+    endif()
+    # CATLASS 的头文件靠 **编译宏** CATLASS_ARCH 选 arch 实现（见 catlass/examples/CMakeLists.txt）。
+    # 只给 --npu-arch 是不够的：缺这个宏时 tile_copy.hpp 里的 CopyGmToL1 等模板一个都不会被定义。
+    string(REPLACE "dav-" "" CATLASS_ARCH "${NPU_ARCH}")
+    message(STATUS "CATLASS_HOME=${CATLASS_HOME}, CATLASS_ARCH=${CATLASS_ARCH}")
+    target_include_directories(${OPS_SOLVER} BEFORE PRIVATE ${CATLASS_HOME}/include)
+    target_compile_definitions(${OPS_SOLVER} PRIVATE CATLASS_ARCH=${CATLASS_ARCH})
+    target_compile_options(${OPS_SOLVER} PRIVATE
+        $<$<COMPILE_LANGUAGE:ASC>:-iquote${CATLASS_HOME}/include>
+        # 与 CATLASS 自带示例同口径的告警抑制，避免其头文件把构建刷满
+        $<$<COMPILE_LANGUAGE:ASC>:-Wno-macro-redefined>
+        $<$<COMPILE_LANGUAGE:ASC>:-Wno-ignored-attributes>
+        $<$<COMPILE_LANGUAGE:ASC>:-Wno-unused-value>
+    )
+endif()
+# <<< CATLASS (QR series) <<<
 target_link_libraries(${OPS_SOLVER} PRIVATE
     tiling_api
     platform

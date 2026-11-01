@@ -382,6 +382,313 @@ extern "C"
                                              float *Aarray[], int lda, float *Barray[], int ldb, int *info,
                                              int batchSize);
 
+    /**
+     * @brief Query the workspace size, in elements, required by aclsolverSgeqrf.
+     *
+     * A is not read, so passing nullptr is accepted: callers commonly query the size
+     * before allocating A.
+     *
+     * @param handle Solver handle created by aclsolverCreate. Unused by the query.
+     * @param m Number of rows of A; must be non-negative. The kernel further limits m to at
+     *          most 8192 (see MaxRowsSupported in the implementation); a larger m is rejected
+     *          with ACLSOLVER_STATUS_NOT_SUPPORTED.
+     * @param n Number of columns of A; must be non-negative.
+     * @param A Input matrix in column-major storage. Not read by this query.
+     * @param lda Leading dimension of A; must be at least max(1, m).
+     * @param Lwork Output workspace size counted in float elements. 0 when m or n is 0.
+     * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
+     *         invalid argument.
+     */
+    aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, int n, float *A, int lda, int *Lwork);
+
+    /**
+     * @brief QR factorization of a general single-precision real matrix, A = Q * R.
+     *
+     * A uses column-major storage and any lda >= max(1, m) is accepted. On return the upper
+     * triangle of A holds R and the elements below the diagonal hold the Householder vectors,
+     * with TAU[i] the scalar of the i-th reflector. The sign convention follows LAPACK
+     * sgeqrf, so repeated runs on the same input are bit-wise identical.
+     *
+     * @param handle Solver handle created by aclsolverCreate. The computation runs on the
+     *               stream bound to the handle.
+     * @param m Number of rows of A; must be non-negative. The kernel further limits m to at
+     *          most 8192 (see MaxRowsSupported in the implementation); a larger m is rejected
+     *          with ACLSOLVER_STATUS_NOT_SUPPORTED.
+     * @param n Number of columns of A; must be non-negative.
+     * @param A Input/output matrix in column-major storage, overwritten by R and V.
+     *          Element magnitudes must satisfy 5e-20 < max|A| < 1.8e19. The panel
+     *          factorization applies each reflector before normalizing it, which bounds the
+     *          usable range on both sides: the in-panel dot products reach max|A|^2 (overflow
+     *          above the upper bound) and the stored reflector scale is 1/max|A|^2 (overflow
+     *          below the lower bound). Outside the window the output contains non-finite
+     *          values, which callers can detect; no error code is returned. Both bounds were
+     *          measured on Ascend950PR, and are roughly sqrt(FLT_MAX) and 1/sqrt(FLT_MAX).
+     * @param lda Leading dimension of A; must be at least max(1, m).
+     * @param TAU Output array of min(m, n) reflector scalars.
+     * @param Workspace Device workspace of at least Lwork float elements.
+     * @param Lwork Workspace size in elements, as returned by aclsolverSgeqrf_bufferSize.
+     * @param devInfo Device int32 output: 0 on success, -i when the i-th argument is
+     *                invalid (the handle is not counted).
+     * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
+     */
+    aclsolverStatus_t aclsolverSgeqrf(aclsolverHandle_t handle, int m, int n, float *A, int lda, float *TAU,
+                                      float *Workspace, int Lwork, int *devInfo);
+
+    /**
+     * @brief Query the workspace size, in elements, required by aclsolverSorgqr.
+     *
+     * A and tau are not read, so passing nullptr is accepted: callers commonly query the
+     * size before allocating them.
+     *
+     * @param handle Solver handle created by aclsolverCreate. Unused by the query.
+     * @param m Number of rows of Q; must be non-negative and at most 4096; a larger m is
+     *          rejected with ACLSOLVER_STATUS_NOT_SUPPORTED.
+     * @param n Number of columns of Q; must satisfy 0 <= n <= m.
+     * @param k Number of elementary reflectors; must satisfy 0 <= k <= n.
+     * @param A Householder representation from aclsolverSgeqrf. Not read by this query.
+     * @param lda Leading dimension of A; must be at least max(1, m).
+     * @param tau Reflector scalars of length k. Not read by this query.
+     * @param lwork Output workspace size counted in float elements. 0 when m or n is 0.
+     * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
+     *         invalid argument.
+     */
+    aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, int n, int k, const float *A, int lda,
+                                                 const float *tau, int *lwork);
+
+    /**
+     * @brief Generate the first n columns of the orthogonal factor Q = H(1) H(2) ... H(k).
+     *
+     * The input is the Householder representation produced by aclsolverSgeqrf, not an
+     * unfactored matrix. A uses column-major storage and any lda >= max(1, m) is accepted;
+     * Q overwrites A. With k = 0 the result is the first n columns of the identity, which is
+     * written out explicitly (matching LAPACK sorgqr).
+     *
+     * @param handle Solver handle created by aclsolverCreate. The computation runs on the
+     *               stream bound to the handle.
+     * @param m Number of rows of Q; must be non-negative and at most 4096; a larger m is
+     *          rejected with ACLSOLVER_STATUS_NOT_SUPPORTED.
+     * @param n Number of columns of Q; must satisfy 0 <= n <= m.
+     * @param k Number of elementary reflectors; must satisfy 0 <= k <= n.
+     * @param A Input/output matrix in column-major storage, overwritten by Q.
+     * @param lda Leading dimension of A; must be at least max(1, m).
+     * @param tau Input array of k reflector scalars from aclsolverSgeqrf.
+     * @param work Device workspace of at least lwork float elements.
+     * @param lwork Workspace size in elements, as returned by aclsolverSorgqr_bufferSize.
+     * @param devInfo Device int32 output: 0 on success, -i when the i-th argument is
+     *                invalid (the handle is not counted).
+     * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
+     */
+    aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k, float *A, int lda, const float *tau,
+                                      float *work, int lwork, int *devInfo);
+
+    /**
+     * @brief Query the workspace size, in elements, required by aclsolverSormqr.
+     *
+     * A, tau and C are not read, so passing nullptr is accepted: callers commonly query the
+     * size before allocating them.
+     *
+     * @param handle Solver handle created by aclsolverCreate. Unused by the query.
+     * @param side ACLSOLVER_SIDE_LEFT applies op(Q) from the left, ACLSOLVER_SIDE_RIGHT from
+     *             the right.
+     * @param trans ACLSOLVER_OP_N applies Q; ACLSOLVER_OP_T and ACLSOLVER_OP_C both apply Q
+     *              transposed (identical for real data).
+     * @param m Number of rows of C; must be non-negative.
+     * @param n Number of columns of C; must be non-negative.
+     * @param k Number of elementary reflectors; must satisfy 0 <= k <= nq, where nq is m for
+     *          side LEFT and n for side RIGHT; nq must be at most 4096, otherwise the call is
+     *          rejected with ACLSOLVER_STATUS_NOT_SUPPORTED. nq is m for
+     *          side LEFT and n for side RIGHT.
+     * @param A Householder representation from aclsolverSgeqrf. Not read by this query.
+     * @param lda Leading dimension of A; must be at least max(1, nq).
+     * @param tau Reflector scalars of length k. Not read by this query.
+     * @param C Matrix acted on by op(Q). Not read by this query.
+     * @param ldc Leading dimension of C; must be at least max(1, m).
+     * @param lwork Output workspace size counted in float elements. 0 when m, n or k is 0.
+     * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
+     *         invalid argument.
+     */
+    aclsolverStatus_t aclsolverSormqr_bufferSize(aclsolverHandle_t handle, aclsolverSideMode_t side,
+                                                 aclsolverOperation_t trans, int m, int n, int k, const float *A, int lda,
+                                                 const float *tau, const float *C, int ldc, int *lwork);
+
+    /**
+     * @brief Multiply C by the orthogonal factor Q = H(1) H(2) ... H(k) of a QR factorization.
+     *
+     * Computes op(Q) * C for side LEFT and C * op(Q) for side RIGHT, overwriting C. The input
+     * is the Householder representation produced by aclsolverSgeqrf, not an explicit Q. A and
+     * C use column-major storage and any lda >= max(1, nq), ldc >= max(1, m) is accepted. With
+     * k = 0 the operator is the identity and C is left unchanged.
+     *
+     * @param handle Solver handle created by aclsolverCreate. The computation runs on the
+     *               stream bound to the handle.
+     * @param side Side from which op(Q) is applied.
+     * @param trans ACLSOLVER_OP_N applies Q; ACLSOLVER_OP_T and ACLSOLVER_OP_C both apply Q
+     *              transposed (identical for real data).
+     * @param m Number of rows of C; must be non-negative.
+     * @param n Number of columns of C; must be non-negative.
+     * @param k Number of elementary reflectors; must satisfy 0 <= k <= nq (nq is m for side
+     *          LEFT and n for side RIGHT); nq must be at most 4096, otherwise the call is
+     *          rejected with ACLSOLVER_STATUS_NOT_SUPPORTED.
+     * @param A Input matrix in column-major storage holding the reflector vectors.
+     * @param lda Leading dimension of A; must be at least max(1, nq).
+     * @param tau Input array of k reflector scalars from aclsolverSgeqrf.
+     * @param C Input/output matrix in column-major storage, overwritten in place.
+     * @param ldc Leading dimension of C; must be at least max(1, m).
+     * @param work Device workspace of at least lwork float elements.
+     * @param lwork Workspace size in elements, as returned by aclsolverSormqr_bufferSize.
+     * @param devInfo Device int32 output: 0 on success, -i when the i-th argument is
+     *                invalid (the handle is not counted).
+     * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
+     */
+    aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans,
+                                      int m, int n, int k, const float *A, int lda, const float *tau, float *C, int ldc,
+                                      float *work, int lwork, int *devInfo);
+
+    /**
+     * @brief Query the workspace sizes, in bytes, required by aclsolverXlarft.
+     *
+     * V, tau and T are not read, so passing nullptr is accepted: callers commonly query the
+     * sizes before allocating them. The host workspace is always 0 bytes for this
+     * implementation.
+     *
+     * @param handle Solver handle created by aclsolverCreate. Unused by the query.
+     * @param params Must be nullptr: this implementation ships no parameter object.
+     * @param direct ACLSOLVER_DIRECT_FORWARD for H(1) H(2) ... H(k), ACLSOLVER_DIRECT_BACKWARD
+     *               for H(k) ... H(2) H(1).
+     * @param storev Must be ACLSOLVER_STOREV_COLUMNWISE.
+     * @param n Order of the block reflector; must satisfy n >= k >= 0.
+     * @param k Number of elementary reflectors, also the order of T; must be non-negative.
+     * @param dataTypeV Element type of V; must be ACLSOLVER_R_32F.
+     * @param V Reflector vectors in column-major storage. Not read by this query.
+     * @param ldv Leading dimension of V; must be at least max(1, n).
+     * @param dataTypeTau Element type of tau; must be ACLSOLVER_R_32F.
+     * @param tau Reflector scalars of length k. Not read by this query.
+     * @param dataTypeT Element type of T; must be ACLSOLVER_R_32F.
+     * @param T Output triangular factor. Not read by this query.
+     * @param ldt Leading dimension of T; must be at least max(1, k).
+     * @param computeType Compute precision; must be ACLSOLVER_R_32F.
+     * @param workspaceInBytesOnDevice Output device workspace size in bytes. 0 when n or k is 0.
+     * @param workspaceInBytesOnHost Output host workspace size in bytes. Always 0.
+     * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an invalid
+     *         argument, ACLSOLVER_STATUS_NOT_SUPPORTED when the data types are not all FLOAT32.
+     */
+    aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolverParams_t params,
+                                                 aclsolverDirectMode_t direct, aclsolverStorevMode_t storev, int64_t n,
+                                                 int64_t k, aclsolverDataType_t dataTypeV, const void *V, int64_t ldv,
+                                                 aclsolverDataType_t dataTypeTau, const void *tau,
+                                                 aclsolverDataType_t dataTypeT, void *T, int64_t ldt,
+                                                 aclsolverDataType_t computeType, size_t *workspaceInBytesOnDevice,
+                                                 size_t *workspaceInBytesOnHost);
+
+    /**
+     * @brief Form the triangular factor T of a block reflector built from k elementary reflectors.
+     *
+     * With direct = FORWARD the block reflector is H(1) H(2) ... H(k) = I - V T V^T and T is
+     * upper triangular; with BACKWARD it is H(k) ... H(2) H(1) and T is lower triangular. Only
+     * the referenced triangle of T is written, matching LAPACK slarft; the other triangle is
+     * left untouched. V uses column-major storage with the unit diagonal implicit: column i
+     * has a 1 at row i (FORWARD) or at row n-k+i (BACKWARD), and the entries on the other side
+     * of that 1 are not read. There is no devInfo output: argument errors are reported through
+     * the return code only.
+     *
+     * @param handle Solver handle created by aclsolverCreate. The computation runs on the
+     *               stream bound to the handle.
+     * @param params Must be nullptr: this implementation ships no parameter object.
+     * @param direct Order in which the reflectors are applied.
+     * @param storev Must be ACLSOLVER_STOREV_COLUMNWISE.
+     * @param n Order of the block reflector; must satisfy n >= k >= 0 and n <= 4096.
+     * @param k Number of elementary reflectors; must satisfy 0 <= k <= min(n, 256).
+     * @param dataTypeV Element type of V; must be ACLSOLVER_R_32F.
+     * @param V Input reflector vectors in column-major storage.
+     * @param ldv Leading dimension of V; must be at least max(1, n).
+     * @param dataTypeTau Element type of tau; must be ACLSOLVER_R_32F.
+     * @param tau Input array of k reflector scalars.
+     * @param dataTypeT Element type of T; must be ACLSOLVER_R_32F.
+     * @param T Output k x k triangular factor in column-major storage.
+     * @param ldt Leading dimension of T; must be at least max(1, k).
+     * @param computeType Compute precision; must be ACLSOLVER_R_32F.
+     * @param bufferOnDevice Device workspace of at least workspaceInBytesOnDevice bytes.
+     * @param workspaceInBytesOnDevice Device workspace size in bytes, as returned by the query.
+     * @param bufferOnHost Host workspace; unused, may be nullptr.
+     * @param workspaceInBytesOnHost Host workspace size in bytes; always 0 for this
+     *                               implementation.
+     * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
+     */
+    aclsolverStatus_t aclsolverXlarft(aclsolverHandle_t handle, aclsolverParams_t params, aclsolverDirectMode_t direct,
+                                      aclsolverStorevMode_t storev, int64_t n, int64_t k, aclsolverDataType_t dataTypeV,
+                                      const void *V, int64_t ldv, aclsolverDataType_t dataTypeTau, const void *tau,
+                                      aclsolverDataType_t dataTypeT, void *T, int64_t ldt,
+                                      aclsolverDataType_t computeType, void *bufferOnDevice,
+                                      size_t workspaceInBytesOnDevice, void *bufferOnHost,
+                                      size_t workspaceInBytesOnHost);
+
+    /**
+     * @brief Query the device workspace size, in bytes, required by aclsolverSSgels.
+     *
+     * dA, dB, dX and dwork are not read, so passing nullptr is accepted: callers commonly
+     * query the size before allocating them.
+     *
+     * @param handle Solver handle created by aclsolverCreate; must not be nullptr.
+     * @param m Number of rows of A; must satisfy m >= n >= 0.
+     * @param n Number of columns of A; must be non-negative.
+     * @param nrhs Number of right-hand sides; must be non-negative.
+     * @param dA Coefficient matrix. Not read by this query.
+     * @param ldda Leading dimension of dA; must be at least max(1, m).
+     * @param dB Right-hand side matrix. Not read by this query.
+     * @param lddb Leading dimension of dB; must be at least max(1, m).
+     * @param dX Solution matrix. Not read by this query.
+     * @param lddx Leading dimension of dX; must be at least max(1, n).
+     * @param dwork Ignored, kept for signature compatibility.
+     * @param lwork_bytes Output workspace size in bytes. 0 when m, n or nrhs is 0.
+     * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
+     *         invalid argument.
+     */
+    aclsolverStatus_t aclsolverSSgels_bufferSize(aclsolverHandle_t handle, int m, int n, int nrhs, float *dA, int ldda,
+                                                 float *dB, int lddb, float *dX, int lddx, void *dwork,
+                                                 size_t *lwork_bytes);
+
+    /**
+     * @brief Solve the least squares problem min ||A X - B|| for an m-by-n matrix with m >= n.
+     *
+     * The solution is computed by a QR factorization: A = Q R, then X = R^-1 (Q^T B)(1:n, :).
+     *
+     * A is assumed to have full column rank. If a diagonal element of R is exactly zero the
+     * triangular solve follows IEEE semantics and propagates Inf/NaN into the affected
+     * columns of dX, matching a BLAS strsm on a singular triangle; rank deficiency is NOT
+     * reported through dinfo (unlike LAPACK sgels, whose info > 0 names the zero diagonal).
+     * Callers that must detect rank deficiency should inspect dX for non-finite values.
+     * All matrices use column-major storage and any ldda >= max(1, m), lddb >= max(1, m),
+     * lddx >= max(1, n) is accepted. dA is overwritten by the factorization, dB is read only,
+     * and dX must not alias dB. niter is a host scalar; this implementation performs a direct
+     * QR solve with no iterative refinement, so it is always set to 0.
+     *
+     * @param handle Solver handle created by aclsolverCreate. The computation runs on the
+     *               stream bound to the handle.
+     * @param m Number of rows of A; must satisfy m >= n >= 0 and m <= 4096.
+     * @param n Number of columns of A; must be non-negative and at most 4096.
+     * @param nrhs Number of right-hand sides; must be non-negative.
+     * @param dA Input/output matrix in column-major storage; its contents are destroyed.
+     *           The internal QR step carries the same magnitude window as aclsolverSgeqrf:
+     *           5e-20 < max|dA| < 1.8e19.
+     * @param ldda Leading dimension of dA; must be at least max(1, m).
+     * @param dB Input right-hand side matrix in column-major storage; not modified.
+     * @param lddb Leading dimension of dB; must be at least max(1, m).
+     * @param dX Output solution matrix (n by nrhs) in column-major storage. It must alias
+     *           neither dB (dB is a read-only input) nor dA: the solve writes dX before it
+     *           reads the triangular factor left in dA, so sharing either buffer silently
+     *           corrupts the result. Both cases are rejected with dinfo = -8.
+     * @param lddx Leading dimension of dX; must be at least max(1, n).
+     * @param dWorkspace Device workspace of at least lwork_bytes bytes.
+     * @param lwork_bytes Workspace size in bytes, as returned by aclsolverSSgels_bufferSize.
+     * @param niter Host output: number of refinement iterations performed. Always 0 here.
+     * @param dinfo Device int32 output: 0 on success, -i when the i-th argument is invalid
+     *              (the handle is not counted).
+     * @return ACLSOLVER_STATUS_SUCCESS when the work is submitted, otherwise a status code.
+     */
+    aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nrhs, float *dA, int ldda, float *dB,
+                                      int lddb, float *dX, int lddx, void *dWorkspace, size_t lwork_bytes, int *niter,
+                                      int *dinfo);
+
 #ifdef __cplusplus
 }
 #endif
@@ -513,26 +820,6 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
  */
 aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, aclsolverFillMode_t uplo, const int64_t n,
                          std::complex<float>* A, const int64_t lda, float* W, int32_t* info);
-
-/**
- * @brief QR decomposition of a single real float matrix (A = Q * R) using Householder reflections
- *
- * A uses column-major storage. On return, the upper triangle contains R and the elements
- * below the diagonal, together with tau, represent the orthogonal matrix Q. Q is not formed
- * explicitly.
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param m rows of matrix A, must be non-negative
- * @param n columns of matrix A, must be non-negative
- * @param A input/output matrix, FLOAT32, column-major m * n layout; holds R and Householder
- *          vectors on return
- * @param lda leading dimension of A; must be at least max(1, m)
- * @param tau output scalar factors of the Householder reflectors, length min(m, n)
- * @param info result info; not written in current version
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverSgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, float* A, const int64_t lda,
-                         float* tau, int32_t* info);
 
 aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, float* A,
                          const int64_t lda, int32_t* ipiv, float* B, const int64_t ldb, int32_t* info);

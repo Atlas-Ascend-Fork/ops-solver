@@ -2,140 +2,104 @@
 
 ## 概述
 
-Solver Sgeqrf算子实现。
+Solver Sgeqrf 算子实现（`aclsolverSgeqrf / aclsolverSgeqrf_bufferSize`）。对单精度实数矩阵做 QR 分解（Householder 形式）。
 
 ## 支持的产品
 
-- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- Atlas A2 训练系列产品/Atlas A2 推理系列产品
+- Ascend 950PR / Ascend 950DT
 
 ## 目录结构介绍
 
 ```
 ├── sgeqrf
-│   ├── CMakeLists.txt      // 编译工程文件
-│   ├── README.md           // 说明文档
-│   ├── sgeqrf_test.cpp     // 算子调用样例
-│   └── data                // 测试数据目录
-│       ├── gen_data.py     // 生成测试数据脚本
-│       └── verify_result.py // 验证结果脚本
+│   ├── CMakeLists.txt       // 编译工程文件
+│   ├── README.md            // 说明文档（本文件）
+│   ├── sgeqrf_test.cpp   // 算子调用样例与自测
+│   └── data                 // 测试数据目录
+│       ├── sgeqrf_cases.txt        // 精度/性能用例 174 条（取自任务包 cases.json + bench_result.json）
+│       ├── sgeqrf_cases_pow2.txt   // 2^k 与 2^k-1 形状 50 条（无 GPU 基线，只做精度）
+│       └── sgeqrf_cases_subset.txt // padding 两档用的子集 30 条
 ```
 
 ## 算子描述
 
 - 算子功能：
-    Sgeqrf算子对实数矩阵进行QR分解，对应的数学表达式为：
     $$A = Q \cdot R$$
-    其中$A$为$m \times n$阶实数矩阵，$Q$为正交矩阵，$R$为上三角矩阵。
+    其中 $A$ 为 $m \times n$ 实数矩阵，$Q$ 为 $m \times m$ 正交矩阵，$R$ 为上三角矩阵。
+    返回时 $A$ 的上三角存 $R$、对角以下存 Householder 向量，`TAU` 存各反射子的系数。
 
 - 算子规格：
-    <table>
-    <tr>
-        <td rowspan="1" align="center">算子类型(OpType)</td>
-        <td colspan="5" align="center">Sgeqrf</td>
-    </tr>
-    <tr>
-        <td rowspan="5" align="center">算子输入</td>
-        <td align="center">name</td>
-        <td align="center">shape</td>
-        <td align="center">data type</td>
-        <td align="left">Description</td>
-        <td align="center">format</td>
-    </tr>
-    <tr>
-        <td align="center">m</td>
-        <td align="center">[1]</td>
-        <td align="center">INT64</td>
-        <td align="left">矩阵A的行数</td>
-        <td align="center">\</td>
-    </tr>
-    <tr>
-        <td align="center">n</td>
-        <td align="center">[1]</td>
-        <td align="center">INT64</td>
-        <td align="left">矩阵A的列数</td>
-        <td align="center">\</td>
-    </tr>
-    <tr>
-        <td align="center">A</td>
-        <td align="center">[m, n]</td>
-        <td align="center">FLOAT32</td>
-        <td align="left">输入矩阵A，列主序</td>
-        <td align="center">ND</td>
-    </tr>
-    <tr>
-        <td align="center">lda</td>
-        <td align="center">[1]</td>
-        <td align="center">INT64</td>
-        <td align="left">A相邻列首元素之间的元素跨度（需满足lda >= max(1, m)）</td>
-        <td align="center">\</td>
-    </tr>
-    <tr>
-        <td rowspan="3" align="center">算子输出</td>
-        <td align="center">A</td>
-        <td align="center">[m, n]</td>
-        <td align="center">FLOAT32</td>
-        <td align="left">输出的R矩阵和Q矩阵的Householder向量，合并存储在A中</td>
-        <td align="center">ND</td>
-    </tr>
-    <tr>
-        <td align="center">tau</td>
-        <td align="center">[min(m,n)]</td>
-        <td align="center">FLOAT32</td>
-        <td align="left">Q矩阵的Householder反射系数</td>
-        <td align="center">ND</td>
-    </tr>
-    <tr>
-        <td align="center">info</td>
-        <td align="center">[1]</td>
-        <td align="center">INT32</td>
-        <td align="left">分解结果信息</td>
-        <td align="center">\</td>
-    </tr>
-    <tr>
-        <td rowspan="1" align="center">核函数名</td>
-        <td colspan="5" align="center">sgeqrf_kernel</td>
-    </tr>
-    </table>
 
+    | 输入/输出 | name | shape | data type | 说明 |
+    |---|---|---|---|---|
+    | 输入 | m | [1] | int | A 的行数，m >= 0 |
+    | 输入 | n | [1] | int | A 的列数，n >= 0 |
+    | 输入/输出 | A | [lda, n] | FLOAT32 | 列主序 ND；返回时上三角为 R、对角以下为 V |
+    | 输入 | lda | [1] | int | A 的 leading dimension，lda >= max(1, m) |
+    | 输出 | TAU | [min(m,n)] | FLOAT32 | 各 Householder 反射子的系数 |
+    | 输入 | Workspace / Lwork | [Lwork] | FLOAT32 | device workspace，单位是**元素个数**，由 _bufferSize 查询 |
+    | 输出 | devInfo | [1] | INT32 | 0 成功；-i 表示第 i 个参数非法（不计 handle） |
 
-- 算子约束：
-  - lda需满足lda >= max(1, m)。
-  - info参数在当前版本实际未启用。
-  - 输入矩阵A按列主序存储。
-  - A的数据类型仅支持FLOAT32。
+    核函数名：`sgeqrf_mix_kernel`
 
+- 算子约束：m / n 上限 8192（kernel 的 UB 预算，超出返回 `ACLSOLVER_STATUS_NOT_SUPPORTED`）；`lda` 可大于 m（不要求紧凑排布）。
 
-- 调用实现
-    使用内核调用符<<<>>>调用核函数。
+- 调用实现：Host 侧做参数校验与 workspace 布局，使用内核调用符 `<<<>>>` 下发核函数。
+
+## 精度判据
+
+精度判据取任务书 §3.2.1-1（LAPACK **SQRT01**）：`ratio = ‖A − Q·R‖₁ / (m·‖A‖₁·ε)`，阈值 `max(5·ratio_cpu, 0.1)`。`ratio_cpu` 为同 case 同式的 CPU fp32 参考链路实测值。
 
 ## 编译运行
 
-在本样例根目录下执行如下步骤，编译并执行算子。
-- 配置环境变量
-  请根据当前环境上CANN开发套件包的安装方式，选择对应配置环境变量的命令。
-  - 默认路径，root用户安装CANN软件包
-    ```bash
-    source /usr/local/Ascend/cann/set_env.sh
-    ```
+### 1. 前置依赖
 
-  - 默认路径，非root用户安装CANN软件包
-    ```bash
-    source $HOME/Ascend/cann/set_env.sh
-    ```
+| 依赖 | 说明 |
+|---|---|
+| 硬件 | Ascend 950PR（`npu-smi info` 的 Name 应为 `Ascend950PR`） |
+| CANN | 9.0.0 及以上。本算子的自测在 **CANN 9.1.0**（`V100R001C11SPC001B243`）、驱动 **25.7.rc1.6** 上完成 |
+| CATLASS | QR 系列的 GEMM 层基于 CATLASS（<CATLASS 仓库（cann/catlass）>），**不随 CANN 发布、也不在本仓内**，需自行 clone。任务书 §2.2 明文允许"基于 AscendC/CATLASS 实现" |
 
-  - 指定路径install_path，安装CANN软件包
-    ```bash
-    source ${install_path}/cann/set_env.sh
-    ```
+### 2. 配置环境变量
 
-- 样例执行
-  ```bash
-  bash build.sh --ops=sgeqrf --run # --ops=<算子名> --run可选参数，执行测试样例
-  ```
-  执行结果如下，说明精度对比成功。
-  ```bash
-  Dual 5 Per Mille Check Result (based on absolute values):
-    PASS: Percentage of elements exceeding relative threshold (x.xxxx%) is within the allowed 0.5%.
-  [Success] Case accuracy is verification passed.
-  ```
+```bash
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+export CATLASS_HOME=/path/to/catlass        # CATLASS 仓根（含 include/catlass）
+```
+
+### 3. 编译
+
+两种方式都可以，推荐第一种（仓自带脚本）：
+
+```bash
+# 方式一：仓自带 build.sh
+CATLASS_HOME=$CATLASS_HOME bash build.sh --ops=sgeqrf --soc=Ascend950PR_9579 --run
+
+# 方式二：直接调 cmake（五个算子一起编）
+export ASCEND_HOME_PATH=/usr/local/Ascend/ascend-toolkit/latest
+export LINUX_INCLUDE_PATH=$ASCEND_HOME_PATH/$(uname -m)-linux/include
+export EAGER_LIBRARY_PATH=$ASCEND_HOME_PATH/lib64
+mkdir -p build && cd build
+cmake .. -DSOC_VERSION=Ascend950PR_9579 -DCATLASS_HOME=$CATLASS_HOME \
+         -DCMAKE_BUILD_TYPE=Release -DBUILD_TEST=ON \
+         "-DTEST_NAMES=sgeqrf;sorgqr;sormqr;xlarft;sgels"
+make -j16
+```
+
+> `CATLASS_HOME` 不传时整个 CATLASS 块会被跳过，本仓其它算子照常编译；但 QR 系列的 kernel 需要它。
+
+### 4. 运行
+
+```bash
+export LD_LIBRARY_PATH=<build 目录>:$LD_LIBRARY_PATH
+cd build/test/sgeqrf
+./sgeqrf_test                                       # 功能 + 参数校验 + 28 个形状（含 m<n）
+./sgeqrf_test sweep     ./data/sgeqrf_cases.txt 48 0   # 全量精度 174 条（第 3 个参数是抽样列数上限，第 4 个是额外 padding）
+./sgeqrf_test perfsweep ./data/sgeqrf_cases.txt 0      # 全量性能 174 条（判据 >= 0.35x GPU）
+./sgeqrf_test sweep     ./data/sgeqrf_cases_pow2.txt 48 0     # 2^k 与 2^k-1 形状 50 条
+./sgeqrf_test sweep     ./data/sgeqrf_cases_subset.txt 48 8   # padding +8
+./sgeqrf_test sweep     ./data/sgeqrf_cases_subset.txt 48 32  # padding +32
+./sgeqrf_test perf <m> <n> <lda> <iters>            # 单形状计时
+```
+
+

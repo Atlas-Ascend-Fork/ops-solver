@@ -225,7 +225,7 @@ if [ "${RUN_TEST}" == "ON" ]; then
         # the executable. Full official cases are run by the separate selftest
         # project against the supplied package and fixed adapter libraries.
         case "${op}" in
-            sgetrf|sgetri|sgetri_batched|smatinv_batched)
+            sgetrf|sgetri|sgetri_batched|smatinv_batched|sgeqrf|sorgqr|sormqr|xlarft|sgels)
                 if LD_LIBRARY_PATH="${BUILD_PATH}:${LD_LIBRARY_PATH}" "${TEST_BIN}"; then
                     if [ "${op}" == "sgetrf" ]; then
                         SUBNORMAL_TEST_BIN="${BUILD_DIR}/test/sgetrf/sgetrf_subnormal_pivot_test"

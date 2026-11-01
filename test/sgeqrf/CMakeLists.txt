@@ -1,37 +1,11 @@
 # ----------------------------------------------------------------------------------------------------------
-# PACO GEQRF — An I/O-Efficient Parallel QR Factorization for Heterogeneous Architectures
-#
-# Copyright (c) 2026 Shina Guo <fs20091003@163.com>, Yuan Tang <yuantang@fudan.edu.cn>
-# All rights reserved.
-#
-# This software is dual-licensed:
-#   1) Community license: use, modify, and redistribute freely under the
-#      GNU General Public License v3 or later (GPL-3.0-or-later);
-#   2) Commercial license: for closed-source or commercial use / redistribution,
-#      contact the copyright holder for a separate license.
-# You may choose either. Default terms are GPL-3.0-or-later.
-#
-# SPDX-License-Identifier: GPL-3.0-or-later
-#
-# This program is free software: you may redistribute it and/or modify it under
-# the terms of the GPL. It is distributed "as is", without warranty.
-# See COPYING (full GPL) and COMMERCIAL-LICENSE (commercial terms) at the repo root.
-# Commercial licensing contact: yuantang@fudan.edu.cn
-#
-# -------------------------------------------------------------------------
-# 中文版 (Chinese):
-#
-# PACO GEQRF — An I/O-Efficient Parallel QR Factorization for Heterogeneous Architectures
-#
-# 本软件采用双重许可（dual licensing）：
-#   1) 社区许可：依据 GNU 通用公共许可证第 3 版或（你选择的）更新版本
-#      （GPL-3.0-or-later）自由使用、修改与再分发；
-#   2) 商业许可：闭源商用 / 再分发请与版权人联系获取单独授权。
-# 二者任选其一。默认条款以 GPL-3.0-or-later 为准。
-#
-# 本程序是自由软件，你可依 GPL 条款重新发布或修改；基于“原样”提供，无担保。
-# 详情见仓库根目录 COPYING（GPL 全文）与 COMMERCIAL-LICENSE（商业条款）。
-# 商业授权联系：yuantang@fudan.edu.cn
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
 add_executable(sgeqrf_test
@@ -46,4 +20,10 @@ target_include_directories(sgeqrf_test PRIVATE
 target_link_libraries(sgeqrf_test PRIVATE
     ${OPS_SOLVER}
     $ENV{EAGER_LIBRARY_PATH}/libascendcl.so
+)
+
+# 全量 case 清单（取自任务包 cases.json）要和二进制同目录，sweep 模式默认读 ./data/
+add_custom_command(TARGET sgeqrf_test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/data $<TARGET_FILE_DIR:sgeqrf_test>/data
 )
