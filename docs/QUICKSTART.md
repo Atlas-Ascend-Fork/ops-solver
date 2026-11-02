@@ -57,11 +57,7 @@ Self-extractable archive "cann-950-ops-solver_9.0.0_linux-x86_64.run" successful
 
 以cmatinv_batched算子为例，运行该样例验证算子功能是否正常。
 
-运行样例前，需先准备测试数据。测试程序从`./test/cmatinv_batched/data/input/A_gm.bin`读取输入数据，请在项目根目录执行以下命令生成（`<n>`为矩阵阶数，`<batchSize>`为批量大小，需与测试用例的调用参数保持一致）：
-
-```bash
-python3 test/cmatinv_batched/data/gen_data.py <n> <batchSize>
-```
+以下命令会自动生成测试数据，再运行测试并验证结果。默认生成两组 3×3 矩阵，与测试程序的默认参数一致。
 
 ```bash
 bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
@@ -70,12 +66,14 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 
 > **提示**：若已完成编译且仅需重新验证功能，可直接运行已编译的二进制文件，无需再次编译。编译完成后，测试二进制文件位于`build/test/<算子名>/<算子名>_test`。
 >
-> 注意：`bash build.sh --run` 在测试结束后会清理生成的测试数据（`test/<算子名>/data/` 下的 input/output/golden），直接运行二进制前需先按上文重新生成（参数需与测试用例的调用参数一致）：
+> 注意：`bash build.sh --run` 在测试结束后会清理生成的测试数据（`test/<算子名>/data/` 下的 input/output/golden），直接运行二进制前需先按下例重新生成（参数需与测试用例的调用参数一致）：
 >
 > ```bash
-> python3 test/cmatinv_batched/data/gen_data.py <n> <batchSize>
+> python3 test/cmatinv_batched/data/gen_data.py 3 2
 > ./build/test/cmatinv_batched/cmatinv_batched_test
 > ```
+>
+> 数据生成脚本的参数依次为矩阵阶数和批量大小；调整它们时，需同步调整测试程序的 `batchSize` 和 `n` 参数。
 
 ## 二、算子开发
 
