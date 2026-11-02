@@ -134,14 +134,6 @@ echo "BUILD_OPS=${BUILD_OPS}, RUN_TEST=${RUN_TEST}, ENABLE_PACKAGE=${ENABLE_PACK
 # （test 的数据生成/校验脚本与测试二进制均按 ./test/... 相对路径读写）
 cd "${BASE_PATH}"
 
-# 防御性校验：待清理的构建目录必须位于仓库内，避免误删仓库外同名目录
-if [[ "${BUILD_DIR}" != "${BASE_PATH}"/* ]]; then
-    print_error "Refuse to remove build directory outside the repository: ${BUILD_DIR}"
-    exit 1
-fi
-rm -rf "${BUILD_DIR}"
-mkdir -p "${BUILD_DIR}"
-
 # 默认 SOC_VERSION，ASCEND_CANN_PACKAGE_PATH 使用环境变量
 if [ -z "${SOC_VERSION}" ]; then
     SOC_VERSION="ascend910b"
@@ -163,6 +155,14 @@ if [ -z "${matched}" ]; then
     echo "Hint: 可用 'npu-smi info' 查看芯片型号，--soc 取值说明见 docs/QUICKSTART.md"
     exit 1
 fi
+
+# 防御性校验：待清理的构建目录必须位于仓库内，避免误删仓库外同名目录
+if [[ "${BUILD_DIR}" != "${BASE_PATH}"/* ]]; then
+    print_error "Refuse to remove build directory outside the repository: ${BUILD_DIR}"
+    exit 1
+fi
+rm -rf "${BUILD_DIR}"
+mkdir -p "${BUILD_DIR}"
 
 CMAKE_OPTIONS=("-DSOC_VERSION=${SOC_VERSION}" "-DASCEND_CANN_PACKAGE_PATH=${ASCEND_HOME}")
 
