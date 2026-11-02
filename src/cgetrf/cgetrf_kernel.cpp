@@ -8,1004 +8,400 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file cgetrf_kernel.cpp
- * \brief
- */
-
-#ifndef CGETRF_MIX_H
-#define CGETRF_MIX_H
-
-#include <lib/matrix/matmul/matmul.h>
-
-#include <cstdint>
-
-#include "../utils/kernel/c64/trsm.hpp"
-#include "./kernel/getf2.hpp"
 #include "kernel_operator.h"
 
-using namespace AscendC;
-using namespace matmul;
+// Device API declarations precede the implementation fragments below.
+#include "../utils/complex_solver_kernel.hpp"
+#include "../utils/complex_solver_launch.h"
+#include "../utils/complex_solver_small.hpp"
+#include "../utils/complex_solver_update.hpp"
 
-#ifndef LU_CEIL_ALIGN
-#define LU_CEIL_ALIGN(x, y) (((x) + (y) - 1) / (y) * (y))
+namespace
+{
+constexpr uint64_t RESIDENT_ELEMENTS = 14 * 1024;
+}
+
+#if __NPU_ARCH__ == 3510
+using namespace ComplexSolverKernel;
+
+__simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void FactorPanelVf(ComplexSolverShape shape,
+                                                                       __gm__ aclFloatComplex* a, __gm__ int* pivots,
+                                                                       __gm__ int* info, int begin, int end)
+{
+    __ubuf__ float scores[THREADS / 32];
+    __ubuf__ int rows[THREADS / 32];
+    FactorPanel(a, shape.m, shape.n, shape.lda, begin, end, pivots, info, scores, rows);
+}
+
+__simt_callee__ __aicore__ inline aclFloatComplex NormalizeCachedValue(aclFloatComplex value,
+                                                                       const PreparedDivisor& divisor,
+                                                                       float inverseScale)
+{
+    if (inverseScale == 0.0f) return PreparedDivide(value, divisor);
+    float real = value.real * inverseScale;
+    float imag = value.imag * inverseScale;
+    return {PreparedQuotient(real, divisor.real, imag, divisor.imag, divisor),
+            PreparedQuotient(imag, divisor.real, -real, divisor.imag, divisor)};
+}
+
+__simt_callee__ __aicore__ inline void ReduceCachedPivot(float& score, int& row, int height)
+{
+    float maximum = asc_reduce_max(score);
+    row = asc_reduce_min(score == maximum ? row : height);
+    score = maximum;
+}
+
+__simt_callee__ __aicore__ inline int FindCachedPivot(__ubuf__ aclFloatComplex* panel, int height, int column,
+                                                      __ubuf__ float* scores, __ubuf__ int* rows)
+{
+    float best = -1.0f;
+    int row = height;
+    for (int r = column + threadIdx.x; r < height; r += blockDim.x)
+    {
+        auto value = Load(panel, column * height + r);
+        float score = Abs(value.real) + Abs(value.imag);
+        if (score > best || (score == best && r < row))
+        {
+            best = score;
+            row = r;
+        }
+    }
+    ReduceCachedPivot(best, row, height);
+    if (threadIdx.x % 32 == 0)
+    {
+        scores[threadIdx.x / 32] = best;
+        rows[threadIdx.x / 32] = row;
+    }
+    asc_syncthreads();
+    if (threadIdx.x < 32)
+    {
+        best = threadIdx.x < blockDim.x / 32 ? scores[threadIdx.x] : -1.0f;
+        row = threadIdx.x < blockDim.x / 32 ? rows[threadIdx.x] : height;
+        ReduceCachedPivot(best, row, height);
+        if (threadIdx.x == 0) rows[0] = row;
+    }
+    asc_syncthreads();
+    return rows[0];
+}
+
+__simt_callee__ __aicore__ inline void FactorCachedColumn(__ubuf__ aclFloatComplex* panel, int rowsCount, int columns,
+                                                          int column, int begin, __gm__ int* pivots, __gm__ int* info,
+                                                          __ubuf__ float* scores, __ubuf__ int* rows)
+{
+    int pivot = pivots == nullptr ? column : FindCachedPivot(panel, rowsCount, column, scores, rows);
+    if (threadIdx.x == 0)
+    {
+        if (pivots != nullptr)
+        {
+            pivots[begin + column] = begin + pivot + 1;
+        }
+        if (*info == 0 && Zero(Load(panel, column * rowsCount + pivot))) *info = begin + column + 1;
+    }
+    SwapRows(panel, columns, rowsCount, column, pivot);
+    auto diagonal = Load(panel, column * rowsCount + column);
+    bool nonzero = !Zero(diagonal);
+    auto divisor = PrepareDivisor(nonzero ? diagonal : aclFloatComplex{1, 0});
+    float inverseScale = divisor.scale >= 0x1p-126f ? 1.0f / divisor.scale : 0.0f;
+    // One thread owns a complete panel row; normalized L never crosses threads.
+    for (int row = column + 1 + threadIdx.x; row < rowsCount; row += blockDim.x)
+    {
+        auto lower = Load(panel, column * rowsCount + row);
+        if (nonzero)
+        {
+            lower = NormalizeCachedValue(lower, divisor, inverseScale);
+            Store(panel, column * rowsCount + row, lower);
+        }
+        for (int target = column + 1; target < columns; ++target)
+        {
+            int address = target * rowsCount + row;
+            Store(panel, address, SubMul(Load(panel, address), lower, Load(panel, target * rowsCount + column)));
+        }
+    }
+    asc_syncthreads();
+}
+
+__simt_vf__ __aicore__ LAUNCH_BOUND(1024) inline void FactorCachedPanelVf(ComplexSolverShape shape,
+                                                                          __gm__ aclFloatComplex* a, __gm__ int* pivots,
+                                                                          __gm__ int* info, int begin, int end)
+{
+    __ubuf__ float storage[2 * COMPLEX_SOLVER_PANEL_CAPACITY];
+    __ubuf__ float scores[1024 / 32];
+    __ubuf__ int rows[1024 / 32];
+    auto* panel = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
+    int height = shape.m - begin;
+    int width = end - begin;
+    for (int index = threadIdx.x; index < height * width; index += blockDim.x)
+        Store(panel, index,
+              Load(a, static_cast<uint64_t>(begin + index / height) * shape.lda + begin + index % height));
+    asc_syncthreads();
+    for (int column = 0; column < width; ++column)
+        FactorCachedColumn(panel, height, width, column, begin, pivots, info, scores, rows);
+    for (int index = threadIdx.x; index < height * width; index += blockDim.x)
+        Store(a, static_cast<uint64_t>(begin + index / height) * shape.lda + begin + index % height,
+              Load(panel, index));
+    asc_syncthreads();
+}
+
+// Reverse the panel swaps for each destination row independently. Load every
+// source before writing, so repeated pivots preserve their sequential semantics.
+__simt_vf__ __aicore__ LAUNCH_BOUND(256) inline void PermutePanelRowsVf(ComplexSolverShape shape,
+                                                                        __gm__ aclFloatComplex* matrix,
+                                                                        __gm__ const int* pivots, int begin, int end)
+{
+    __ubuf__ int pivotRows[PANEL];
+    int width = end - begin;
+    if (threadIdx.x < width) pivotRows[threadIdx.x] = pivots[begin + threadIdx.x] - 1;
+    asc_syncthreads();
+    int slot = threadIdx.x % (2 * PANEL);
+    int target = slot < width ? begin + slot : slot >= PANEL && slot - PANEL < width ? pivotRows[slot - PANEL] : -1;
+    int source = target;
+    bool active = target >= 0 && (slot < PANEL || target >= end);
+    for (int step = width - 1; step >= 0; --step)
+    {
+        int pivot = pivotRows[step];
+        if (slot >= PANEL && step < slot - PANEL && pivot == target) active = false;
+        source = source == begin + step ? pivot : source == pivot ? begin + step : source;
+    }
+    active = active && source != target;
+    for (int first = blockIdx.x * 8; first < shape.n; first += gridDim.x * 8)
+    {
+        int column = first + threadIdx.x / (2 * PANEL);
+        bool firstValid = active && column < shape.n && (column < begin || column >= end);
+        bool secondValid = active && column + 4 < shape.n && (column + 4 < begin || column + 4 >= end);
+        aclFloatComplex firstValue{0, 0}, secondValue{0, 0};
+        if (firstValid) firstValue = Load(matrix, static_cast<uint64_t>(column) * shape.lda + source);
+        if (secondValid) secondValue = Load(matrix, static_cast<uint64_t>(column + 4) * shape.lda + source);
+        asc_syncthreads();
+        if (firstValid) Store(matrix, static_cast<uint64_t>(column) * shape.lda + target, firstValue);
+        if (secondValid) Store(matrix, static_cast<uint64_t>(column + 4) * shape.lda + target, secondValue);
+        asc_syncthreads();
+    }
+}
+
+template <int Capacity>
+__simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void FactorResidentVf(ComplexSolverShape shape,
+                                                                          __gm__ aclFloatComplex* a, __gm__ int* pivots,
+                                                                          __gm__ int* info)
+{
+    __ubuf__ float storage[2 * Capacity];
+    __ubuf__ float scores[THREADS / 32];
+    __ubuf__ int rows[THREADS / 32];
+    auto* local = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
+    for (int index = threadIdx.x; index < shape.m * shape.n; index += blockDim.x)
+        Store(local, index, Load(a, static_cast<uint64_t>(index / shape.m) * shape.lda + index % shape.m));
+    asc_syncthreads();
+    int limit = shape.m < shape.n ? shape.m : shape.n;
+    for (int column = 0; column < limit; ++column)
+        FactorColumn(local, shape.m, shape.n, shape.m, column, shape.n, pivots, info, scores, rows);
+    for (int index = threadIdx.x; index < shape.m * shape.n; index += blockDim.x)
+        Store(a, static_cast<uint64_t>(index / shape.m) * shape.lda + index % shape.m, Load(local, index));
+}
+
+__simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void FactorShortVf(ComplexSolverShape shape,
+                                                                       __gm__ aclFloatComplex* a, __gm__ int* pivots,
+                                                                       __gm__ int* info)
+{
+    __ubuf__ float storage[2 * PANEL * PANEL];
+    __ubuf__ float scores[THREADS / 32];
+    __ubuf__ int rows[THREADS / 32];
+    auto* local = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
+    for (int index = threadIdx.x; index < shape.m * shape.m; index += blockDim.x)
+        Store(local, index, Load(a, static_cast<uint64_t>(index / shape.m) * shape.lda + index % shape.m));
+    asc_syncthreads();
+    FactorPanel(local, shape.m, shape.m, shape.m, 0, shape.m, pivots, info, scores, rows);
+    for (int index = threadIdx.x; index < shape.m * shape.m; index += blockDim.x)
+        Store(a, static_cast<uint64_t>(index / shape.m) * shape.lda + index % shape.m, Load(local, index));
+}
+
+template <bool ApplyPivots>
+__simt_callee__ __aicore__ inline void SolveUpperColumn(__gm__ aclFloatComplex* a,
+                                                        __ubuf__ const aclFloatComplex* lower, __gm__ const int* pivots,
+                                                        int lda, int column, int begin, int end)
+{
+    int lane = threadIdx.x % 32;
+    int row = begin + lane;
+    aclFloatComplex value = row < end ? Load(a, static_cast<uint64_t>(column) * lda + row) : aclFloatComplex{0, 0};
+    if constexpr (ApplyPivots)
+        if (pivots != nullptr)
+            for (int step = begin; step < end; ++step)
+            {
+                int target = pivots[step] - 1;
+                int source = row == step ? target - begin : row == target ? step - begin : lane;
+                value = {asc_shfl(value.real, source), asc_shfl(value.imag, source)};
+            }
+    for (int pivot = 0; pivot < end - begin; ++pivot)
+    {
+        aclFloatComplex solved{asc_shfl(value.real, pivot), asc_shfl(value.imag, pivot)};
+        if (lane > pivot && row < end) value = SubMul(value, Load(lower, pivot * PANEL + lane), solved);
+    }
+    if (row < end) Store(a, static_cast<uint64_t>(column) * lda + row, value);
+}
+
+template <bool ApplyPivots>
+__simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void SolveUpperVf(ComplexSolverShape shape,
+                                                                      __gm__ aclFloatComplex* a,
+                                                                      __gm__ const int* pivots, int begin, int end)
+{
+    __ubuf__ float storage[2 * PANEL * PANEL];
+    auto* lower = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
+    for (int index = threadIdx.x; index < PANEL * PANEL; index += blockDim.x)
+    {
+        int row = begin + index % PANEL;
+        int column = begin + index / PANEL;
+        Store(lower, index,
+              row < end && column < end ? Load(a, static_cast<uint64_t>(column) * shape.lda + row)
+                                        : aclFloatComplex{0, 0});
+    }
+    asc_syncthreads();
+    for (int column = end + blockIdx.x * (THREADS / 32) + threadIdx.x / 32; column < shape.n;
+         column += (THREADS / 32) * gridDim.x)
+        SolveUpperColumn<ApplyPivots>(a, lower, pivots, shape.lda, column, begin, end);
+}
+
 #endif
 
-template <typename T>
-class SplitRealImag
+__global__ __aicore__ void complex_factor_panel(ComplexSolverShape shape, __gm__ uint8_t* a, __gm__ uint8_t* pivots,
+                                                __gm__ uint8_t* info, int begin, int end)
 {
-    static const int TILE_LENGTH = 8192;
-    GlobalTensor<T> srcGlobal, dstGlobalReal, dstGlobalImag;
-    int N;
-    int srcN;
-    int dstN;
-    int padN;
-    int alignedN;
-    int linesPerIter;
-    int elementsPerBlock;
-    TQue<QuePosition::VECIN, 2> inQueue;
-    TQue<QuePosition::VECOUT, 2> outQueueReal, outQueueImag;
-    LocalTensor<T> realLocal, imagLocal;
-
-   public:
-    __aicore__ inline SplitRealImag() {}
-    __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe)
-    {
-        pipe->InitBuffer(inQueue, 2, TILE_LENGTH * sizeof(T));
-        pipe->InitBuffer(outQueueReal, 2, TILE_LENGTH * sizeof(T));
-        pipe->InitBuffer(outQueueImag, 2, TILE_LENGTH * sizeof(T));
-        elementsPerBlock = 32 / sizeof(T);
-    }
-    __aicore__ inline void SetMatrix(GlobalTensor<T> srcGlobal, GlobalTensor<T> dstGlobalReal,
-                                     GlobalTensor<T> dstGlobalImag, int N, int srcN, int dstN)
-    {
-        this->srcGlobal = srcGlobal;
-        this->dstGlobalReal = dstGlobalReal;
-        this->dstGlobalImag = dstGlobalImag;
-        this->N = N;
-        this->srcN = srcN;
-        this->dstN = dstN;
-
-        alignedN = (N + elementsPerBlock - 1) / elementsPerBlock * elementsPerBlock;
-        linesPerIter = TILE_LENGTH / alignedN;
-        linesPerIter = max(1, linesPerIter & ~1);
-        padN = (elementsPerBlock - (N * 2 % elementsPerBlock)) % elementsPerBlock;
-    }
-    __aicore__ inline void SplitRealImagWork(int M, int p, int id)
-    {
-        int k = M / p, r = M % p;
-        Process((k * id + min(id, r)) * srcN * 2, (k * id + min(id, r)) * dstN, k + (id < r));
-    }
-    __aicore__ inline void Process(int srcOffset, int dstOffset, int lines)
-    {
-        int loopCount = lines / linesPerIter;
-        srcOffset += loopCount * linesPerIter * srcN * 2;
-        dstOffset += loopCount * linesPerIter * dstN;
-        int tailLines = lines - linesPerIter * loopCount;
-        if (tailLines)
-        {
-            if (N << 1 <= TILE_LENGTH)
-            {
-                CopyIn(srcOffset, tailLines / 2);
-                Compute(0, 0, tailLines / 2 * alignedN * 2);
-                CopyIn(srcOffset + tailLines / 2 * srcN * 2, (tailLines + 1) / 2);
-                Compute(1, tailLines / 2 * alignedN, (tailLines + 1) / 2 * alignedN * 2);
-            }
-            else
-            {
-                CopyIn(srcOffset, TILE_LENGTH);
-                Compute(0, 0, TILE_LENGTH);
-                CopyIn(srcOffset + TILE_LENGTH, alignedN * 2 - TILE_LENGTH);
-                Compute(1, TILE_LENGTH / 2, alignedN * 2 - TILE_LENGTH);
-            }
-            CopyOut(dstOffset, tailLines);
-        }
-        srcOffset -= linesPerIter * srcN * 2;
-        dstOffset -= linesPerIter * dstN;
-        for (int i = 0; i < loopCount; ++i)
-        {
-            if (N << 1 <= TILE_LENGTH)
-            {
-                CopyIn(srcOffset, linesPerIter / 2);
-                Compute(0, 0, linesPerIter / 2 * alignedN * 2);
-                CopyIn(srcOffset + linesPerIter / 2 * srcN * 2, (linesPerIter + 1) / 2);
-                Compute(1, linesPerIter / 2 * alignedN, (linesPerIter + 1) / 2 * alignedN * 2);
-            }
-            else
-            {
-                CopyIn(srcOffset, TILE_LENGTH);
-                Compute(0, 0, TILE_LENGTH);
-                CopyIn(srcOffset + TILE_LENGTH, alignedN * 2 - TILE_LENGTH);
-                Compute(1, TILE_LENGTH / 2, alignedN * 2 - TILE_LENGTH);
-            }
-            CopyOut(dstOffset, linesPerIter);
-            srcOffset -= linesPerIter * srcN * 2;
-            dstOffset -= linesPerIter * dstN;
-        }
-    }
-    __aicore__ inline void CopyIn(int offset, int lines)
-    {
-        LocalTensor<T> srcLocal = inQueue.AllocTensor<T>();
-        if (N << 1 <= TILE_LENGTH)
-        {
-            DataCopyExtParams intriParams{
-                static_cast<uint16_t>(lines), static_cast<uint16_t>(N * 2 * sizeof(T)),
-                static_cast<uint16_t>((srcN * 2 - N * 2) * sizeof(T)),
-                static_cast<uint16_t>(N % elementsPerBlock && N % elementsPerBlock <= elementsPerBlock / 2), 0};
-            DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(padN), 0};
-            DataCopyPad(srcLocal, srcGlobal[offset], intriParams, padParams);
-        }
-        else
-        {
-            DataCopy(srcLocal, srcGlobal[offset], lines);
-        }
-        inQueue.EnQue(srcLocal);
-    }
-    __aicore__ inline void Compute(int progress, int calcedLength, int length)
-    {
-        if (!progress)
-        {
-            realLocal = outQueueReal.AllocTensor<T>();
-            imagLocal = outQueueImag.AllocTensor<T>();
-        }
-        LocalTensor<T> srcLocal = inQueue.DeQue<T>();
-        uint64_t rsvdCnt;
-        GatherMask(realLocal[calcedLength], srcLocal, 1, false, 0,
-                   {1, static_cast<uint16_t>((length * sizeof(T) + 255) / 256), 8, 0}, rsvdCnt);
-        GatherMask(imagLocal[calcedLength], srcLocal, 2, false, 0,
-                   {1, static_cast<uint16_t>((length * sizeof(T) + 255) / 256), 8, 0}, rsvdCnt);
-        inQueue.FreeTensor(srcLocal);
-        if (progress)
-        {
-            outQueueReal.EnQue(realLocal);
-            outQueueImag.EnQue(imagLocal);
-        }
-    }
-    __aicore__ inline void CopyOut(int offset, int lines)
-    {
-        LocalTensor<T> realLocal = outQueueReal.DeQue<T>();
-        LocalTensor<T> imagLocal = outQueueImag.DeQue<T>();
-        DataCopyExtParams intriParams{static_cast<uint16_t>(lines), static_cast<uint16_t>(N * sizeof(T)), 0,
-                                      static_cast<uint16_t>((dstN - N) * sizeof(T)), 0};
-        DataCopyPad(dstGlobalReal[offset], realLocal, intriParams);
-        DataCopyPad(dstGlobalImag[offset], imagLocal, intriParams);
-        outQueueReal.FreeTensor(realLocal);
-        outQueueImag.FreeTensor(imagLocal);
-    }
-};
-
-template <typename T>
-class MergeRealImag
-{
-    static const int TILE_LENGTH = 8192;
-    GlobalTensor<T> aOrgGlobal;
-    GlobalTensor<T> aGlobalReal, aGlobalImag;
-    GlobalTensor<uint32_t> aGather;
-    int N;
-    int alignedN;
-    int srcN;
-    int dstN;
-    int linesPerIter;
-    int elementsPerBlock;
-    int baseN, aligned_n_cache, nFullBlocks, nTailBlocks;
-    TQue<QuePosition::VECIN, 2> inQueue;
-    TQue<QuePosition::VECOUT, 2> outQueue;
-    TQue<QuePosition::VECIN, 1> gatherQueue;
-    LocalTensor<T> realLocal, imagLocal;
-    LocalTensor<uint32_t> gatherLocal;
-
-   public:
-    __aicore__ inline MergeRealImag() {}
-    __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe, GlobalTensor<uint32_t> aGather)
-    {
-        pipe->InitBuffer(inQueue, 2, TILE_LENGTH * sizeof(T));
-        pipe->InitBuffer(outQueue, 2, TILE_LENGTH * sizeof(T));
-        pipe->InitBuffer(gatherQueue, 1, TILE_LENGTH * sizeof(uint32_t));
-        elementsPerBlock = 32 / sizeof(T);
-        this->aGather = aGather;
-    }
-    __aicore__ inline void SetMatrix(GlobalTensor<T> aOrgGlobal, GlobalTensor<T> aGlobalReal,
-                                     GlobalTensor<T> aGlobalImag, int N, int srcN, int dstN)
-    {
-        this->aOrgGlobal = aOrgGlobal;
-        this->aGlobalReal = aGlobalReal;
-        this->aGlobalImag = aGlobalImag;
-        this->N = N;
-        this->alignedN = LU_CEIL_ALIGN(N, elementsPerBlock);
-        this->srcN = srcN;
-        this->dstN = dstN;
-        linesPerIter = max(1, TILE_LENGTH / LU_CEIL_ALIGN(dstN, 16) / 2);
-    }
-    __aicore__ inline void MergeRealImagWork(int M, int p, int id)
-    {
-        int k = M / p, r = M % p;
-        Process((k * id + min(id, r)) * srcN, (k * id + min(id, r)) * dstN * 2, k + (id < r));
-    }
-    __aicore__ inline void Process(int srcOffset, int dstOffset, int lines)
-    {
-        LoadGather();
-        int loopCount = lines / linesPerIter;
-        for (int i = 0; i < loopCount; ++i)
-        {
-            CopyIn(srcOffset, linesPerIter, alignedN);
-            Compute(linesPerIter * alignedN * 2);
-            CopyOut(dstOffset, linesPerIter, N);
-            srcOffset += linesPerIter * srcN;
-            dstOffset += linesPerIter * dstN * 2;
-        }
-        lines %= linesPerIter;
-        if (!lines)
-        {
-            gatherQueue.FreeTensor(gatherLocal);
-            return;
-        }
-        CopyIn(srcOffset, lines, alignedN);
-        Compute(lines * alignedN * 2);
-        CopyOut(dstOffset, lines, N);
-        gatherQueue.FreeTensor(gatherLocal);
-    }
-    __aicore__ inline void LoadGather()
-    {
-        gatherLocal = gatherQueue.AllocTensor<uint32_t>();
-        DataCopy(gatherLocal, aGather, linesPerIter * alignedN * 2);
-        gatherQueue.EnQue(gatherLocal);
-        gatherLocal = gatherQueue.DeQue<uint32_t>();
-    }
-    __aicore__ inline void CopyIn(int offset, int blockM, int blockN)
-    {
-        LocalTensor<T> srcLocal = inQueue.AllocTensor<T>();
-
-        DataCopyParams copyInParams{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockN / elementsPerBlock),
-                                    static_cast<uint16_t>((srcN - blockN) / elementsPerBlock), 0};
-        DataCopy(srcLocal, aGlobalReal[offset], copyInParams);
-        DataCopy(srcLocal[TILE_LENGTH / 2], aGlobalImag[offset], copyInParams);
-
-        inQueue.EnQue(srcLocal);
-    }
-    __aicore__ inline void Compute(int length)
-    {
-        LocalTensor<T> srcLocal = inQueue.DeQue<T>();
-        LocalTensor<T> dstLocal = outQueue.AllocTensor<T>();
-        Gather(dstLocal, srcLocal, gatherLocal, 0, length);
-        inQueue.FreeTensor(srcLocal);
-        outQueue.EnQue(dstLocal);
-    }
-    __aicore__ inline void CopyOut(int offset, int blockM, int blockN)
-    {
-        LocalTensor<T> dstLocal = outQueue.DeQue<T>();
-
-        DataCopyExtParams copyOutParams{static_cast<uint16_t>(blockM), static_cast<uint16_t>(blockN * 2 * sizeof(T)),
-                                        static_cast<uint16_t>((alignedN * 2 - blockN * 2) / elementsPerBlock),
-                                        static_cast<uint16_t>((dstN * 2 - blockN * 2) * sizeof(T)), 0};
-        DataCopyPad(aOrgGlobal[offset], dstLocal, copyOutParams);
-
-        outQueue.FreeTensor(dstLocal);
-    }
-};
-
-template <typename T>
-class GTRF2Solver
-{
-    TransPose<T> optranspose;
-    LUCustom1<T> opLU1;
-    LUCustom3<T> opLU3;
-    GlobalTensor<T> aGlobalReal;
-    GlobalTensor<T> aGlobalImag;
-    GlobalTensor<T> workGlobalReal;
-    GlobalTensor<T> workGlobalImag;
-    GlobalTensor<uint32_t> wGlobal;
-    GlobalTensor<uint32_t> gather1, gather2;
-    TQue<QuePosition::VECIN, 1> inQueueSrc1, inQueueSrc2;
-    TQue<QuePosition::VECOUT, 1> outQueueDst;
-    int M, N;
-    int orgM;
-    int blockN;
-    int workM;
-    int tileM;
-    int blockIdx;
-    TBufPool<TPosition::VECCALC, 16> *pipe;
-    static constexpr int TILE_LENGTH = 8192;
-
-   public:
-    __aicore__ inline GTRF2Solver() {}
-    __aicore__ inline void Init(TBufPool<TPosition::VECCALC, 16> *pipe, GlobalTensor<T> aGlobalReal,
-                                GlobalTensor<T> aGlobalImag, GlobalTensor<T> workGlobal, GlobalTensor<uint32_t> wGlobal,
-                                GlobalTensor<uint32_t> gather1, GlobalTensor<uint32_t> gather2, int M, int orgM, int N,
-                                int blockN, int workM, int tileM)
-    {
-        this->pipe = pipe;
-        this->aGlobalReal = aGlobalReal;
-        this->aGlobalImag = aGlobalImag;
-        this->workGlobalReal = workGlobal;
-        // work 虚平面基址按 int64 展开（issue #166）
-        this->workGlobalImag = workGlobal[static_cast<int64_t>(LU_CEIL_ALIGN(M, 512)) * blockN];
-        this->wGlobal = wGlobal;
-        this->gather1 = gather1;
-        this->gather2 = gather2;
-        this->M = M;
-        this->N = N;
-        this->orgM = orgM;
-        this->blockN = blockN;
-        this->workM = workM;
-        this->tileM = tileM;
-        this->blockIdx = GetBlockIdx();
-    }
-    __aicore__ inline void Process(int offsetM, int offsetN, int blockM, int realN)
-    {
-        if (blockM > 512)
-        {
-            if (blockIdx >= 8)
-            {
-                CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-                CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-                return;
-            }
-            if (!offsetM)
-            {
-                pipe->InitBuffer(inQueueSrc1, 1, 8192 * sizeof(T));
-                pipe->InitBuffer(inQueueSrc2, 1, 8192 * sizeof(T));
-                pipe->InitBuffer(outQueueDst, 1, 8192 * sizeof(T));
-                optranspose.Init(pipe, inQueueSrc1, inQueueSrc2, outQueueDst, aGlobalReal, aGlobalImag, workGlobalReal,
-                                 workGlobalImag, gather1, gather2, workM, N, tileM, blockN);
-                opLU3.Init(pipe, inQueueSrc1, inQueueSrc2, outQueueDst, workGlobalReal, workGlobalImag, wGlobal, workM,
-                           blockN, blockN);
-            }
-            int totalBlocks = (blockM + tileM - 1) / tileM;
-            int transposeM1 = 0, transposeM2 = 0;
-            if ((blockIdx + 1) * tileM <= blockM)
-                transposeM1 = tileM;
-            else if (blockIdx * tileM <= blockM)
-                transposeM1 = blockM % tileM;
-            if ((blockIdx + 9) * tileM <= blockM)
-                transposeM2 = tileM;
-            else if ((blockIdx + 8) * tileM <= blockM)
-                transposeM2 = blockM % tileM;
-
-            int srcOffset = (offsetM + blockIdx * tileM) * N + offsetN;
-            int dstOffset = (totalBlocks - 1 - blockIdx) * tileM;
-
-            // > 4096 need to do twice
-            if (transposeM1)
-            {
-                optranspose.Process1(srcOffset, dstOffset, transposeM1);
-                if (transposeM2)
-                {
-                    optranspose.Process1(srcOffset + 8 * tileM * N, dstOffset - 8 * tileM, transposeM2);
-                }
-            }
-            // need all core sync
-            CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-            CrossCoreWaitFlag(0x6);
-
-            opLU3.Process((tileM - blockM % tileM) % tileM, offsetM, offsetN, blockM, blockM + orgM - M, realN);
-
-            CrossCoreSetFlag<0x0, PIPE_MTE3>(0x6);
-            CrossCoreWaitFlag(0x6);
-
-            if (transposeM1)
-            {
-                optranspose.Process2(srcOffset, dstOffset, transposeM1);
-                if (transposeM2)
-                {
-                    optranspose.Process2(srcOffset + 8 * tileM * N, dstOffset - 8 * tileM, transposeM2);
-                }
-            }
-        }
-        else
-        {
-            if (blockIdx) return;
-
-            int srcOffset = offsetM * N + offsetN;
-            int dstOffset = 0;
-            if (blockM == 512 || !offsetM)
-            {
-                pipe->Reset();
-                pipe->InitBuffer(inQueueSrc1, 1, 8192 * sizeof(T));
-                pipe->InitBuffer(inQueueSrc2, 1, 8192 * sizeof(T));
-                pipe->InitBuffer(outQueueDst, 1, 8192 * sizeof(T));
-                optranspose.Init(pipe, inQueueSrc1, inQueueSrc2, outQueueDst, aGlobalReal, aGlobalImag, workGlobalReal,
-                                 workGlobalImag, gather1, gather2, workM, N, tileM, blockN);
-                opLU1.Init(pipe, inQueueSrc1, inQueueSrc2, workGlobalReal, workGlobalImag, wGlobal, workM, blockN,
-                           blockN);
-            }
-            optranspose.Process1(srcOffset, dstOffset, blockM);
-
-            int32_t eventIDMTE3ToMTE2 =
-                static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-
-            opLU1.Process(tileM - blockM, offsetM, offsetN, blockM, blockM + orgM - M, realN);
-
-            eventIDMTE3ToMTE2 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-
-            optranspose.Process2(srcOffset, dstOffset, blockM);
-        }
-    }
-};
-
-// for N * M <= 192MB
-__aicore__ inline void custom_lu(int orgM, int orgN, int blockM, int blockN, int tileM, GM_ADDR A_org, GM_ADDR A_work,
-                                 GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm, GM_ADDR gather3_gm)
-{
-    // 平面尺寸用 int64：host 允许 m*n 远超 int32（详见 cgetrf_host 的规模校验），
-    // strideN*M 类平面基址偏移若按 int 计算会回绕为负偏移（issue #166）。
-    // M/N/strideN 本身受 host 校验上界约束仍在 int32 范围，保持 int 以匹配
-    // kernel 内其余索引算术；仅平面基址按 int64 展开。
-    int M = (orgM + 15) / 16 * 16;
-    int strideN = (orgN + 127) / 128 * 128;
-    int N = (orgN + 15) / 16 * 16;
-    const int64_t planeStride = static_cast<int64_t>(strideN) * M;
-    int blockNum = GetBlockNum();
-    int blockIdx = GetBlockIdx();
-    int coreIdx = blockIdx;
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
-    coreIdx >>= 1;
-#endif
-
-    int workM = (M + tileM - 1) / tileM * tileM;
-    int limK = 128;
-
-    GlobalTensor<float> aGlobalOrg;
-    GlobalTensor<float> aGlobal;
-    GlobalTensor<float> aGlobalReal;
-    GlobalTensor<float> aGlobalImag;
-    GlobalTensor<float> aGlobalImagNeg;
-    GlobalTensor<uint32_t> wGlobal;
-    GlobalTensor<float> workGlobal;
-    GlobalTensor<uint32_t> gather1;
-    GlobalTensor<uint32_t> gather2;
-    GlobalTensor<uint32_t> gather3;
-
-    aGlobalOrg.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(A_org));
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(A_work));
-    aGlobalReal = aGlobal;
-    // 平面基址偏移按 int64 计算（issue #166）：strideN*M 与 strideN*M*2 在
-    // m*n 较大时超 int32 回绕为负偏移
-    aGlobalImag = aGlobalReal[planeStride];
-    aGlobalImagNeg = aGlobalReal[planeStride * 2];
-    wGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(W));
-    workGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(work_gm));
-    gather1.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gather1_gm));
-    gather2.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gather2_gm));
-    gather3.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(gather3_gm));
-
-    TPipe pipe;
-    TBufPool<TPosition::VECCALC, 16> tbufPool;
-    CMatmulCustom<float> opmm;
-    SolveTrsm<float> optrsm;
-
-    int t = min(M, N);
-    int cnt = t / blockN;
-
-#if defined(__DAV_C310_VEC__) || defined(__DAV_C220_VEC__) || defined(__DAV_310R6_VEC__)
-    pipe.InitBufPool(tbufPool, 192 * 1024);
-
-    SplitRealImag<float> opsp;
-    opsp.Init(&tbufPool);
-    opsp.SetMatrix(aGlobalOrg, aGlobalReal, aGlobalImag, orgN, orgN, strideN);
-    opsp.SplitRealImagWork(orgM, blockNum << 1, blockIdx);
-
-    tbufPool.Reset();
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-
-    GTRF2Solver<float> getf2solver;
-    getf2solver.Init(&tbufPool, aGlobalReal, aGlobalImag, workGlobal, wGlobal, gather1, gather2, M, orgM, strideN,
-                     blockN, workM, tileM);
-    getf2solver.Process(0, 0, M, min(orgN, blockN));
-
-    if (blockIdx >= 8 && M > 512)
-    {
-        CrossCoreWaitFlag(0x6);
-        CrossCoreWaitFlag(0x6);
-    }
-
-    int swapIdx = -1;
-    SwapRows<float> opswap;
-    if (coreIdx >= 4 && ~blockIdx & 1)
-    {
-        swapIdx = coreIdx - 4;
-        opswap.Init(&tbufPool, aGlobalReal, aGlobalImag);
-    }
-
-    NegateCustom<float> opng;
-    if (coreIdx >= 4)
-    {
-        optrsm.Init(&tbufPool, blockM);
-        if (blockIdx & 1) opng.Init(&tbufPool);
-    }
-    for (int i = 1, offset = blockN; i < cnt; ++i, offset += blockN)
-    {
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);
-        DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            wGlobal[offset - blockN]);
-        if (offset % limK)
-        {
-            if (~swapIdx && swapIdx < 8)
-            {
-                int swapTotalN = offset / limK * limK + limK - offset;
-                int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-                int swapOffsetN = swapBlockN * swapIdx;
-                int realBlockN = max(0, min(swapBlockN, swapTotalN - swapOffsetN));
-                for (int j = offset - blockN; j < offset; ++j)
-                {
-                    int p = wGlobal.GetValue(j);
-                    opswap.Process(offset + swapOffsetN + j * strideN, offset + swapOffsetN + p * strideN, realBlockN);
-                }
-            }
-        }
-        if (offset % limK != blockN)
-        {
-            if (~swapIdx && swapIdx >= 8)
-            {
-                int swapTotalN = offset % limK - blockN;
-                int swapOffset = offset / limK * limK;
-                if (offset % limK == 0)
-                {
-                    swapTotalN += limK;
-                    swapOffset -= limK;
-                }
-                int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-                int swapOffsetN = swapBlockN * (swapIdx - 8);
-                int realBlockN = min(swapBlockN, swapTotalN - swapOffsetN);
-                if (realBlockN > 0)
-                {
-                    for (int j = offset - blockN; j < offset; ++j)
-                    {
-                        int p = wGlobal.GetValue(j);
-                        opswap.Process(swapOffset + swapOffsetN + j * strideN, swapOffset + swapOffsetN + p * strideN,
-                                       realBlockN);
-                    }
-                }
-            }
-        }
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);
-        if (offset % limK)
-        {
-            int trsmTotalN = min(N - offset, limK - offset % limK);
-            int trsmM = blockM;
-            int trsmBlocks = blockNum - 4;
-            int trsmBlockN = LU_CEIL_ALIGN((trsmTotalN + trsmBlocks - 1) / trsmBlocks, 128);
-            int trsmOffsetN = trsmBlockN * (coreIdx - 4);
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            if (coreIdx >= 4 && realBlockN > 0)
-            {
-                solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                                 aGlobalReal[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalImag[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalImagNeg[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalReal[offset - trsmM + (offset - trsmM) * strideN],
-                                 aGlobalImag[offset - trsmM + (offset - trsmM) * strideN]);
-            }
-        }
-        else
-        {
-            int trsmTotalN = N - offset;
-            int trsmM = limK;
-            int trsmBlocks = blockNum - 4;
-            int trsmBlockN = LU_CEIL_ALIGN((trsmTotalN + trsmBlocks - 1) / trsmBlocks, 128);
-            int trsmOffsetN = trsmBlockN * (coreIdx - 4);
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            if (coreIdx >= 4 && realBlockN > 0)
-            {
-                solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                                 aGlobalReal[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalImag[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalImagNeg[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalReal[offset - trsmM + (offset - trsmM) * strideN],
-                                 aGlobalImag[offset - trsmM + (offset - trsmM) * strideN]);
-            }
-        }
-        // trsm finish, all core sync
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);
-
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x3);
-        if (offset % limK)
-            CrossCoreWaitFlag(0x8);
-        else
-            CrossCoreWaitFlag(0x9);
-        CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-        CrossCoreWaitFlag(0x2);  // wait for all gemm1 to finish
-
-        getf2solver.Process(offset, offset, M - offset, min(orgN - offset, blockN));
-        if (offset % limK)
-        {
-            CrossCoreWaitFlag(0x8);  // wait for small gemm2 to finish
-            CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-            CrossCoreWaitFlag(0x2);
-            if (coreIdx >= 4 && blockIdx & 1)
-            {
-                int negBlockM = blockM / (blockNum - 4);
-                opng.SetMatrix(aGlobalReal[offset + (offset - blockM + (coreIdx - 4) * negBlockM) * strideN], strideN);
-                opng.Process(negBlockM, limK - (offset % limK));
-            }
-        }
-        if (offset % limK == limK - blockN)
-        {
-            DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(wGlobal[offset]);
-            int startIndex = offset / limK * limK;
-            int endIndex = min(offset / limK * limK + limK, min(orgM, orgN));
-            if (offset < limK)
-            {
-                CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-                CrossCoreWaitFlag(0x2);
-                if (~swapIdx && swapIdx < 8)
-                {
-                    int swapOffset = offset / limK * limK + limK;
-                    int swapTotalN = N - swapOffset;
-                    int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-                    int swapOffsetN = swapBlockN * swapIdx;
-                    int realBlockN = max(0, min(swapBlockN, swapTotalN - swapOffsetN));
-                    for (int j = startIndex; j < endIndex; ++j)
-                    {
-                        int p = wGlobal.GetValue(j);
-                        opswap.Process(swapOffset + swapOffsetN + j * strideN, swapOffset + swapOffsetN + p * strideN,
-                                       realBlockN);
-                    }
-                }
-            }
-            else
-            {
-                CrossCoreWaitFlag(0x9);  // wait for big gemm2 to finish
-                CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-                CrossCoreWaitFlag(0x2);
-                if (coreIdx >= 4 && blockIdx & 1)
-                {
-                    int negOffset = offset / limK * limK;
-                    int negBlockM = limK / (blockNum - 4);
-                    opng.SetMatrix(aGlobalReal[negOffset + (negOffset - limK + (coreIdx - 4) * negBlockM) * strideN],
-                                   strideN);
-                    opng.Process(negBlockM, N - negOffset);
-                }
-                if (~swapIdx && swapIdx < 8)
-                {
-                    int swapOffset = offset / limK * limK + limK;
-                    int swapTotalN = N - swapOffset;
-                    int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-                    int swapOffsetN = swapBlockN * swapIdx;
-                    int realBlockN = max(0, min(swapBlockN, swapTotalN - swapOffsetN));
-                    for (int j = startIndex; j < endIndex; ++j)
-                    {
-                        int p = wGlobal.GetValue(j);
-                        opswap.Process(swapOffset + swapOffsetN + j * strideN, swapOffset + swapOffsetN + p * strideN,
-                                       realBlockN);
-                    }
-                }
-                if (~swapIdx && swapIdx >= 8)
-                {
-                    int swapTotalN = offset / limK * limK;
-                    int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-                    int swapOffsetN = swapBlockN * (swapIdx - 8);
-                    int realBlockN = min(swapBlockN, swapTotalN - swapOffsetN);
-                    if (realBlockN > 0)
-                    {
-                        for (int j = startIndex; j < endIndex; ++j)
-                        {
-                            int p = wGlobal.GetValue(j);
-                            opswap.Process(swapOffsetN + j * strideN, swapOffsetN + p * strideN, realBlockN);
-                        }
-                    }
-                }
-            }
-        }
-        if (blockIdx >= 8 && M - offset > 512)
-        {
-            CrossCoreWaitFlag(0x6);
-            CrossCoreWaitFlag(0x6);
-        }
-    }
-
-    if (t > limK && t % limK) CrossCoreWaitFlag(0x9);  // wait for big gemm2 to finish
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-    DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(wGlobal[t - blockN]);
-    if (t % limK)
-    {
-        if (~swapIdx && swapIdx < 8 && N > M)
-        {  // swaps from last big block to next big block
-            int swapOffset = t / limK * limK + limK;
-            int swapTotalN = N - swapOffset;
-            int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-            int swapOffsetN = swapBlockN * swapIdx;
-            int realBlockN = min(swapBlockN, swapTotalN - swapOffsetN);
-            if (realBlockN > 0)
-            {
-                for (int j = t / limK * limK; j < min(t / limK * limK + limK, min(orgM, orgN)); ++j)
-                {
-                    int p = wGlobal.GetValue(j);
-                    opswap.Process(swapOffset + swapOffsetN + j * strideN, swapOffset + swapOffsetN + p * strideN,
-                                   realBlockN);
-                }
-            }
-        }
-    }
-    if (t > limK && t % limK)
-    {
-        if (coreIdx >= 4 && blockIdx & 1)
-        {
-            int negOffset = (t - blockN) / limK * limK;
-            int negBlockM = limK / (blockNum - 4);
-            opng.SetMatrix(aGlobalReal[negOffset + (negOffset - limK + (coreIdx - 4) * negBlockM) * strideN], strideN);
-            opng.Process(negBlockM, N - negOffset);
-        }
-        if (~swapIdx && swapIdx >= 8)
-        {  // swaps from last big block to prev big block
-            int swapTotalN = t / limK * limK;
-            int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-            int swapOffsetN = swapBlockN * (swapIdx - 8);
-            int realBlockN = min(swapBlockN, swapTotalN - swapOffsetN);
-            if (realBlockN > 0)
-            {
-                for (int j = t / limK * limK; j < min(t / limK * limK + limK, min(orgM, orgN)); ++j)
-                {
-                    int p = wGlobal.GetValue(j);
-                    opswap.Process(swapOffsetN + j * strideN, swapOffsetN + p * strideN, realBlockN);
-                }
-            }
-        }
-    }
-    if (t % limK)
-    {
-        if (~swapIdx && swapIdx < 8)
-        {  // swaps from last small block to next small blocks
-            int swapTotalN = min(t / limK * limK + limK - t, N - t);
-            int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-            int swapOffsetN = swapBlockN * swapIdx;
-            int realBlockN = max(0, min(swapBlockN, swapTotalN - swapOffsetN));
-            for (int j = t - blockN; j < min(orgM, orgN); ++j)
-            {
-                int p = wGlobal.GetValue(j);
-                opswap.Process(t + swapOffsetN + j * strideN, t + swapOffsetN + p * strideN, realBlockN);
-            }
-        }
-    }
-    if (t % limK != blockN)
-    {
-        if (~swapIdx && swapIdx >= 8)
-        {  // swaps from last small block to prev small blocks
-            int swapTotalN = t % limK - blockN;
-            int swapOffset = t / limK * limK;
-            if (t % limK == 0)
-            {
-                swapTotalN += limK;
-                swapOffset -= limK;
-            }
-            int swapBlockN = LU_CEIL_ALIGN(swapTotalN / 8, 1024);
-            int swapOffsetN = swapBlockN * (swapIdx - 8);
-            int realBlockN = min(swapBlockN, swapTotalN - swapOffsetN);
-            if (realBlockN > 0)
-            {
-                for (int j = t - blockN; j < min(orgM, orgN); ++j)
-                {
-                    int p = wGlobal.GetValue(j);
-                    opswap.Process(swapOffset + swapOffsetN + j * strideN, swapOffset + swapOffsetN + p * strideN,
-                                   realBlockN);
-                }
-            }
-        }
-    }
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-
-    if (N > M)
-    {
-        if (M % limK)
-        {
-            int trsmTotalN = N - M;
-            int trsmM = blockM;
-            int trsmBlocks = blockNum - 4;
-            int trsmBlockN = LU_CEIL_ALIGN((trsmTotalN + trsmBlocks - 1) / trsmBlocks, 64);
-            int trsmOffsetN = trsmBlockN * (coreIdx - 4);
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            if (coreIdx >= 4 && trsmOffsetN < trsmTotalN)
-            {
-                solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                                 aGlobalReal[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalImag[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalImagNeg[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalReal[M - trsmM + (M - trsmM) * strideN],
-                                 aGlobalImag[M - trsmM + (M - trsmM) * strideN]);
-                CrossCoreSetFlag<0x1, PIPE_MTE3>(0x7);
-                CrossCoreWaitFlag(0x7);
-                if (blockIdx & 1)
-                {
-                    opng.SetMatrix(aGlobalReal[trsmOffsetN + M + (M - trsmM) * strideN], strideN);
-                    opng.Process(trsmM, realBlockN);
-                }
-            }
-        }
-        else
-        {
-            int trsmTotalN = N - M;
-            int trsmM = limK;
-            int trsmBlocks = blockNum - 4;
-            int trsmBlockN = LU_CEIL_ALIGN((trsmTotalN + trsmBlocks - 1) / trsmBlocks, 64);
-            int trsmOffsetN = trsmBlockN * (coreIdx - 4);
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            if (coreIdx >= 4 && trsmOffsetN < trsmTotalN)
-            {
-                solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                                 aGlobalReal[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalImag[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalImagNeg[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalReal[M - trsmM + (M - trsmM) * strideN],
-                                 aGlobalImag[M - trsmM + (M - trsmM) * strideN]);
-                CrossCoreSetFlag<0x1, PIPE_MTE3>(0x7);
-                CrossCoreWaitFlag(0x7);
-                if (blockIdx & 1)
-                {
-                    opng.SetMatrix(aGlobalReal[trsmOffsetN + M + (M - trsmM) * strideN], strideN);
-                    opng.Process(trsmM, realBlockN);
-                }
-            }
-        }
-    }
-
-    CrossCoreSetFlag<0x0, PIPE_MTE3>(0x2);
-    CrossCoreWaitFlag(0x2);
-
-    tbufPool.Reset();
-
-    MergeRealImag<float> opmg;
-    static constexpr int TILE_LENGTH = 4096;
-    opmg.Init(&tbufPool, gather3);
-    opmg.SetMatrix(aGlobalOrg, aGlobalReal, aGlobalImag, min(orgN, TILE_LENGTH), strideN, orgN);
-    opmg.MergeRealImagWork(orgM, blockNum << 1, blockIdx);
-    if (orgN > TILE_LENGTH)
-    {
-        opmg.SetMatrix(aGlobalOrg[TILE_LENGTH * 2], aGlobalReal[TILE_LENGTH], aGlobalImag[TILE_LENGTH],
-                       orgN - TILE_LENGTH, strideN, orgN);
-        opmg.MergeRealImagWork(orgM, blockNum << 1, blockIdx);
-    }
-#elif defined(__DAV_C310_CUBE__) || defined(__DAV_C220_CUBE__) || defined(__DAV_310R6_CUBE__)
-    opmm.Init(&pipe);
-    SetAtomicAdd<float>();
-    static constexpr int gemm1BlockNum = 8;
-    static constexpr int gemm2BlockNum = 20 - gemm1BlockNum;
-    if (blockIdx >= gemm1BlockNum)
-    {
-        for (int i = blockN; i < limK; i += blockN)
-        {
-            CrossCoreSetFlag<0x2, PIPE_FIX>(0x8);
-            CrossCoreSetFlag<0x2, PIPE_FIX>(0x8);
-        }
-    }
-    for (int i = 1, offset = blockN; i < cnt; ++i, offset += blockN)
-    {
-        if (offset % limK == 0)
-        {
-            int trsmTotalN = N - offset;
-            int trsmM = limK;
-            int trsmBlocks = blockNum - 4;
-            int trsmBlockN = LU_CEIL_ALIGN((trsmTotalN + trsmBlocks - 1) / trsmBlocks, 128);
-            int trsmOffsetN = trsmBlockN * (blockIdx - 4);
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            if (blockIdx >= 4 && trsmOffsetN < trsmTotalN)
-            {
-                solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                                 aGlobalReal[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalImag[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalImagNeg[trsmOffsetN + offset + (offset - trsmM) * strideN],
-                                 aGlobalReal[offset - trsmM + (offset - trsmM) * strideN],
-                                 aGlobalImag[offset - trsmM + (offset - trsmM) * strideN]);
-            }
-        }
-        CrossCoreWaitFlag(0x3);  // wait for trsm to finish
-        opmm.SetMatrix(aGlobalReal, aGlobalImag, aGlobalReal, aGlobalImagNeg, aGlobalImag, aGlobalReal, aGlobalImag,
-                       strideN, strideN);
-
-        if (offset % limK)
-        {
-            if (blockIdx >= gemm1BlockNum) continue;
-            int gemmTotalM = M - offset;
-            int gemmBlockM = LU_CEIL_ALIGN((gemmTotalM + gemm1BlockNum - 1) / gemm1BlockNum, 128);
-            int gemmBlockN = min(N - offset, limK - offset % limK);
-            int gemmOffsetM = gemmBlockM * blockIdx;
-            int gemmRealM = min(gemmBlockM, gemmTotalM - gemmOffsetM);
-            if (blockIdx < gemm1BlockNum && gemmRealM > 0)
-            {  // gemm1
-                opmm.Process(offset - blockN + (offset + gemmOffsetM) * strideN, offset + (offset - blockN) * strideN,
-                             offset + (offset + gemmOffsetM) * strideN, gemmRealM, blockN, blockN);
-            }
-            CrossCoreSetFlag<0x2, PIPE_FIX>(0x8);
-            if (blockIdx < gemm1BlockNum && gemmBlockN > blockN && gemmRealM > 0)
-            {  // gemm2
-                opmm.Process(
-                    offset - blockN + (offset + gemmOffsetM) * strideN, offset + blockN + (offset - blockN) * strideN,
-                    offset + blockN + (offset + gemmOffsetM) * strideN, gemmRealM, gemmBlockN - blockN, blockN);
-            }
-            CrossCoreSetFlag<0x2, PIPE_FIX>(0x8);
-        }
-        else
-        {
-            int gemmTotalM = M - offset;
-            int gemmTotalN = N - offset;
-            static constexpr int gemmBlockM = 128;
-            static constexpr int gemmBlockN = 128;
-            int mBlocks = (gemmTotalM + gemmBlockM - 1) / gemmBlockM;
-            int nBlocks = (gemmTotalN + gemmBlockN - 1) / gemmBlockN;
-            int TailM = gemmTotalM % gemmBlockM;
-            if (!TailM) TailM = gemmBlockM;
-            int TailN = gemmTotalN % gemmBlockN;
-            if (!TailN) TailN = gemmBlockN;
-            int x = 0, y = blockIdx;
-            for (; y < mBlocks; y += blockNum)
-            {
-                opmm.Process(offset - limK + (offset + y * gemmBlockM) * strideN,
-                             offset + x * gemmBlockN + (offset - limK) * strideN,
-                             offset + x * gemmBlockN + (offset + y * gemmBlockM) * strideN,
-                             y + 1 == mBlocks ? TailM : gemmBlockM, x + 1 == nBlocks ? TailN : gemmBlockN, limK);
-            }
-            CrossCoreSetFlag<0x2, PIPE_FIX>(0x9);
-            if (blockIdx < gemm1BlockNum)
-            {
-                CrossCoreSetFlag<0x2, PIPE_FIX>(0x9);
-                continue;
-            }
-            for (int i = blockN; i < limK; i += blockN)
-            {
-                CrossCoreSetFlag<0x2, PIPE_FIX>(0x8);
-                CrossCoreSetFlag<0x2, PIPE_FIX>(0x8);
-            }
-            y = blockIdx - gemm1BlockNum;
-            x = 1 + y / mBlocks;
-            y %= mBlocks;
-            while (x < nBlocks)
-            {
-                opmm.Process(offset - limK + (offset + y * gemmBlockM) * strideN,
-                             offset + x * gemmBlockN + (offset - limK) * strideN,
-                             offset + x * gemmBlockN + (offset + y * gemmBlockM) * strideN,
-                             y + 1 == mBlocks ? TailM : gemmBlockM, x + 1 == nBlocks ? TailN : gemmBlockN, limK);
-                y += gemm2BlockNum;
-                x += y / mBlocks;
-                y %= mBlocks;
-            }
-            CrossCoreSetFlag<0x2, PIPE_FIX>(0x9);
-        }
-    }
-    if (N > M)
-    {
-        if (M % limK == 0)
-        {
-            int trsmTotalN = N - M;
-            int trsmM = limK;
-            int trsmBlocks = blockNum - 4;
-            int trsmBlockN = LU_CEIL_ALIGN((trsmTotalN + trsmBlocks - 1) / trsmBlocks, 64);
-            int trsmOffsetN = trsmBlockN * (blockIdx - 4);
-            int realBlockN = min(trsmTotalN - trsmOffsetN, trsmBlockN);
-            if (blockIdx >= 4 && trsmOffsetN < trsmTotalN)
-            {
-                solveTrsm<float>(optrsm, opmm, trsmM, realBlockN, strideN, blockM,
-                                 aGlobalReal[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalImag[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalImagNeg[trsmOffsetN + M + (M - trsmM) * strideN],
-                                 aGlobalReal[M - trsmM + (M - trsmM) * strideN],
-                                 aGlobalImag[M - trsmM + (M - trsmM) * strideN]);
-            }
-        }
-    }
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#if __NPU_ARCH__ == 3510
+    if (static_cast<uint64_t>(shape.m - begin) * (end - begin) <= COMPLEX_SOLVER_PANEL_CAPACITY)
+        asc_vf_call<FactorCachedPanelVf>(dim3{1024, 1, 1}, shape, reinterpret_cast<__gm__ aclFloatComplex*>(a),
+                                         reinterpret_cast<__gm__ int*>(pivots), reinterpret_cast<__gm__ int*>(info),
+                                         begin, end);
+    else
+        asc_vf_call<FactorPanelVf>(dim3{THREADS, 1, 1}, shape, reinterpret_cast<__gm__ aclFloatComplex*>(a),
+                                   reinterpret_cast<__gm__ int*>(pivots), reinterpret_cast<__gm__ int*>(info), begin,
+                                   end);
 #endif
 }
 
-__global__ __aicore__ void cgetrf_kernel(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM,
-                                         GM_ADDR A_org, GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm,
-                                         GM_ADDR gather2_gm, GM_ADDR gather3_gm)
+__global__ __aicore__ void complex_permute_panel_rows(ComplexSolverShape shape, __gm__ uint8_t* matrix,
+                                                      __gm__ uint8_t* pivots, int begin, int end)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    custom_lu(orgM, orgN, blockM, blockN, tileM, A_org, A_work, W, work_gm, gather1_gm, gather2_gm, gather3_gm);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#if __NPU_ARCH__ == 3510
+    asc_vf_call<PermutePanelRowsVf>(dim3{256, 1, 1}, shape, reinterpret_cast<__gm__ aclFloatComplex*>(matrix),
+                                    reinterpret_cast<__gm__ const int*>(pivots), begin, end);
+#endif
 }
 
-void cgetrf_kernel_do(GM_ADDR sync, int orgM, int orgN, int blockM, int blockN, int tileM, GM_ADDR A_org,
-                      GM_ADDR A_work, GM_ADDR W, GM_ADDR work_gm, GM_ADDR gather1_gm, GM_ADDR gather2_gm,
-                      GM_ADDR gather3_gm, uint32_t numBlocks, void *stream)
+void LaunchPanelPermutation(ComplexSolverShape shape, __gm__ uint8_t* matrix, __gm__ uint8_t* pivots, int begin,
+                            int end, uint32_t blocks, void* stream)
 {
-    cgetrf_kernel<<<numBlocks, nullptr, stream>>>(sync, orgM, orgN, blockM, blockN, tileM, A_org, A_work, W, work_gm,
-                                                  gather1_gm, gather2_gm, gather3_gm);
+    if (pivots == nullptr) return;
+    uint32_t used = ComplexSolverLinearBlocks<8>(shape.n, blocks);
+    complex_permute_panel_rows<<<used, nullptr, stream>>>(shape, matrix, pivots, begin, end);
 }
-#endif  // CGETRF_MIX_H
+
+__global__ __aicore__ void complex_factor_resident(ComplexSolverShape shape, __gm__ uint8_t* a, __gm__ uint8_t* pivots,
+                                                   __gm__ uint8_t* info, bool shortPanel)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#if __NPU_ARCH__ == 3510
+    auto* matrix = reinterpret_cast<__gm__ aclFloatComplex*>(a);
+    auto* pivot = reinterpret_cast<__gm__ int*>(pivots);
+    auto* status = reinterpret_cast<__gm__ int*>(info);
+    if (shortPanel)
+        asc_vf_call<FactorShortVf>(dim3{256, 1, 1}, shape, matrix, pivot, status);
+    else if (static_cast<uint64_t>(shape.m) * shape.n <= 1024)
+        asc_vf_call<FactorResidentVf<1024>>(dim3{256, 1, 1}, shape, matrix, pivot, status);
+    else
+        asc_vf_call<FactorResidentVf<RESIDENT_ELEMENTS>>(dim3{256, 1, 1}, shape, matrix, pivot, status);
+#endif
+}
+
+__global__ __aicore__ void complex_solve_upper(ComplexSolverShape shape, __gm__ uint8_t* a, __gm__ uint8_t* pivots,
+                                               int begin, int end, bool shortPanel)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#if __NPU_ARCH__ == 3510
+    auto* matrix = reinterpret_cast<__gm__ aclFloatComplex*>(a);
+    auto* pivot = reinterpret_cast<__gm__ const int*>(pivots);
+    if (shortPanel)
+        asc_vf_call<SolveUpperVf<true>>(dim3{256, 1, 1}, shape, matrix, pivot, begin, end);
+    else
+        asc_vf_call<SolveUpperVf<false>>(dim3{256, 1, 1}, shape, matrix, pivot, begin, end);
+#endif
+}
+
+__global__ __aicore__ void complex_update_trailing(ComplexSolverShape shape, ComplexSolverUpdateGeometry geometry,
+                                                   __gm__ uint8_t* a, int begin, int end)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#if __NPU_ARCH__ == 3510
+    asc_vf_call<BlockUpdateVf<false, false>>(dim3{256, 1, 1}, shape, geometry, a, a, nullptr, begin, end);
+#endif
+}
+
+void LaunchUpper(ComplexSolverShape shape, __gm__ uint8_t* a, __gm__ uint8_t* pivots, int begin, int end,
+                 bool shortPanel, uint32_t blocks, void* stream)
+{
+    uint32_t used = ComplexSolverLinearBlocks<256 / 32>(shape.n - end, blocks);
+    complex_solve_upper<<<used, nullptr, stream>>>(shape, a, pivots, begin, end, shortPanel);
+}
+
+void LaunchTrailingPanel(ComplexSolverShape shape, __gm__ uint8_t* matrix, int begin, int end, uint32_t blocks,
+                         void* stream)
+{
+    auto geometry = ComplexSolverUpdateRegion(shape, false, begin, end, true);
+    if (geometry.tasks != 0 && ComplexSolverUseCube(shape, geometry, begin, end))
+        ComplexSolverCubeUpdate(shape, geometry, matrix, matrix, nullptr, false, false, begin, end, blocks, stream);
+    else if (geometry.tasks != 0)
+        complex_update_trailing<<<ComplexSolverUsedBlocks(geometry.tasks, blocks), nullptr, stream>>>(
+            shape, geometry, matrix, begin, end);
+}
+
+void FactorWidePanel(ComplexSolverShape shape, __gm__ uint8_t* matrix, __gm__ uint8_t* pivot, __gm__ uint8_t* status,
+                     int begin, int end, uint32_t blocks, void* stream)
+{
+    auto panelShape = shape;
+    panelShape.n = end;
+    for (int column = begin; column < end;)
+    {
+        int width = ComplexSolverPanelWidth(shape.m - column);
+        int next = column + width < end ? column + width : end;
+        complex_factor_panel<<<1, nullptr, stream>>>(shape, matrix, pivot, status, column, next);
+        LaunchPanelPermutation(shape, matrix, pivot, column, next, blocks, stream);
+        if (next < end) LaunchUpper(panelShape, matrix, pivot, column, next, false, blocks, stream);
+        LaunchTrailingPanel(panelShape, matrix, column, next, blocks, stream);
+        column = next;
+    }
+}
+
+void ComplexSolverGetrf(ComplexSolverShape shape, void* a, void* workspace, int* pivots, int* info, uint32_t blocks,
+                        void* stream)
+{
+    auto matrix = reinterpret_cast<__gm__ uint8_t*>(reinterpret_cast<uintptr_t>(a));
+    auto pivot = reinterpret_cast<__gm__ uint8_t*>(reinterpret_cast<uintptr_t>(pivots));
+    auto status = reinterpret_cast<__gm__ uint8_t*>(reinterpret_cast<uintptr_t>(info));
+    shape.ldc = shape.lda;
+    int limit = shape.m < shape.n ? shape.m : shape.n;
+    if (limit <= 32 && shape.n <= 128 && static_cast<uint64_t>(shape.m) * shape.n <= RESIDENT_ELEMENTS)
+    {
+        complex_factor_resident<<<1, nullptr, stream>>>(shape, matrix, pivot, status, false);
+        return;
+    }
+    if (shape.m <= 32)
+    {
+        complex_factor_resident<<<1, nullptr, stream>>>(shape, matrix, pivot, status, true);
+        LaunchUpper(shape, matrix, pivot, 0, shape.m, true, blocks, stream);
+        return;
+    }
+    for (int begin = 0; begin < limit;)
+    {
+        int width = COMPLEX_SOLVER_PANEL;
+        int end = begin + width < limit ? begin + width : limit;
+        if (ComplexSolverUseDistributedPanel(shape.m - begin, shape.n - begin) &&
+            ComplexSolverDistributedBlocks(shape.m - begin, blocks) != 0)
+        {
+            ComplexSolverDistributedPanel(shape, a, workspace, pivots, info, begin, end, blocks, stream);
+            LaunchPanelPermutation(shape, matrix, pivot, begin, end, blocks, stream);
+        }
+        else
+            FactorWidePanel(shape, matrix, pivot, status, begin, end, blocks, stream);
+        if (end < shape.n) LaunchUpper(shape, matrix, pivot, begin, end, false, blocks, stream);
+        LaunchTrailingPanel(shape, matrix, begin, end, blocks, stream);
+        begin = end;
+    }
+}

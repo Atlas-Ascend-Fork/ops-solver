@@ -27,7 +27,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>复数矩阵LU分解，计算复数矩阵A的LU分解，A = P * L * U，其中P为置换矩阵，L为下三角矩阵，U为上三角矩阵。</td>
+    <td>单精度复数矩阵LU分解，P * A = L * U；使用Ascend950 Device列主序、显式工作空间与Device主元/状态。</td>
   </tr>
   <tr>
     <td>solver</td>
@@ -35,7 +35,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>复数矩阵求逆，利用LU分解计算复数矩阵的逆矩阵。</td>
+    <td>单精度复数矩阵求逆，输入LU及主元，原地输出逆矩阵；使用Ascend950 Device列主序和显式工作空间。</td>
   </tr>
   <tr>
     <td>solver</td>
@@ -83,7 +83,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>批量复数矩阵求逆，对一批复数矩阵同时进行求逆运算，提高计算效率。</td>
+    <td>原始复数小矩阵直接批量求逆，n≤32；Device指针数组与逐矩阵状态。</td>
   </tr>
   <tr>
     <td>solver</td>
@@ -91,7 +91,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>批量复数矩阵求逆，适用于矩阵维度较大（n≥32）的场景，对一批复数矩阵同时进行求逆运算。</td>
+    <td>从LU及主元批量求逆，支持小矩阵和大矩阵；Device指针数组、独立输出与逐矩阵状态。</td>
   </tr>
   <tr>
     <td>solver</td>
@@ -232,8 +232,10 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 
 | 接口 | 说明 |
 |------|------|
-| `aclsolverCgetrf` | 复数矩阵LU分解 |
-| `aclsolverCgetri` | 复数矩阵求逆 |
+| `aclsolverCgetrf_bufferSize` | LU工作空间查询，Host输出复数元素数 |
+| `aclsolverCgetrf` | 复数矩阵LU分解，Device列主序 |
+| `aclsolverCgetri_bufferSize` | 求逆工作空间查询，Host输出复数元素数 |
+| `aclsolverCgetri` | 从LU及主元原地求逆，Device列主序 |
 | `aclsolverSgetrf_bufferSize` | 单矩阵LU分解workspace查询，返回FLOAT32元素数 |
 | `aclsolverSgetrf` | 单精度实数矩阵LU分解，Device列主序 |
 | [`aclsolverSpotrf`](zh/spotrf.md) | 单精度 Cholesky 分解；A2/A3 与 Ascend 950 使用不同原型，详见接口说明 |
@@ -243,8 +245,8 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetri` | 单精度实数矩阵求逆，输入LU和主元 |
 | `aclsolverSgetriBatched` | 单精度实数批量求逆，输入LU和主元 |
 | `aclsolverSmatinvBatched` | 单精度实数小矩阵直接批量求逆，n≤32 |
-| `aclsolverCmatinvBatched` | 批量复数矩阵求逆（小矩阵，n≤32） |
-| `aclsolverCgetriBatched` | 批量复数矩阵求逆（大矩阵，n>32） |
+| `aclsolverCmatinvBatched` | 原始复数小矩阵直接批量求逆，n≤32，Device指针数组 |
+| `aclsolverCgetriBatched` | 从LU及主元批量求逆，Device指针数组 |
 | `aclsolverCheevj` | 单精度复数Hermitian矩阵特征值分解 |
 | `aclsolverCgeqrf` / `aclsolverCgeqrf_bufferSize` | 950 复数 QR 分解及工作区查询（C 接口） |
 | `aclsolverCungqr` / `aclsolverCungqr_bufferSize` | 显式 Q 构造及工作区查询 |
@@ -253,6 +255,16 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetrs` | 单精度线性方程组求解 |
 | `aclsolverCgetrs` | 复数线性方程组求解 |
 | `aclsolverCpotrf` | 复数矩阵Cholesky分解 |
+
+### 复数 LU/求逆接口迁移
+
+上述四个复数计算接口及两个查询接口使用 `aclsolverStatus_t`、`aclFloatComplex` 和 Device 列主序约定。
+这是破坏性变更（Breaking change）：旧 Host 调用方需修改内存管理、调用顺序和返回值判断，并重新编译链接。
+单矩阵 `Workspace`、主元和 `devInfo` 位于 Device；查询输出 `Lwork` 位于 Host，单位为复数元素数。
+批量接口使用 Device 指针数组，逐矩阵输出 `info`，不再以 `n=32` 划分两种接口；`CgetriBatched` 消费 LU，`CmatinvBatched` 消费原始矩阵且仅支持 `n≤32`。
+
+完整步骤、示例及与实数接口 PR !116 的合入说明见[迁移指南](./zh/complex_solver_migration.md)。
+`Sgetrf`、`Sgetri` 及实数批量求逆接口已统一为 Device 列主序约定；`Cheevj` 仍按其旧约定调用，详见迁移指南。
 
 ### 单精度复数 Cholesky 接口（Ascend950）
 

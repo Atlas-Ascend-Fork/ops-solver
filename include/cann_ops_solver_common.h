@@ -15,7 +15,11 @@
 
 #pragma once
 
+#ifdef __cplusplus
 #include <acl/acl.h>
+#else
+#include <acl/acl_rt.h>
+#endif
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -56,6 +60,20 @@ extern "C"
         float real;
         float imag;
     } aclsolverFloatComplex;
+
+    /*! Complex64 ABI: two consecutive IEEE float32 values, compatible with cuComplex. */
+    typedef struct
+    {
+        float real;
+        float imag;
+    } aclFloatComplex;
+
+    typedef enum
+    {
+        ACLSOLVER_OP_N = 0,
+        ACLSOLVER_OP_T = 1,
+        ACLSOLVER_OP_C = 2
+    } aclsolverOperation_t;
 
     /*! \brief Triangle used by Hermitian solver routines. */
     typedef enum

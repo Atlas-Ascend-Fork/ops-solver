@@ -1,213 +1,56 @@
-## CmatinvBatched
+# CmatinvBatched
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A5 训练系列产品/Atlas A5 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-
-
-注：表中"Atlas 训练系列产品"指非A2代际的历史训练产品；Atlas A2训练/推理系列产品（含910B等）单独标注支持情况。
+本实现支持 Ascend950 系列，已在 Ascend950PR 验证。其他架构返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`。
 
 ## 功能说明
 
-- 接口功能\
-    aclsolverCmatinvBatched：计算批量复数矩阵的逆矩阵。
-
-- 计算公式
-    $$
-    A^{-1}A = I
-    $$
-    其中$A$为$n \times n$阶非奇异复数方阵，$I$为$n$阶单位矩阵。
-
-- 示例 \
-    输入"A"为：
-    ```
-    [2-2i ,1-i ,1-i, 1-i
-    1-i, 2-2i, 1-i ,1-i
-    1-i, 1-i ,2-2i ,1-i
-    1-i ,1-i, 1-i, 2-2i]
-
-    [3-3i ,1-i, 1-i, 1-i
-    1-i, 3-3i, 1-i ,1-i
-    1-i, 1-i ,3-3i ,1-i
-    1-i, 1-i, 1-i, 3-3i]
-    ```
-    输入"n"为： 4\
-    输入"batchSize"为：2\
-    调用"aclsolverCmatinvBatched"算子后，\
-    输出"Ainv"为：
-    ```
-    [0.4+0.4i, -0.1-0.1i,-0.1-0.1i ,-0.1-0.1i
-    -0.1-0.1i ,0.4+0.4i ,-0.1-0.1i ,-0.1-0.1i
-    -0.1-0.1i ,-0.1-0.1i,0.4+0.4i ,-0.1-0.1i
-    -0.1-0.1i ,-0.1-0.1i,-0.1-0.1i,0.4+0.4i]
-
-    [0.208+0.208i,-0.0417-0.0417i,-0.0417-0.0417i,-0.0417-0.0417i
-    -0.0417-0.0417i,0.208+0.208i,-0.0417-0.0417i,-0.0417-0.0417i
-    -0.0417-0.0417i,-0.0417-0.0417i,0.208+0.208i,-0.0417-0.0417i
-    -0.0417-0.0417i,-0.0417-0.0417i,-0.0417-0.0417i,0.208+0.208i]
-    ```
+直接对一批原始复数小方阵求逆，内部完成带主元 LU 分解，并写入独立输出矩阵。
+支持 `0 ≤ n ≤ 32`；`n > 32` 返回参数错误，不转调 `CgetriBatched`。
 
 ## 函数原型
-- 函数定义
-    ```
-    aclError aclsolverCmatinvBatched(
-        aclsolverHandle_t handle,
-        const int64_t n,
-        std::complex<float> *A,
-        const int64_t lda,
-        std::complex<float> *Ainv,
-        const int64_t lda_inv,
-        int32_t *info,
-        int64_t batchSize);
-    ```
-- 参数说明：
-    <table>
-    <tr>
-        <td align="center">参数名</td>
-        <td align="center">输入输出</td>
-        <td align="center">描述</td>
-    </tr>
-    <tr>
-        <td align="center">handle</td>
-        <td align="center">输入</td>
-        <td align="left">solver handle，通过aclsolverCreate创建</td>
-    </tr>
-    <tr>
-        <td align="center">n</td>
-        <td align="center">输入</td>
-        <td align="left">单个矩阵A的行数和列数（方阵）</td>
-    </tr>
-    <tr>
-        <td align="center">A</td>
-        <td align="center">输入</td>
-        <td align="left">公式中的矩阵A，行主序<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[batch, n, n]</td>
-    </tr>
-    <tr>
-        <td align="center">lda</td>
-        <td align="center">输入</td>
-        <td align="left">A同一列中相邻两行元素间的内存地址偏移量（leading dimension）（当前约束为n）</td>
-    </tr>
-    <tr>
-        <td align="center">Ainv</td>
-        <td align="center">输出</td>
-        <td align="left">输出的逆矩阵<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[batch, n, n]</td>
-    </tr>
-    <tr>
-        <td align="center">lda_inv</td>
-        <td align="center">输入</td>
-        <td align="left">输出的逆矩阵同一列中相邻两行元素间的内存地址偏移量（leading dimension）（当前约束为n）</td>
-    </tr>
-    <tr>
-        <td align="center">info</td>
-        <td align="center">输出</td>
-        <td align="left">求逆结果状态信息（当前版本仅保证 info[0] 清零成功态，不逐batch上报）<br>数据类型支持int32_t，数据格式支持ND，单个int32_t（API签名为单指针，非[batch, 1]数组）</td>
-    </tr>
-    <tr>
-        <td align="center">batchSize</td>
-        <td align="center">输入</td>
-        <td align="left">复数矩阵求逆中的矩阵数量</td>
-    </tr>
-    </table>
 
-- 算子约束：
-  - lda与lda_inv当前必须等于n（见下条）；info参数允许传入nullptr（不关心状态时可不接收）。
-  - lda与lda_inv当前必须等于n（矩阵按连续布局处理，batch内每个矩阵均为n*n连续存储），传入其它值将直接返回参数错误。
-  - 入参n小于32时使用本接口；n大于等于32时，本接口自动按CgetriBatched语义执行（适用其n∈[32,256]、batchSize≤3000约束），推荐n大于等于32时直接调用CgetriBatched。
-  - info参数遵循LAPACK语义：成功时写0；矩阵奇异时上报首个奇异列的1-based索引（getrf族）；其余状态经返回值上报。
-  - 入参n小于等于256。
-  - 当 n >= 32 时，CmatinvBatched 会自动转调 aclsolverCgetriBatched 算子执行。
-  - 入参batchSize小于等于3000。
+```cpp
+aclsolverStatus_t aclsolverCmatinvBatched(
+    aclsolverHandle_t handle,
+    int n,
+    const aclFloatComplex* const A[],
+    int lda,
+    aclFloatComplex* const Ainv[],
+    int lda_inv,
+    int* info,
+    int batchSize);
+```
 
-- 调用实现
-    使用内核调用符<<<>>>调用核函数。
+## 参数说明
 
-## 调用示例
-- 完整代码示例：[aclsolverCmatinvBatched批量矩阵求逆示例](../../test/cmatinv_batched/cmatinv_batched_test.cpp)
-- 核心调用步骤：
+| 参数 | 位置与方向 | 说明 |
+| --- | --- | --- |
+| `handle` | Host，输入 | 已创建的 solver handle，使用其设置的 stream |
+| `n` | Host，输入 | `0 ≤ n ≤ 32` |
+| `A` | Device，输入 | 长度为 `batchSize` 的 Device 指针数组，每项指向一个原始列主序矩阵 |
+| `lda` | Host，输入 | `lda ≥ max(1, n)`；每个输入矩阵至少 `lda * n` 个复数元素 |
+| `Ainv` | Device，输出地址 | 长度为 `batchSize` 的 Device 指针数组，每项指向独立输出矩阵 |
+| `lda_inv` | Host，输入 | `lda_inv ≥ max(1, n)`；每个输出矩阵至少 `lda_inv * n` 个复数元素 |
+| `info` | Device，输出 | 长度为 `batchSize` 的 `int` 数组，每个矩阵分别写状态 |
+| `batchSize` | Host，输入 | `0 ≤ batchSize ≤ 10000000` |
 
-    ```
-    #include <vector>
-    #include <complex>
-    #include "acl/acl.h"
-    #include "cann_ops_solver.h"
+## 数据与状态约定
 
-    #include <cstdio>
+- 复数类型为 `aclFloatComplex`；矩阵按列主序存储，支持 leading dimension padding。
+- 外层指针数组和数组内的每个矩阵都位于当前 Device。连续存储也需要构建 Device 指针数组。
+- 输入和输出矩阵之间禁止重叠；各输出矩阵互不重叠。接口无显式工作空间和主元参数。
+- 函数返回 `aclsolverStatus_t`。`info[b]` 为 `0`、首个零对角元素的正索引，或非法参数位置的负索引（不计 `handle`）。
+- 当前实现同步 stream 回读指针元数据以校验地址与重叠，计算内核使用 handle 的 stream。
+- 同步 stream 后读取逆矩阵和 Device `info`。返回成功不代表所有矩阵非奇异。
+- `batchSize == 0` 时在标量参数校验后直接成功；`n == 0` 且 batch 非空时清零 `info`。
 
-    #define CHECK_RET(cond, return_expr) \
-        do {                            \
-            if (!(cond)) {              \
-                return_expr;            \
-            }                           \
-        } while (0)
+## 调用步骤
 
-    #define LOG_PRINT(message, ...) \
-        std::printf(message, ##__VA_ARGS__)
+1. 按列主序准备原始矩阵并复制到 Device，分配独立 Device 输出。
+2. 在 Host 组织输入、输出的 Device 地址列表，将两个列表复制到 Device 指针数组。
+3. 分配 `batchSize` 个 Device `int` 作为 `info`，调用本接口。
+4. 同步 stream，逐矩阵读取结果与状态。
 
-    int32_t main(int32_t argc, char *argv[])
-    {
-        // 固定写法，acl初始化
-        int32_t deviceId = 0;
-        aclrtStream stream = nullptr;
-        aclInit(nullptr);
-        aclrtSetDevice(deviceId);
-        aclrtCreateStream(&stream);
-
-        // 创建solver handle并设置stream
-        aclsolverHandle_t handle = nullptr;
-        aclsolverCreate(&handle);
-        aclsolverSetStream(handle, stream);
-
-        // 构造输入数据
-        int64_t batchSize = 2;
-        int64_t n = 3;
-        int64_t tensorASize = batchSize * n * n;
-        std::vector<int64_t> shape = {batchSize, n, n };
-        std::vector<std::complex<float>> tensorInAData;
-        std::vector<std::complex<float>> tensorInAinvData;
-        std::vector<int32_t> tensorInInfoData;
-        tensorInAData.resize(tensorASize);
-        tensorInAinvData.resize(tensorASize);
-        tensorInInfoData.resize(batchSize);
-        for (int32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
-            for (int32_t i = 0; i < n; i++) {
-                for (int32_t j = 0; j < n; j++) {
-                    if (i == j) {
-                        tensorInAData[n * n * batchIdx + n * i + j] = {2.0f + batchIdx, -2.0f - batchIdx};
-                    } else {
-                        tensorInAData[n * n * batchIdx + n * i + j] = {1.0f, -1.0f};
-                    }
-                }
-            }
-        }
-        for (int32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
-            for (int32_t i = 0; i < n; i++) {
-                for (int32_t j = 0; j < n; j++) {
-                    tensorInAinvData[n * n * batchIdx + n * i + j] = {-1.0f, -1.0f};
-                }
-            }
-        }
-        for (int32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
-            tensorInInfoData[batchIdx] = 0;
-        }
-
-        // 调用 aclsolverCmatinvBatched
-        auto ret = aclsolverCmatinvBatched(handle, n, tensorInAData.data(), n, tensorInAinvData.data(), n,tensorInInfoData.data(), batchSize);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCmatinvBatched failed. ERROR: %d\n", ret); return ret);
-
-        // 释放资源
-        aclsolverDestroy(handle);
-        aclrtDestroyStream(stream);
-        aclrtResetDevice(deviceId);
-        aclFinalize();
-
-        return 0;
-    }
-    ```
+完整调用与结果校验见[正式测试](../../test/cmatinv_batched/cmatinv_batched_test.cpp)。旧接口迁移见[迁移说明](complex_solver_migration.md)。

@@ -14,7 +14,11 @@
  */
 
 #pragma once
+#ifdef __cplusplus
 #include <acl/acl.h>
+#else
+#include <acl/acl_rt.h>
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
@@ -33,8 +37,6 @@ extern "C"
      *
      * Allocates an aclsolver handle on the heap and outputs it via @p handle. The internal
      * structure is opaque to users; the returned void* is used with other APIs.
-     * Calls using the same handle, including SetStream and Destroy, must be serialized
-     * by the caller. Distinct handles may be used concurrently in valid CANN contexts.
      *
      * @param handle Output parameter to receive the created handle pointer (void**). *handle
      *               must be nullptr before the call, otherwise it is treated as already existing
@@ -50,18 +52,11 @@ extern "C"
     /**
      * @brief Destroy an aclsolver handle
      *
-     * Waits for streams associated with internal Cholesky scratch and releases the handle.
-     * Those streams must remain valid until this call completes. Do not use the handle
-     * concurrently or after destruction. A null stream denotes the CANN default stream.
-     * On failure, other safely releasable blocks are still reclaimed. A valid handle
-     * remains owned by the caller only for retrying Destroy; releases are not repeated.
-     * Creation, compute and destruction must use the handle's owning CANN context.
+     * Releases all resources occupied by the handle created by aclsolverCreate.
      *
      * @param handle The handle to destroy (void*)
      * @return ACLSOLVER_STATUS_SUCCESS success
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR handle is null
-     *         ACLSOLVER_STATUS_EXECUTION_FAILED stream/device synchronization failed
-     *         ACLSOLVER_STATUS_INTERNAL_ERROR a scratch release failed
      */
     aclsolverStatus_t aclsolverDestroy(aclsolverHandle_t handle);
 
@@ -853,83 +848,49 @@ typedef enum
 } aclsolverEigMode_t;
 
 #ifdef __cplusplus
-/**
- * @brief Batched complex matrix inversion for small matrices (n < 32)
- *
- * Computes the inverse of a batch of complex matrices. When n >= 32, the call is
- * automatically forwarded to aclsolverCgetriBatched semantics.
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param n order of each square matrix, valid range (0, 256]; this API targets n < 32
- * @param A input matrices, COMPLEX64, contiguous layout [batchSize, n, n]
- * @param lda leading dimension; current version requires lda == n
- * @param Ainv output inverse matrices, COMPLEX64, [batchSize, n, n]
- * @param lda_inv leading dimension of Ainv; current version requires lda_inv == n
- * @param info result info per batch (may be nullptr; issue #244); the current version zero-initializes only
- *             info[0] on entry and does not write per-batch status. Argument
- *             errors are reported via the return value, not via info.
- * @param batchSize number of matrices, valid range (0, 3000]
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float>* A, const int64_t lda,
-                                 std::complex<float>* Ainv, const int64_t lda_inv, int32_t* info, int64_t batchSize);
+extern "C"
+{
+#endif
 
-/**
- * @brief Batched complex matrix inversion (n >= 32)
- *
- * Computes the inverse of a batch of complex matrices using LU-based flow.
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param n order of each square matrix, valid range [32, 256]
- * @param A input matrices, COMPLEX64, contiguous layout [batchSize, n, n]
- * @param lda leading dimension; current version requires lda == n
- * @param Ainv output inverse matrices, COMPLEX64, [batchSize, n, n]
- * @param lda_inv leading dimension of Ainv; current version requires lda_inv == n
- * @param info result info per batch (may be nullptr; issue #244); the current version zero-initializes only
- *             info[0] on entry and does not write per-batch status. Argument
- *             errors are reported via the return value, not via info.
- * @param batchSize number of matrices, valid range (0, 3000]
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverCgetriBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float>* A, const int64_t lda,
-                                std::complex<float>* Ainv, const int64_t lda_inv, int32_t* info, int64_t batchSize);
+    /** Query workspace in aclFloatComplex elements. A is a column-major Device matrix. */
+    aclsolverStatus_t aclsolverCgetrf_bufferSize(aclsolverHandle_t handle, int m, int n, aclFloatComplex* A, int lda,
+                                                 int* Lwork);
 
-/**
- * @brief Inversion of a single complex matrix
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param n order of the square matrix, valid range [1, 8192]
- * @param A input matrix: the original matrix A to invert. The operator performs
- *             LU decomposition internally (it does NOT consume LU factors from
- *             aclsolverCgetrf; passing packed LU output would silently produce
- *             a pivot-permuted result). COMPLEX64, contiguous n * n layout
- * @param lda leading dimension; current version requires lda == n
- * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
- *             Argument errors are reported via the return value, not via info.
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverCgetri(aclsolverHandle_t handle, const int64_t n, std::complex<float>* A, const int64_t lda,
-                         int32_t* info);
+    /** In-place LU with deterministic partial pivoting. Null devIpiv selects no pivoting.
+     * A, Workspace, devIpiv and devInfo are Device pointers; lda >= max(1, m).
+     * devInfo is 0, the first zero diagonal (1-based), or a negative argument index excluding handle.
+     */
+    aclsolverStatus_t aclsolverCgetrf(aclsolverHandle_t handle, int m, int n, aclFloatComplex* A, int lda,
+                                      aclFloatComplex* Workspace, int* devIpiv, int* devInfo);
 
-/**
- * @brief LU decomposition of a single complex matrix (A = P * L * U)
- *
- * @param handle aclsolver handle created by aclsolverCreate
- * @param m rows of matrix A, valid range [1, 8192]
- * @param n columns of matrix A, valid range [1, 8192]
- * @param A input/output matrix, COMPLEX64, contiguous m * n layout; holds L and U on return
- * @param lda leading dimension; current version requires lda == n
- * @param ipiv output pivot indices (1-based), length min(m, n). If the matrix is
- *             singular, the entry at the first singular column stays 0 (sentinel).
- * @param info result info (may be nullptr, issue #244); zero-initialized on entry.
- *             On success reports the 1-based index of the first singular column
- *             (LAPACK positive-info convention) if the matrix is singular, else
- *             remains 0. Argument errors (including n > 8192) are reported via
- *             the return value, not via info.
- * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
- */
-aclError aclsolverCgetrf(aclsolverHandle_t handle, const int64_t m, const int64_t n, std::complex<float>* A,
-                         const int64_t lda, int32_t* ipiv, int32_t* info);
+    /** Query inverse workspace in aclFloatComplex elements. */
+    aclsolverStatus_t aclsolverCgetri_bufferSize(aclsolverHandle_t handle, int n, aclFloatComplex* A, int lda,
+                                                 int* Lwork);
+
+    /** In-place inverse from column-major LU and 1-based pivots; null pivots denote no pivoting.
+     * All buffers are Device pointers. Workspace must not overlap A.
+     */
+    aclsolverStatus_t aclsolverCgetri(aclsolverHandle_t handle, int n, aclFloatComplex* A, int lda, int* devIpiv,
+                                      aclFloatComplex* Workspace, int Lwork, int* devInfo);
+
+    /** Out-of-place inverse from LU. Aarray and Carray are Device arrays of Device pointers.
+     * PivotArray contains n * batchSize pivots, or is null for no pivoting.
+     * Input and output matrices must not overlap; output matrices must be mutually disjoint.
+     */
+    aclsolverStatus_t aclsolverCgetriBatched(aclsolverHandle_t handle, int n, const aclFloatComplex* const Aarray[],
+                                             int lda, const int* PivotArray, aclFloatComplex* const Carray[], int ldc,
+                                             int* infoArray, int batchSize);
+
+    /** Direct out-of-place inverse of original column-major matrices, 0 <= n <= 32.
+     * A and Ainv are Device arrays of Device pointers. Each batch writes its own Device info.
+     * Invalid dimensions return INVALID_VALUE. n > 32 never forwards to CgetriBatched.
+     */
+    aclsolverStatus_t aclsolverCmatinvBatched(aclsolverHandle_t handle, int n, const aclFloatComplex* const A[],
+                                              int lda, aclFloatComplex* const Ainv[], int lda_inv, int* info,
+                                              int batchSize);
+
+#ifdef __cplusplus
+}
 
 /**
  * @brief Cholesky factorization of a single real float symmetric positive-definite matrix
@@ -982,9 +943,6 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
 
 /**
  * @brief Cholesky factorization of a single complex Hermitian positive-definite matrix (A = L * L^H or U^H * U)
- *
- * This C++ overload uses host row-major matrices. The Ascend950 C API above uses device
- * column-major matrices and an explicit workspace. The two contracts are independent.
  *
  * @param handle aclsolver handle created by aclsolverCreate
  * @param uplo selects which triangular part of A is stored and where the factor is written:

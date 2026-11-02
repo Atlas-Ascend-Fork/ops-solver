@@ -1,158 +1,63 @@
-## Cgetri
+# Cgetri
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
-
-
-注：表中"Atlas 训练系列产品"指非A2代际的历史训练产品；Atlas A2训练/推理系列产品（含910B等）单独标注支持情况。
+本实现支持 Ascend950 系列，已在 Ascend950PR 验证。其他架构返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`。
 
 ## 功能说明
 
-- 接口功能\
-    aclsolverCgetri：计算复数矩阵的逆矩阵。
-
-- 计算公式
-    $$
-    A^{-1}A = I
-    $$
-    其中$A$为$n \times n$阶非奇异复数方阵，$I$为$n$阶单位矩阵。
-
-- 示例 \
-    输入"A"为：
-    ```
-    [4+0i, 3+0i, 2+0i, 1+0i
-     3+0i, 4+0i, 3+0i, 2+0i
-     2+0i, 3+0i, 4+0i, 3+0i
-     1+0i, 2+0i, 3+0i, 4+0i]
-    ```
-    输入"n"为： 4\
-    调用"aclsolverCgetri"算子后，\
-    输出"A"为：
-    ```
-    [0.6+0i, -0.5+0i, 0+0i, 0.1+0i
-     -0.5+0i, 1+0i, -0.5+0i, 0+0i
-     0+0i, -0.5+0i, 1+0i, -0.5+0i
-     0.1+0i, 0+0i, -0.5+0i, 0.6+0i]
-    ```
+输入已完成 LU 分解的 `n × n` 复数矩阵及其主元，原地输出原矩阵的逆。
+本接口消费 `aclsolverCgetrf` 的结果；输入原始矩阵时，应先调用 `aclsolverCgetrf`。
 
 ## 函数原型
-- 函数定义
-    ```
-    aclError aclsolverCgetri(
-        aclsolverHandle_t handle,
-        const int64_t n,
-        std::complex<float> *A,
-        const int64_t lda,
-        int32_t *info);
-    ```
-- 参数说明：
-    <table>
-    <tr>
-        <td align="center">参数名</td>
-        <td align="center">输入输出</td>
-        <td align="center">描述</td>
-    </tr>
-    <tr>
-        <td align="center">handle</td>
-        <td align="center">输入</td>
-        <td align="left">solver handle，通过aclsolverCreate创建</td>
-    </tr>
-    <tr>
-        <td align="center">n</td>
-        <td align="center">输入</td>
-        <td align="left">矩阵A的行数和列数</td>
-    </tr>
-    <tr>
-        <td align="center">A</td>
-        <td align="center">输入/输出</td>
-        <td align="left">输入为待求逆的原始矩阵A（算子内部完成LU分解与求解，不消费Cgetrf的输出LU因子；请勿传入Cgetrf返回的packed LU，否则结果会被主元置换且不报错），输出为逆矩阵<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, n]</td>
-    </tr>
-    <tr>
-        <td align="center">lda</td>
-        <td align="center">输入</td>
-        <td align="left">A同一列中相邻两行元素间的内存地址偏移量（leading dimension）（当前约束为n）</td>
-    </tr>
-    <tr>
-        <td align="center">info</td>
-        <td align="center">输出</td>
-        <td align="left">求逆结果信息<br>数据类型支持int32_t</td>
-    </tr>
-    </table>
 
-- 算子约束：
-  - n 的有效范围为 [1, 8192]（kernel 列暂存区设计上限，超出将返回参数错误）。
-  - lda参数当前必须等于n（见下条）；info参数允许传入nullptr（不关心状态时可不接收）。
-  - lda当前必须等于n（矩阵按m*n/n*n连续布局处理），传入其它值将直接返回参数错误。
-  - info参数遵循LAPACK语义：成功时写0；矩阵奇异时上报首个奇异列的1-based索引（getrf族）；其余状态经返回值上报。
+```cpp
+aclsolverStatus_t aclsolverCgetri_bufferSize(
+    aclsolverHandle_t handle,
+    int n,
+    aclFloatComplex* A,
+    int lda,
+    int* Lwork);
 
-- 调用实现
-    使用内核调用符<<<>>>调用核函数。
+aclsolverStatus_t aclsolverCgetri(
+    aclsolverHandle_t handle,
+    int n,
+    aclFloatComplex* A,
+    int lda,
+    int* devIpiv,
+    aclFloatComplex* Workspace,
+    int Lwork,
+    int* devInfo);
+```
 
-## 调用示例
-- 完整代码示例：[aclsolverCgetri复数矩阵求逆示例](../../test/cgetri/cgetri_test.cpp)
-- 核心调用步骤：
+## 参数说明
 
-    ```
-    #include <vector>
-    #include <complex>
-    #include "acl/acl.h"
-    #include "cann_ops_solver.h"
+| 参数 | 位置与方向 | 说明 |
+| --- | --- | --- |
+| `handle` | Host，输入 | 已创建的 solver handle，使用其设置的 stream |
+| `n` | Host，输入 | `0 ≤ n ≤ 4096` |
+| `A` | Device，输入/输出 | 输入为列主序 packed LU，输出为逆矩阵；至少 `lda * n` 个复数元素 |
+| `lda` | Host，输入 | `lda ≥ max(1, n)`，支持列尾 padding |
+| `devIpiv` | Device，输入 | `n` 个 1-based 行交换索引；`nullptr` 仅用于无主元 LU |
+| `Lwork` | Host，查询输出/计算输入 | 复数元素数，查询结果为 `n * n`；计算时至少为该值 |
+| `Workspace` | Device，计算输入 | 至少 `Lwork` 个复数元素，不与 `A` 重叠 |
+| `devInfo` | Device，输出 | 1 个 `int`；非空且容量有效 |
 
-    #include <cstdio>
+## 数据与状态约定
 
-    #define CHECK_RET(cond, return_expr) \
-        do {                            \
-            if (!(cond)) {              \
-                return_expr;            \
-            }                           \
-        } while (0)
+- 数据类型为 `aclFloatComplex`，包含连续的 `float real`、`float imag`。
+- 矩阵按列主序存储，元素 `(row, col)` 位于 `A[col * lda + row]`。`lda` 以元素为单位。
+- 矩阵、工作空间、主元和 `info` 位于当前 Device。查询接口的 `Lwork` 是 Host 输出。
+- 函数返回 `aclsolverStatus_t`，成功值为 `ACLSOLVER_STATUS_SUCCESS`；参数非法返回 `ACLSOLVER_STATUS_INVALID_VALUE`。
+- 有效的 Device `info` 写入 `0` 表示成功，正数表示首个零对角元素的 1-based 索引，负数表示非法参数位置（不计 `handle`）。无效的 `info` 缓冲区无法接收状态。
+- 数值结果和 Device `info` 应在调用方 stream 同步后读取。返回成功不代表矩阵非奇异。
+- 旧 Host 接口的迁移步骤见[复数求解器接口迁移](complex_solver_migration.md)。
 
-    #define LOG_PRINT(message, ...) \
-        std::printf(message, ##__VA_ARGS__)
+## 调用与边界
 
-    int32_t main(int32_t argc, char *argv[])
-    {
-        // 固定写法，acl初始化
-        int32_t deviceId = 0;
-        aclrtStream stream = nullptr;
-        aclInit(nullptr);
-        aclrtSetDevice(deviceId);
-        aclrtCreateStream(&stream);
+- 先完成 LU 分解，再查询并分配求逆工作空间，随后调用本接口。
+- 有效主元在第 `k` 列满足 `k + 1 ≤ devIpiv[k] ≤ n`（`k` 从 0 开始）。非法主元写 `devInfo = -4`，函数返回 `ACLSOLVER_STATUS_INVALID_VALUE`。
+- 主元非空时，当前实现会同步调用方 stream 并回读 `info`，以便通过返回值报告非法主元。
+- `n == 0` 时不计算矩阵，写 `devInfo = 0`；仍需满足 `lda`、非负 `Lwork` 和 `devInfo` 约束。
 
-        // 创建solver handle并设置stream
-        aclsolverHandle_t handle = nullptr;
-        aclsolverCreate(&handle);
-        aclsolverSetStream(handle, stream);
-
-        // 构造输入数据
-        int64_t n = 4;
-        size_t aMatrixFileSize = n * n * sizeof(float) * 2;
-        std::complex<float>* A;
-        aclrtMallocHost((void**)(&A), aMatrixFileSize);
-        // 填充A矩阵数据...
-
-        int32_t infoVal = 0;
-        int32_t *info = &infoVal;
-
-        // 调用 aclsolverCgetri
-        auto ret = aclsolverCgetri(handle, n, A, n, info);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCgetri failed. ERROR: %d\n", ret); return ret);
-
-        // 释放资源
-        aclrtFreeHost(A);
-        aclsolverDestroy(handle);
-        aclrtDestroyStream(stream);
-        aclrtResetDevice(deviceId);
-        aclFinalize();
-
-        return 0;
-    }
-    ```
+完整调用与结果校验见[正式测试](../../test/cgetri/cgetri_test.cpp)；连续调用示例见[迁移说明](complex_solver_migration.md#单矩阵调用示例)。
