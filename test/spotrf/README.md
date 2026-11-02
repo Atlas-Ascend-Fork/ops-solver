@@ -12,7 +12,7 @@ Solver Spotrf算子实现。
 ## 目录结构介绍
 
 ```
-├── sgetrf
+├── spotrf
 │   ├── CMakeLists.txt      // 编译工程文件
 │   ├── README.md           // 说明文档
 │   ├── spotrf_test.cpp     // 算子调用样例
@@ -114,7 +114,13 @@ Solver Spotrf算子实现。
   ```bash
   bash build.sh --ops=spotrf --run # --ops=<算子名> --run可选参数，执行测试样例
   ```
+  如需手动测试其他方阵大小或上三角模式，生成与验证时应指定相同大小，并让验证模式与程序的 `uplo` 参数一致。例如：
+  ```bash
+  python3 test/spotrf/data/gen_data.py --n 7
+  ./build/test/spotrf/spotrf_test 0 7 7 U
+  python3 test/spotrf/data/verify_result.py --n 7 --uplo U
+  ```
   执行结果如下，说明精度对比成功。
   ```bash
-  [Success] Case accuracy is verification passed.
+  [Success] Cholesky reconstruction matches the input
   ```

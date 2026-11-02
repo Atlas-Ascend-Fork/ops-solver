@@ -26,21 +26,36 @@
 using namespace std::chrono;
 using namespace std;
 
-int main(int argc, char **argv)
+bool ParseOptions(int argc, char **argv, int &deviceId, int &M, int &N, char &uplo)
 {
-    int deviceId, M, N;
-    char uplo = 'L';
-    auto outputAFile = "../output/A_gm.bin";
-
     deviceId = (argc > 1) ? std::atoi(argv[1]) : 0;
     M = (argc > 2) ? std::atoi(argv[2]) : 255;
     N = (argc > 3) ? std::atoi(argv[3]) : 255;
-    if (argc > 4) uplo = argv[4][0];
+    uplo = (argc > 4) ? argv[4][0] : 'L';
     // 输入合法性检查
     if (deviceId < 0 || deviceId > 8192 || M < 1 || M > 8192 || N < 1 || N > 8192 || M != N ||
         (uplo != 'L' && uplo != 'U'))
     {
         std::cerr << "Error: Invalid input. deviceId: 0-8192, M=N: 1-8192, uplo: 'L' or 'U'" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void CleanupResources(aclrtStream stream, aclsolverHandle_t handle, int deviceId)
+{
+    (void)aclrtDestroyStream(stream);
+    (void)aclsolverDestroy(handle);
+    (void)aclrtResetDevice(deviceId);
+    (void)aclFinalize();
+}
+
+int main(int argc, char **argv)
+{
+    int deviceId, M, N;
+    char uplo;
+    if (!ParseOptions(argc, argv, deviceId, M, N, uplo))
+    {
         return 1;
     }
 
@@ -53,11 +68,19 @@ int main(int argc, char **argv)
     CHECK_ACL(aclsolverCreate(&handle));
     CHECK_ACL(aclsolverSetStream(handle, stream));
 
-    size_t aMatrixFileSize = M * N * sizeof(float);
+    const size_t expectedMatrixFileSize = M * N * sizeof(float);
+    size_t aMatrixFileSize = expectedMatrixFileSize;
 
     float *A;
     CHECK_ACL(aclrtMallocHost((void **)(&A), aMatrixFileSize));
-    ReadFile("./test/spotrf/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize);
+    if (!ReadFile("./test/spotrf/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize) ||
+        aMatrixFileSize != expectedMatrixFileSize)
+    {
+        LOG_PRINT("Failed to read complete spotrf input.\n");
+        (void)aclrtFreeHost(A);
+        CleanupResources(stream, handle, deviceId);
+        return 1;
+    }
 
     std::cout << "[Input] A:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)A, M, N, 8, 8);
@@ -70,7 +93,15 @@ int main(int argc, char **argv)
 
     PrintPartOfMatrix<float>((uint8_t *)A, M, N, 8, 8);
 
-    WriteFile("./test/spotrf/data/output/A_gm.bin", A, aMatrixFileSize);
+    if (!WriteFile("./test/spotrf/data/output/A_gm.bin", A, aMatrixFileSize))
+    {
+        LOG_PRINT("Failed to write spotrf output.\n");
+        (void)aclrtFreeHost(A);
+        CleanupResources(stream, handle, deviceId);
+        return 1;
+    }
+
+    CHECK_ACL(aclrtFreeHost(A));
 
     CHECK_ACL(aclrtDestroyStream(stream));
     CHECK_ACL(aclsolverDestroy(handle));
