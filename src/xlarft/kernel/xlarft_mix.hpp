@@ -10,7 +10,7 @@
 
 /*!
  * \file xlarft_mix.hpp
- * rief 由 (V, tau) 直接算块反射子的三角因子 T（融合 MIX kernel，950PR / fp32）
+ * \brief 由 (V, tau) 直接算块反射子的三角因子 T（融合 MIX kernel，950PR / fp32）
  *
  *   AIV : 物化 V 到 workspace（FORWARD 下对角 1、上方 0；BACKWARD 下第 n-k+i 行 1、下方 0）
  *   cube: G = V^T V（按 K 分核，份数取 makespan 最优）
@@ -29,12 +29,12 @@
 // householder/larfb_plan、以及标准库那几个头）都由这一个头提供。
 #include "../../sgeqrf/kernel/mix_common.hpp"
 
-
-constexpr uint32_t MAX_N = 4096;   // 单列整列驻留 UB
-constexpr uint32_t MAX_K = 256;    // 任务书 §2.6：k <= min(n, 256)
+constexpr uint32_t MAX_N = 4096;     // 单列整列驻留 UB
+constexpr uint32_t MAX_K = 256;      // 任务书 §2.6：k <= min(n, 256)
 constexpr uint32_t MAX_T_ROWS = 32;  // 本核最多拥有的 T 行数：k=256 时要求 AIV 核数 >= 8
 
-struct XlarftParams {
+struct XlarftParams
+{
     GM_ADDR V;    // n x k 列主序 ldv：第 i 列的隐含 1 之外是反射子
     GM_ADDR tau;  // k 个
     GM_ADDR T;    // k x k 列主序 ldt（只写被引用的那半个三角）
@@ -50,9 +50,9 @@ struct XlarftParams {
     uint64_t capP;      // wsP 容量（元素）。**host 是唯一来源**，kernel 只拿它 clamp 份数
 };
 
-
 /// kernel 要用到的 GM 视图，一次绑好
-struct XlarftGm {
+struct XlarftGm
+{
     AscendC::GlobalTensor<float> V, tau, Tg, Y, G, P;
 
     __aicore__ inline void Init(const XlarftParams& params)
@@ -69,7 +69,8 @@ struct XlarftGm {
 #ifdef __DAV_VEC__
 /// AIV 侧的 UB 分块。TBuf 必须活到 kernel 结束，所以连 TBuf 一起放在这个结构体里，
 /// 由 kernel 在自己的作用域里声明一个实例。
-struct XlarftUb {
+struct XlarftUb
+{
     AscendC::TBuf<AscendC::TPosition::VECCALC> bufCol, bufG, bufTau, bufT, bufSp, bufRed;
     AscendC::LocalTensor<float> col, gl, taul, tl, sp, red;
 
@@ -95,14 +96,13 @@ struct XlarftUb {
 /// 先把整列原样读进 UB（偏移 0，对齐没问题），再把该置 0/1 的位置改掉。
 /// ★ 不要"把 GM 的有效段直接搬到 UB 的第 d+1 个位置"：UB 偏移非 8 的倍数时
 ///   DataCopyPad **静默什么都不搬**。
-__aicore__ inline void XlarftMaterializeV(const AscendC::GlobalTensor<float>& V,
-                                          const AscendC::GlobalTensor<float>& Y,
-                                          const AscendC::LocalTensor<float>& col, uint32_t n, uint32_t k,
-                                          uint32_t ldv, uint32_t ldy, bool backward, uint32_t coreId,
-                                          uint32_t coreNum)
+__aicore__ inline void XlarftMaterializeV(const AscendC::GlobalTensor<float>& V, const AscendC::GlobalTensor<float>& Y,
+                                          const AscendC::LocalTensor<float>& col, uint32_t n, uint32_t k, uint32_t ldv,
+                                          uint32_t ldy, bool backward, uint32_t coreId, uint32_t coreNum)
 {
     const uint32_t nAligned = AlignUp32(n, 8);
-    for (uint32_t c = coreId; c < k; c += coreNum) {
+    for (uint32_t c = coreId; c < k; c += coreNum)
+    {
         const uint32_t d = backward ? (n - k + c) : c;  // 隐含 1 的那一行
         {
             AscendC::DataCopyExtParams cp{1, static_cast<uint32_t>(n * sizeof(float)), 0, 0, 0};
@@ -111,19 +111,27 @@ __aicore__ inline void XlarftMaterializeV(const AscendC::GlobalTensor<float>& V,
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        if (!backward) {
-            if (d > 0) {
+        if (!backward)
+        {
+            if (d > 0)
+            {
                 AscendC::Duplicate(col, 0.0f, d);  // 前缀置 0：基址 0，天然对齐
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
-        } else {
+        }
+        else
+        {
             // 后缀 (d, n) 置 0：对齐的那段用向量，前面零散的几个用标量
             const uint32_t tailAligned = AlignUp32(d + 1u, 8);
-            if (tailAligned < nAligned) {
+            if (tailAligned < nAligned)
+            {
                 AscendC::Duplicate(col[tailAligned], 0.0f, nAligned - tailAligned);
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
-            for (uint32_t r = d + 1u; r < tailAligned && r < n; ++r) { col.SetValue(r, 0.0f); }
+            for (uint32_t r = d + 1u; r < tailAligned && r < n; ++r)
+            {
+                col.SetValue(r, 0.0f);
+            }
         }
         col.SetValue(d, 1.0f);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
@@ -138,8 +146,8 @@ __aicore__ inline void XlarftMaterializeV(const AscendC::GlobalTensor<float>& V,
 }
 
 /// tau 整段读进 UB（后面 T 的递推逐个取标量，所以要同步到 S 流水）
-__aicore__ inline void XlarftLoadTau(const AscendC::GlobalTensor<float>& tau,
-                                     const AscendC::LocalTensor<float>& taul, uint32_t k)
+__aicore__ inline void XlarftLoadTau(const AscendC::GlobalTensor<float>& tau, const AscendC::LocalTensor<float>& taul,
+                                     uint32_t k)
 {
     AscendC::DataCopyExtParams cp{1, static_cast<uint32_t>(k * sizeof(float)), 0, 0, 0};
     AscendC::DataCopyPadExtParams<float> pd{false, 0, 0, 0};
@@ -151,17 +159,18 @@ __aicore__ inline void XlarftLoadTau(const AscendC::GlobalTensor<float>& tau,
 /// 写回 T：T 是 k x k 列主序 ldt，本核的"行 r"在列主序里是跨步的。
 /// 只写**被引用的那半个三角**（FORWARD 上三角、BACKWARD 下三角），对齐 LAPACK slarft
 /// （它不碰另一半）。DataCopyPad 的 UB 侧每块独占 32B ⇒ 先把该行摊成 8 个 float 的步长。
-__aicore__ inline void XlarftStoreT(const AscendC::GlobalTensor<float>& Tg,
-                                    const AscendC::LocalTensor<float>& tl, const AscendC::LocalTensor<float>& sp,
-                                    uint32_t k, uint32_t ldt, uint32_t ldtUb, bool backward, uint32_t coreId,
-                                    uint32_t coreNum)
+__aicore__ inline void XlarftStoreT(const AscendC::GlobalTensor<float>& Tg, const AscendC::LocalTensor<float>& tl,
+                                    const AscendC::LocalTensor<float>& sp, uint32_t k, uint32_t ldt, uint32_t ldtUb,
+                                    bool backward, uint32_t coreId, uint32_t coreNum)
 {
     uint32_t q = 0;
-    for (uint32_t r = coreId; r < k; r += coreNum, ++q) {
+    for (uint32_t r = coreId; r < k; r += coreNum, ++q)
+    {
         const uint32_t lo = backward ? 0u : r;
         const uint32_t hi = backward ? (r + 1u) : k;
         const uint32_t cnt = hi - lo;
-        for (uint32_t t = 0; t < cnt; ++t) {
+        for (uint32_t t = 0; t < cnt; ++t)
+        {
             sp.SetValue(t * 8u, tl.GetValue(q * ldtUb + lo + t));
         }
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
@@ -178,15 +187,18 @@ __aicore__ inline void XlarftStoreT(const AscendC::GlobalTensor<float>& Tg,
 #ifdef __DAV_CUBE__
 /// G = V^T V（cube 侧）。窄 GEMM（输出 tile 数 < AIC 核数）时走确定性分 K：
 /// 每份写独立 partial，之后由 AIV 定序归约 —— 不用原子加，保证逐位可复现。
-__aicore__ inline void XlarftGemmG(const XlarftParams& params, uint32_t n, uint32_t k, uint32_t ldy,
-                                   uint32_t gChunks, uint32_t gChunkLen)
+__aicore__ inline void XlarftGemmG(const XlarftParams& params, uint32_t n, uint32_t k, uint32_t ldy, uint32_t gChunks,
+                                   uint32_t gChunkLen)
 {
     QrCore::GemmPlan gp[3];
     QrCore::PlanLarfbLeft(n, k, k, ldy, ldy, k, k, k, 0, 0, gp);
-    if (gChunks > 1) {
-        RunPlanOnCubeSplitK<MmadRC, layout::RowMajor, layout::ColumnMajor>(gp[0], params.wsY, params.wsY,
-                                                                          params.wsP, gChunks, gChunkLen);
-    } else {
+    if (gChunks > 1)
+    {
+        RunPlanOnCubeSplitK<MmadRC, layout::RowMajor, layout::ColumnMajor>(gp[0], params.wsY, params.wsY, params.wsP,
+                                                                           gChunks, gChunkLen);
+    }
+    else
+    {
         RunPlanOnCube<MmadRC, layout::RowMajor, layout::ColumnMajor>(gp[0], params.wsY, params.wsY, params.wsG);
     }
     CubeBarrier();
@@ -237,7 +249,8 @@ extern "C" __global__ __aicore__ void xlarft_mix_kernel(XlarftParams params)
 
 #ifdef __DAV_VEC__
     VecWaitCube();
-    if (gChunks > 1) {
+    if (gChunks > 1)
+    {
         ReducePartials(G, P, static_cast<uint64_t>(k) * k, gChunks, col, red, RED_CAP, coreId, coreNum);
         VecBarrier();
     }
@@ -252,8 +265,7 @@ extern "C" __global__ __aicore__ void xlarft_mix_kernel(XlarftParams params)
     const uint32_t ldtUb = AlignUp32(k, 8);
     const uint32_t myRows = backward
                                 ? QrCore::BuildTRowParallel<true, true>(tl, ldtUb, gl, k, G, taul, k, coreId, coreNum)
-                                : QrCore::BuildTRowParallel<false, true>(tl, ldtUb, gl, k, G, taul, k, coreId,
-                                                                         coreNum);
+                                : QrCore::BuildTRowParallel<false, true>(tl, ldtUb, gl, k, G, taul, k, coreId, coreNum);
     (void)myRows;
 
     // ---- 5. 写回 T ----

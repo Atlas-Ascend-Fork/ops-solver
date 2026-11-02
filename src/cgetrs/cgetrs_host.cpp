@@ -35,25 +35,24 @@
 
 #define GM_ADDR uint8_t *
 
-void GenerateTiling(uint8_t *gatherBuf)
+bool GenerateTiling(uint8_t *gatherBuf)
 {
     try
     {
+        auto buf = reinterpret_cast<uint32_t *>(gatherBuf);
+        int idx = 0;
+        for (int i = 0; i < TILE_LENGTH; ++i)
         {
-            auto buf = reinterpret_cast<uint32_t *>(gatherBuf);
-            int idx = 0;
-            for (int i = 0; i < TILE_LENGTH; ++i)
-            {
-                buf[idx++] = i * sizeof(float);
-                buf[idx++] = (i + TILE_LENGTH) * sizeof(float);
-            }
+            buf[idx++] = i * sizeof(float);
+            buf[idx++] = (i + TILE_LENGTH) * sizeof(float);
         }
     }
     catch (const std::exception &e)
     {
-        std::cout << e.what() << std::endl;
-        exit(1);
+        std::cerr << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 
 aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
@@ -164,7 +163,11 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost), gatherSize), cleanup());
     CHECK_ACLRT(aclrtMalloc((void **)&gatherDevice, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
 
-    GenerateTiling(gatherHost);
+    if (!GenerateTiling(gatherHost))
+    {
+        cleanup();
+        return ACL_ERROR_INTERNAL_ERROR;
+    }
 
     CHECK_ACLRT(aclrtMemcpy(gatherDevice, gatherSize, gatherHost, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE), cleanup());
 

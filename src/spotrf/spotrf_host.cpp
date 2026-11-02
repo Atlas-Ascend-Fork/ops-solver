@@ -38,7 +38,7 @@ constexpr int BLOCKDIM_MAX = 20;
 
 namespace
 {
-void GenerateGather(int blockM, int blockN, uint8_t *gatherBuf)
+bool GenerateGather(int blockM, int blockN, uint8_t *gatherBuf)
 {
     try
     {
@@ -50,9 +50,10 @@ void GenerateGather(int blockM, int blockN, uint8_t *gatherBuf)
     }
     catch (const std::exception &e)
     {
-        std::cout << e.what() << std::endl;
-        exit(1);
+        std::cerr << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 }  // namespace
 
@@ -243,7 +244,11 @@ static aclError AllocAndUploadGather(SpotrfBuffers &buf, aclrtStream stream)
     CHECK_ACLRT(aclrtMallocHost((void **)(&buf.gatherbuf), 128 * 128 * sizeof(uint32_t)), ReleaseSpotrfBuffers(buf));
     CHECK_ACLRT(aclrtMalloc((void **)(&buf.gatherbufDevice), 128 * 128 * sizeof(uint32_t), ACL_MEM_MALLOC_HUGE_FIRST),
                 ReleaseSpotrfBuffers(buf));
-    GenerateGather(64, 128, buf.gatherbuf);
+    if (!GenerateGather(64, 128, buf.gatherbuf))
+    {
+        ReleaseSpotrfBuffers(buf);
+        return ACL_ERROR_INTERNAL_ERROR;
+    }
     CHECK_ACLRT(aclrtMemcpyAsync(buf.gatherbufDevice, 128 * 128 * sizeof(uint32_t), buf.gatherbuf,
                                  128 * 128 * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE, stream),
                 ReleaseSpotrfBuffers(buf));

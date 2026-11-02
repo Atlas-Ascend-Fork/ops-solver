@@ -10,7 +10,7 @@
 
 /*!
  * \file trsm_mix.hpp
- * rief 上三角回代 R * X = C（融合 MIX kernel，950PR / fp32）—— SSgels 链路的最后一段
+ * \brief 上三角回代 R * X = C（融合 MIX kernel，950PR / fp32）—— SSgels 链路的最后一段
  *
  * 分块回代（块宽 nb，从后往前）：
  *   vec : X <- C（之后原地回代；C 不被破坏、X 是独立输出）
@@ -31,11 +31,11 @@
 // householder/larfb_plan、以及标准库那几个头）都由这一个头提供。
 #include "../../sgeqrf/kernel/mix_common.hpp"
 
-
 constexpr uint32_t MAX_N = 4096;
 constexpr uint32_t MAX_NB = 64;
 
-struct TrsmParams {
+struct TrsmParams
+{
     GM_ADDR A;    // n x n 列主序 ld=lda，用它的上三角
     GM_ADDR C;    // n x nrhs 列主序 ld=ldc（只读）
     GM_ADDR X;    // n x nrhs 列主序 ld=ldx（输出）
@@ -50,11 +50,10 @@ struct TrsmParams {
     uint64_t capP;
 };
 
-
 /// W = R(rows, tail) * X(tail, :) 的 plan。
 /// 行主序视图：Wt~(nrhs x rows) = X~(nrhs x tail) * R~(tail x rows)，两个操作数都行主序。
-__aicore__ inline QrCore::GemmPlan TrsmPlanW(uint32_t nrhs, uint32_t rows, uint32_t tail, uint32_t tail0,
-                                             uint32_t r0, uint32_t lda, uint32_t ldx)
+__aicore__ inline QrCore::GemmPlan TrsmPlanW(uint32_t nrhs, uint32_t rows, uint32_t tail, uint32_t tail0, uint32_t r0,
+                                             uint32_t lda, uint32_t ldx)
 {
     QrCore::GemmPlan gp{};
     gp.m = static_cast<int>(nrhs);
@@ -78,10 +77,13 @@ __aicore__ inline void TrsmGemmWCube(const TrsmParams& params, uint32_t nrhs, ui
 {
     const QrCore::GemmPlan gp = TrsmPlanW(nrhs, rows, tail, tail0, r0, lda, ldx);
     CubeWaitVec();
-    if (wChunks > 1) {
+    if (wChunks > 1)
+    {
         RunPlanOnCubeSplitK<MmadRR, layout::RowMajor, layout::RowMajor>(gp, params.X, params.A, params.wsP, wChunks,
-                                                                       wChunkLen);
-    } else {
+                                                                        wChunkLen);
+    }
+    else
+    {
         RunPlanOnCube<MmadRR, layout::RowMajor, layout::RowMajor>(gp, params.X, params.A, params.wsW);
     }
     CubeBarrier();
@@ -91,7 +93,8 @@ __aicore__ inline void TrsmGemmWCube(const TrsmParams& params, uint32_t nrhs, ui
 
 #ifdef __DAV_VEC__
 /// AIV 侧的 UB 分块。TBuf 必须活到 kernel 结束，所以放在这个结构体里。
-struct TrsmUb {
+struct TrsmUb
+{
     AscendC::TBuf<AscendC::TPosition::VECCALC> bufCol, bufR, bufT, bufRed;
     AscendC::LocalTensor<float> col, rl, tmp, red;
 
@@ -110,13 +113,13 @@ struct TrsmUb {
 
 /// W 的那次 GEMM 期间 vec 侧要做的事：等 cube 算完，分 K 时再归约 partial
 __aicore__ inline void TrsmGemmWVec(const AscendC::GlobalTensor<float>& W, const AscendC::GlobalTensor<float>& P,
-                                    const AscendC::LocalTensor<float>& col,
-                                    const AscendC::LocalTensor<float>& red, uint32_t nrhs, uint32_t rows,
-                                    uint32_t wChunks, uint32_t coreId, uint32_t coreNum)
+                                    const AscendC::LocalTensor<float>& col, const AscendC::LocalTensor<float>& red,
+                                    uint32_t nrhs, uint32_t rows, uint32_t wChunks, uint32_t coreId, uint32_t coreNum)
 {
     VecNotifyCube();
     VecWaitCube();
-    if (wChunks > 1) {
+    if (wChunks > 1)
+    {
         ReducePartials(W, P, static_cast<uint64_t>(nrhs) * rows, wChunks, col, red, RED_CAP, coreId, coreNum);
         VecBarrier();
     }
@@ -126,10 +129,11 @@ __aicore__ inline void TrsmGemmWVec(const AscendC::GlobalTensor<float>& W, const
 #ifdef __DAV_VEC__
 /// X <- C 整块拷贝（之后在 X 上原地回代；C 不被破坏、X 是独立输出）
 __aicore__ inline void TrsmCopyCtoX(const AscendC::GlobalTensor<float>& C, const AscendC::GlobalTensor<float>& X,
-                                    const AscendC::LocalTensor<float>& col, uint32_t n, uint32_t nrhs,
-                                    uint32_t ldc, uint32_t ldx, uint32_t coreId, uint32_t coreNum)
+                                    const AscendC::LocalTensor<float>& col, uint32_t n, uint32_t nrhs, uint32_t ldc,
+                                    uint32_t ldx, uint32_t coreId, uint32_t coreNum)
 {
-    for (uint32_t j = coreId; j < nrhs; j += coreNum) {
+    for (uint32_t j = coreId; j < nrhs; j += coreNum)
+    {
         AscendC::DataCopyExtParams cp{1, static_cast<uint32_t>(n * sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPadExtParams<float> pd{false, 0, 0, 0};
         AscendC::DataCopyPad(col, C[static_cast<uint64_t>(j) * ldc], cp, pd);
@@ -141,11 +145,11 @@ __aicore__ inline void TrsmCopyCtoX(const AscendC::GlobalTensor<float>& C, const
 }
 
 /// 把本块的上三角对角块读进 UB（行距 nb）。每核只在第一次用到时读一次。
-__aicore__ inline void TrsmLoadDiagBlock(const AscendC::GlobalTensor<float>& A,
-                                         const AscendC::LocalTensor<float>& rl, uint32_t r0, uint32_t rows,
-                                         uint32_t lda, uint32_t nb)
+__aicore__ inline void TrsmLoadDiagBlock(const AscendC::GlobalTensor<float>& A, const AscendC::LocalTensor<float>& rl,
+                                         uint32_t r0, uint32_t rows, uint32_t lda, uint32_t nb)
 {
-    for (uint32_t c = 0; c < rows; ++c) {
+    for (uint32_t c = 0; c < rows; ++c)
+    {
         AscendC::DataCopyExtParams cp{1, static_cast<uint32_t>((c + 1) * sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPadExtParams<float> pd{false, 0, 0, 0};
         AscendC::DataCopyPad(rl[c * nb], A[static_cast<uint64_t>(r0 + c) * lda + r0], cp, pd);
@@ -156,11 +160,11 @@ __aicore__ inline void TrsmLoadDiagBlock(const AscendC::GlobalTensor<float>& A,
 
 /// 块内回代一列：x(i) /= R(i,i)，然后 x(0..i-1) -= x(i)*R(0..i-1, i)。
 /// 每步 1 次标量除 + 2 个向量指令（长度 <= nb），**不是** nb^2/2 次标量 FMA。
-__aicore__ inline void TrsmSolveOneCol(const AscendC::LocalTensor<float>& col,
-                                       const AscendC::LocalTensor<float>& rl,
+__aicore__ inline void TrsmSolveOneCol(const AscendC::LocalTensor<float>& col, const AscendC::LocalTensor<float>& rl,
                                        const AscendC::LocalTensor<float>& tmp, uint32_t rows, uint32_t nb)
 {
-    for (uint32_t t = 0; t < rows; ++t) {
+    for (uint32_t t = 0; t < rows; ++t)
+    {
         const uint32_t i = rows - 1u - t;
         // R(i,i) == 0 即三角系统奇异。按 IEEE 语义传播（与 BLAS strsm 在奇异三角上的
         // 行为一致）：x/+0 得 ±Inf、0/+0 得 NaN，调用方检查 dX 即可发现秩亏。
@@ -171,7 +175,8 @@ __aicore__ inline void TrsmSolveOneCol(const AscendC::LocalTensor<float>& col,
         const float dinv = (diagR != 0.0f) ? (1.0f / diagR) : __builtin_inff();
         const float xi = col.GetValue(i) * dinv;
         col.SetValue(i, xi);
-        if (i > 0) {
+        if (i > 0)
+        {
             // 标量与向量之间来回依赖（下一步的 GetValue 要读这一步 Add 的结果），
             // 用 PIPE_ALL 屏障最稳：S_V / V_S 这两个 HardEvent 本仓没验证过。
             AscendC::Muls(tmp, rl[i * nb], -xi, i);
@@ -183,18 +188,17 @@ __aicore__ inline void TrsmSolveOneCol(const AscendC::LocalTensor<float>& col,
 }
 
 /// X(rows, :) -= W，再做块内回代。按 nrhs 列分核；对角块每核只读一次。
-__aicore__ inline void TrsmBackSubstVec(const AscendC::GlobalTensor<float>& A,
-                                        const AscendC::GlobalTensor<float>& X,
-                                        const AscendC::GlobalTensor<float>& W,
-                                        const AscendC::LocalTensor<float>& col,
-                                        const AscendC::LocalTensor<float>& rl,
-                                        const AscendC::LocalTensor<float>& tmp, uint32_t r0, uint32_t rows,
-                                        uint32_t tail, uint32_t nrhs, uint32_t lda, uint32_t ldx, uint32_t nb,
-                                        uint32_t coreId, uint32_t coreNum)
+__aicore__ inline void TrsmBackSubstVec(const AscendC::GlobalTensor<float>& A, const AscendC::GlobalTensor<float>& X,
+                                        const AscendC::GlobalTensor<float>& W, const AscendC::LocalTensor<float>& col,
+                                        const AscendC::LocalTensor<float>& rl, const AscendC::LocalTensor<float>& tmp,
+                                        uint32_t r0, uint32_t rows, uint32_t tail, uint32_t nrhs, uint32_t lda,
+                                        uint32_t ldx, uint32_t nb, uint32_t coreId, uint32_t coreNum)
 {
     bool loadedR = false;
-    for (uint32_t j = coreId; j < nrhs; j += coreNum) {
-        if (!loadedR) {
+    for (uint32_t j = coreId; j < nrhs; j += coreNum)
+    {
+        if (!loadedR)
+        {
             TrsmLoadDiagBlock(A, rl, r0, rows, lda, nb);
             loadedR = true;
         }
@@ -202,12 +206,14 @@ __aicore__ inline void TrsmBackSubstVec(const AscendC::GlobalTensor<float>& A,
         AscendC::DataCopyExtParams cp{1, static_cast<uint32_t>(rows * sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPadExtParams<float> pd{false, 0, 0, 0};
         AscendC::DataCopyPad(col, X[static_cast<uint64_t>(j) * ldx + r0], cp, pd);
-        if (tail > 0) {
+        if (tail > 0)
+        {
             AscendC::DataCopyPad(tmp, W[static_cast<uint64_t>(j) * rows], cp, pd);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        if (tail > 0) {
+        if (tail > 0)
+        {
             AscendC::Sub(col, col, tmp, rows);
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -253,7 +259,8 @@ extern "C" __global__ __aicore__ void strsm_mix_kernel(TrsmParams params)
     VecBarrier();
 #endif
 
-    for (uint32_t bIdx = 0; bIdx < nBlk; ++bIdx) {
+    for (uint32_t bIdx = 0; bIdx < nBlk; ++bIdx)
+    {
         const uint32_t b = nBlk - 1u - bIdx;
         const uint32_t r0 = b * nb;
         const uint32_t rows = ((n - r0) < nb) ? (n - r0) : nb;
@@ -265,7 +272,8 @@ extern "C" __global__ __aicore__ void strsm_mix_kernel(TrsmParams params)
         uint32_t wChunkLen = 0;
         const uint32_t wChunks =
             (tail == 0) ? 1u : KSplitChunks(nrhs, rows, tail, AscendC::GetBlockNum(), params.capP, &wChunkLen);
-        if (tail > 0) {
+        if (tail > 0)
+        {
 #ifdef __DAV_CUBE__
             TrsmGemmWCube(params, nrhs, rows, tail, tail0, r0, lda, ldx, wChunks, wChunkLen);
 #elif defined(__DAV_VEC__)
