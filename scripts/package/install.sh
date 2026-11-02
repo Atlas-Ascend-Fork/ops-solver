@@ -88,6 +88,13 @@ check_install_path() {
 # makeself 可能将 run 文件路径作为第一个参数传入，需跳过
 get_opts() {
   while [ $# -gt 0 ]; do
+    # Parse the named path before skipping makeself arguments, since an
+    # installation directory may itself end in .run.
+    if [[ "$1" == --install-path=* ]]; then
+      check_install_path "${1#*=}"
+      shift
+      continue
+    fi
     # 跳过 makeself 传入的 run 文件路径与工作目录参数。makeself 2.5.0-patch1 会向启动脚本
     # 注入两个参数（见 makeself-header.sh 的 scriptargs）：--<run文件> 与 --<cwd绝对路径>
     # （如 --/usr/local/Ascend），后者此前未被跳过，导致 --install 在任意目录都被判为非法参数
@@ -114,10 +121,6 @@ get_opts() {
         ;;
       --uninstall)
         IS_UNINSTALL="y"
-        shift
-        ;;
-      --install-path=*)
-        check_install_path "${1#*=}"
         shift
         ;;
       --quiet)
