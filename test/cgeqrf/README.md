@@ -1,3 +1,21 @@
+# Cgeqrf acceptance adapter
+
+`cgeqrf_adapter.cpp` exports the task's fixed solver adapter v2 protocol and calls
+the real `aclsolverCgeqrf` Device column-major API. Transport buffers are compact
+Host row-major complex64. Output is packed QR, actual device info and tau.
+
+The unchanged protocol header and shared transport implementation are in
+`../../tests/third_party/complex_qr/solver_adapter.h` and `../complex_qr/adapter_impl.h`.
+Build with `cmake -S . -B build -DSOC_VERSION=ascend950 -DBUILD_TEST=ON -DTEST_NAMES=cgeqrf`
+and `cmake --build build -j8`. The adapter is `build/test/cgeqrf/libcgeqrf_adapter.so`.
+Selecting `TEST_NAMES=complex_qr` builds all four adapters under `test/complex_qr`.
+
+See [revised official package instructions](../complex_qr/REVISED_PACKAGE.md).
+
+---
+
+以下为 A2/A3 七参数 C++ 接口测试，不适用于 950 工作区接口。
+
 ## Cgeqrf算子实现
 
 ## 概述
@@ -160,3 +178,10 @@ Solver Cgeqrf算子实现。
   ```text
   [Success] Case accuracy is verification passed.
   ```
+
+## Independent regression
+
+`test_cgeqrf.py` exercises only the `cgeqrf` public API with CPU references, padded layouts and numerical checks.
+The default `run_tests.sh BUILD_DIR` runs this test, not the complete QR pipeline.
+Use `ctest --test-dir build -R cgeqrf_independent --output-on-failure`.
+`test/complex_qr` contains cross-operator integration, shared contract and boundary regressions.

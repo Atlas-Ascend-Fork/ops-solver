@@ -208,6 +208,17 @@ if [ "${RUN_TEST}" == "ON" ]; then
     PASSED_OPS=()
 
     for op in "${OP_ARRAY[@]}"; do
+        # Some test suites drive several public interfaces through one runner.
+        # Retain the existing generate/binary/verify workflow for other suites.
+        TEST_RUNNER="${BASE_PATH}/test/${op}/run_tests.sh"
+        if [ -f "${TEST_RUNNER}" ]; then
+            if bash "${TEST_RUNNER}" "${BUILD_DIR}"; then
+                PASSED_OPS+=("${op}")
+            else
+                FAILED_OPS+=("${op}")
+            fi
+            continue
+        fi
         TEST_BIN="${BUILD_DIR}/test/${op}/${op}_test"
         GEN_SCRIPT="${BASE_PATH}/test/${op}/data/gen_data.py"
         VERIFY_SCRIPT="${BASE_PATH}/test/${op}/data/verify_result.py"

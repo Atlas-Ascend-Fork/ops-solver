@@ -44,6 +44,9 @@ foreach(arch_dir ${SOC_ARCH_DIRS})
     list(APPEND ARCH_SRC_FILES ${arch_dir_srcs})
 endforeach()
 
+# Select the unsupported-architecture ABI source in complex_qr.cmake.
+list(FILTER OP_SRC_FILES EXCLUDE REGEX "/(cgeqrf|cungqr|cunmqr|ccgels)_unsupported[.]cpp$")
+
 set(ALL_SOLVER_SRC_FILES
     ${BASE_SRC_FILES}
     ${OP_SRC_FILES}

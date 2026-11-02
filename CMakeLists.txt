@@ -172,6 +172,13 @@ if(SOC_VERSION_LOWER MATCHES "^ascend950")
     PROPERTIES COMPILE_OPTIONS "-O3")
 endif()
 
+# Load optional operator-local target configuration after creating the library.
+# Source discovery and common compiler settings remain shared by all operators.
+file(GLOB SOLVER_TARGET_CONFIGS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*/cmake/*.cmake")
+foreach(config IN LISTS SOLVER_TARGET_CONFIGS)
+  include("${config}")
+endforeach()
+
 # >>> CATLASS (QR series) >>>
 # ========= 可选依赖：CATLASS（arch35 下 QR 系列算子的 GEMM 层）=========
 # CATLASS 不随 CANN 发布，也不在本仓内，需显式提供仓根目录：

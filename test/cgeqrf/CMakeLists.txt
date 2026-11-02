@@ -33,6 +33,7 @@
 # 商业授权联系：yuantang@fudan.edu.cn
 
 
+if(NOT "arch35" IN_LIST SOC_ARCH_DIRS AND NOT "arch20" IN_LIST SOC_ARCH_DIRS)
 add_executable(cgeqrf_test
     cgeqrf_test.cpp
 )
@@ -46,3 +47,7 @@ target_link_libraries(cgeqrf_test PRIVATE
     ${OPS_SOLVER}
     $ENV{EAGER_LIBRARY_PATH}/libascendcl.so
 )
+endif()
+
+set(QR_ADAPTER_TARGET cgeqrf)
+include(${CMAKE_CURRENT_LIST_DIR}/../complex_qr/adapter.cmake)

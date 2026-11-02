@@ -244,6 +244,158 @@ extern "C"
                                              const aclsolverFloatComplex* const Aarray[], int lda,
                                              aclsolverFloatComplex* Barray[], int ldb, int* info, int batchSize);
 
+    /**
+     * @brief Query complex QR workspace without reading device data or launching kernels.
+     * @param handle Non-null solver handle. QR APIs use column-major device matrices.
+     * @param m Non-negative row count.
+     * @param n Non-negative column count.
+     * @param A Device matrix; may be null for an empty problem.
+     * @param lda Column stride, at least max(1,m).
+     * @param Lwork Host output workspace count in complex elements, not bytes.
+     * @return SUCCESS, INVALID_VALUE, or HANDLE_IS_NULLPTR. On non-950 builds a non-null
+     *         handle returns ARCH_MISMATCH without accessing inputs or outputs.
+     */
+    aclsolverStatus_t aclsolverCgeqrf_bufferSize(aclsolverHandle_t handle, int m, int n, aclsolverFloatComplex* A,
+                                                 int lda, int* Lwork);
+    /**
+     * @brief Factor A=Q*R in place, retaining Householder vectors below the diagonal.
+     * @param handle Solver handle; input validation synchronizes its stream and reads back
+     *               a four-byte status. Main computation and info writes use the same stream.
+     * @param m Non-negative row count.
+     * @param n Non-negative column count.
+     * @param A Device input/output matrix; padding is preserved. Null is allowed if empty.
+     * @param lda Column stride, at least max(1,m).
+     * @param TAU Device output coefficients, min(m,n) complex elements; may be null if empty.
+     * @param Workspace Device scratch allocated according to the matching bufferSize query.
+     * @param Lwork Available scratch size in complex elements.
+     * @param devInfo Writable device integer: zero on success or negative argument index
+     *                excluding handle, when valid storage is available for error reporting.
+     * @return SUCCESS, INVALID_VALUE, HANDLE_IS_NULLPTR, or a handle/stream error.
+     *         Non-950 calls with a non-null handle return ARCH_MISMATCH without memory access.
+     */
+    aclsolverStatus_t aclsolverCgeqrf(aclsolverHandle_t handle, int m, int n, aclsolverFloatComplex* A, int lda,
+                                      aclsolverFloatComplex* TAU, aclsolverFloatComplex* Workspace, int Lwork,
+                                      int* devInfo);
+    /**
+     * @brief Query workspace for explicitly forming Q; no device data is read.
+     * @param handle Non-null solver handle.
+     * @param m Row count, m >= n.
+     * @param n Column count, n >= k.
+     * @param k Non-negative number of reflectors.
+     * @param A Device column-major packed reflectors; may be null for an empty problem.
+     * @param lda Column stride, at least max(1,m).
+     * @param tau Device reflector coefficients; may be null when k=0.
+     * @param lwork Host output count in complex elements.
+     * @return SUCCESS, INVALID_VALUE, HANDLE_IS_NULLPTR, or ARCH_MISMATCH on non-950 builds.
+     */
+    aclsolverStatus_t aclsolverCungqr_bufferSize(aclsolverHandle_t handle, int m, int n, int k,
+                                                 const aclsolverFloatComplex* A, int lda,
+                                                 const aclsolverFloatComplex* tau, int* lwork);
+    /**
+     * @brief Form m-by-n Q in place from k Householder reflectors.
+     * @param handle Solver handle; synchronization follows aclsolverCgeqrf.
+     * @param m Row count, m >= n.
+     * @param n Column count, n >= k.
+     * @param k Non-negative reflector count; k=0 produces identity columns.
+     * @param A Device packed reflectors, overwritten with Q; padding is preserved.
+     * @param lda Column stride, at least max(1,m).
+     * @param tau Read-only device coefficients; may be null when k=0.
+     * @param work Device scratch from the matching query; must not overlap input/output.
+     * @param lwork Scratch size in complex elements.
+     * @param devInfo Writable device status, zero or negative argument index excluding handle.
+     * @return SUCCESS, INVALID_VALUE, HANDLE_IS_NULLPTR, a handle/stream error, or
+     *         ARCH_MISMATCH for a non-null handle on non-950 builds.
+     */
+    aclsolverStatus_t aclsolverCungqr(aclsolverHandle_t handle, int m, int n, int k, aclsolverFloatComplex* A, int lda,
+                                      const aclsolverFloatComplex* tau, aclsolverFloatComplex* work, int lwork,
+                                      int* devInfo);
+    /**
+     * @brief Query workspace for applying Q or Q^H; no device data is read.
+     * @param handle Non-null solver handle.
+     * @param side LEFT or RIGHT application; reflector order is m or n respectively.
+     * @param trans N or C; non-conjugate transpose T is unsupported.
+     * @param m Non-negative row count of C.
+     * @param n Non-negative column count of C.
+     * @param k Reflector count between zero and the reflector order.
+     * @param A Read-only device column-major packed reflectors.
+     * @param lda Reflector stride, at least max(1,order).
+     * @param tau Read-only device reflector coefficients.
+     * @param C Device column-major target matrix.
+     * @param ldc Target stride, at least max(1,m).
+     * @param lwork Host output workspace count in complex elements.
+     * @return SUCCESS, INVALID_VALUE, HANDLE_IS_NULLPTR, or ARCH_MISMATCH on non-950 builds.
+     */
+    aclsolverStatus_t aclsolverCunmqr_bufferSize(aclsolverHandle_t handle, aclsolverSideMode_t side,
+                                                 aclsolverOperation_t trans, int m, int n, int k,
+                                                 const aclsolverFloatComplex* A, int lda,
+                                                 const aclsolverFloatComplex* tau, const aclsolverFloatComplex* C,
+                                                 int ldc, int* lwork);
+    /**
+     * @brief Apply Q or Q^H from the left or right, overwriting C.
+     * @param handle Solver handle; synchronization follows aclsolverCgeqrf.
+     * @param side LEFT or RIGHT application.
+     * @param trans N or C; T is unsupported.
+     * @param m Non-negative target row count.
+     * @param n Non-negative target column count.
+     * @param k Reflector count, at most m for LEFT or n for RIGHT; zero is a no-op.
+     * @param A Read-only device packed reflectors; inactive storage is not read.
+     * @param lda Column stride, at least max(1,reflector order).
+     * @param tau Read-only device coefficients.
+     * @param C Device input/output target; leading-dimension padding is preserved.
+     * @param ldc Target stride, at least max(1,m).
+     * @param work Device scratch from the matching workspace query.
+     * @param lwork Scratch size in complex elements.
+     * @param devInfo Writable device status, zero or negative argument index excluding handle.
+     * @return SUCCESS, INVALID_VALUE, HANDLE_IS_NULLPTR, a handle/stream error, or
+     *         ARCH_MISMATCH for a non-null handle on non-950 builds.
+     */
+    aclsolverStatus_t aclsolverCunmqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans,
+                                      int m, int n, int k, const aclsolverFloatComplex* A, int lda,
+                                      const aclsolverFloatComplex* tau, aclsolverFloatComplex* C, int ldc,
+                                      aclsolverFloatComplex* work, int lwork, int* devInfo);
+    /**
+     * @brief Query complex least-squares workspace in bytes; no device data is read.
+     * @param handle Non-null solver handle.
+     * @param m Row count, m >= n.
+     * @param n Non-negative column count.
+     * @param nrhs Non-negative number of right-hand sides.
+     * @param dA Device column-major coefficient matrix.
+     * @param ldda Coefficient stride, at least max(1,m).
+     * @param dB Device column-major right-hand sides.
+     * @param lddb Right-hand-side stride, at least max(1,m).
+     * @param dX Device column-major solution matrix.
+     * @param lddx Solution stride, at least max(1,n).
+     * @param dwork Reserved device pointer; ignored by this query.
+     * @param lwork_bytes Host output scratch size in bytes, unlike the QR element counts.
+     * @return SUCCESS, INVALID_VALUE, HANDLE_IS_NULLPTR, or ARCH_MISMATCH on non-950 builds.
+     */
+    aclsolverStatus_t aclsolverCCgels_bufferSize(aclsolverHandle_t handle, int m, int n, int nrhs,
+                                                 aclsolverFloatComplex* dA, int ldda, aclsolverFloatComplex* dB,
+                                                 int lddb, aclsolverFloatComplex* dX, int lddx, void* dwork,
+                                                 size_t* lwork_bytes);
+    /**
+     * @brief Solve a square or overdetermined complex least-squares problem using QR.
+     * @param handle Solver handle; synchronization follows aclsolverCgeqrf.
+     * @param m Row count, m >= n; underdetermined problems are rejected even if m=0.
+     * @param n Non-negative column count.
+     * @param nrhs Non-negative right-hand-side count; n=0 or nrhs=0 is empty.
+     * @param dA Device coefficient matrix, overwritten with packed QR factors.
+     * @param ldda Coefficient stride, at least max(1,m).
+     * @param dB Read-only device right-hand sides.
+     * @param lddb Right-hand-side stride, at least max(1,m).
+     * @param dX Device output solution, n-by-nrhs; padding is preserved.
+     * @param lddx Solution stride, at least max(1,n).
+     * @param dWorkspace Device scratch from the matching query; no input/output overlap.
+     * @param lwork_bytes Available scratch in bytes.
+     * @param niter Host output iteration count, zero for this direct solver.
+     * @param dinfo Writable device status: zero, negative argument index excluding handle,
+     *              or positive one-based zero-pivot position during back substitution.
+     * @return SUCCESS (including numerical failure reported in dinfo), INVALID_VALUE,
+     *         HANDLE_IS_NULLPTR, a handle/stream error, or ARCH_MISMATCH on non-950 builds.
+     */
+    aclsolverStatus_t aclsolverCCgels(aclsolverHandle_t handle, int m, int n, int nrhs, aclsolverFloatComplex* dA,
+                                      int ldda, aclsolverFloatComplex* dB, int lddb, aclsolverFloatComplex* dX,
+                                      int lddx, void* dWorkspace, size_t lwork_bytes, int* niter, int* dinfo);
 
     /**
      * @brief Query the workspace for a real symmetric Cholesky factorization on Ascend 950PR/950DT.

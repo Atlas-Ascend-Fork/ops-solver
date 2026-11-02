@@ -207,6 +207,14 @@
   </tr>
 </tbody></table>
 
+复数 QR 与最小二乘接口（Ascend 950PR，AI Core）：
+
+| 算子目录 | API 文档 | 功能 |
+| --- | --- | --- |
+| `src/cgeqrf/arch35` | [Cgeqrf](zh/cgeqrf.md) | COMPLEX64 QR 分解 |
+| `src/cungqr/arch35` | [Cungqr](zh/cungqr.md) | Householder 反射器生成显式 Q |
+| `src/cunmqr/arch35` | [Cunmqr](zh/cunmqr.md) | 左右酉变换 |
+| `src/ccgels/arch35` | [CCgels](zh/ccgels.md) | 方阵及超定复数最小二乘 |
 
 ## 算子接口
 
@@ -230,7 +238,7 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetrf` | 单精度实数矩阵LU分解，Device列主序 |
 | [`aclsolverSpotrf`](zh/spotrf.md) | 单精度 Cholesky 分解；A2/A3 与 Ascend 950 使用不同原型，详见接口说明 |
 | `aclsolverSgeqrf` | 单精度矩阵QR分解 |
-| `aclsolverCgeqrf` | 复数矩阵QR分解 |
+| `aclsolverCgeqrf` | A2/A3 复数矩阵QR分解（七参数 C++ 接口） |
 | `aclsolverSgetri_bufferSize` | 单矩阵求逆workspace查询，返回FLOAT32元素数 |
 | `aclsolverSgetri` | 单精度实数矩阵求逆，输入LU和主元 |
 | `aclsolverSgetriBatched` | 单精度实数批量求逆，输入LU和主元 |
@@ -238,6 +246,10 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverCmatinvBatched` | 批量复数矩阵求逆（小矩阵，n≤32） |
 | `aclsolverCgetriBatched` | 批量复数矩阵求逆（大矩阵，n>32） |
 | `aclsolverCheevj` | 单精度复数Hermitian矩阵特征值分解 |
+| `aclsolverCgeqrf` / `aclsolverCgeqrf_bufferSize` | 950 复数 QR 分解及工作区查询（C 接口） |
+| `aclsolverCungqr` / `aclsolverCungqr_bufferSize` | 显式 Q 构造及工作区查询 |
+| `aclsolverCunmqr` / `aclsolverCunmqr_bufferSize` | 酉变换及工作区查询 |
+| `aclsolverCCgels` / `aclsolverCCgels_bufferSize` | 复数最小二乘及工作区查询 |
 | `aclsolverSgetrs` | 单精度线性方程组求解 |
 | `aclsolverCgetrs` | 复数线性方程组求解 |
 | `aclsolverCpotrf` | 复数矩阵Cholesky分解 |

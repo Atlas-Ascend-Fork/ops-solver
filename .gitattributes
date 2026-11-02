@@ -1,0 +1,2 @@
+# Preserve the original acceptance protocol header's CRLF bytes.
+tests/third_party/complex_qr/solver_adapter.h -text whitespace=cr-at-eol

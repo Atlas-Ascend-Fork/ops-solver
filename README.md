@@ -41,6 +41,7 @@ git clone -b ${tag_version} https://gitcode.com/cann/ops-solver.git
 
 - [目录结构](docs/zh/install/dir_structure.md)
 - [接口列表](docs/api_list.md)
+- Ascend 950 复数 QR 与最小二乘：[Cgeqrf](docs/zh/cgeqrf.md)、[Cungqr](docs/zh/cungqr.md)、[Cunmqr](docs/zh/cunmqr.md)、[CCgels](docs/zh/ccgels.md)；[构建与测试](test/complex_qr/README.md)。
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)

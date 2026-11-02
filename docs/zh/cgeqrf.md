@@ -9,7 +9,7 @@
 |  <term>Atlas 训练系列产品</term>    |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
+|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
 
 
 ## 功能说明
@@ -52,6 +52,10 @@
     ```
     [ 1.38+0.38i, 1.79+0.61i ]
     ```
+
+## A2/A3 接口
+
+以下原型和参数适用于 A2/A3；950DT/PR 使用本页后文的工作区接口。
 
 ## 函数原型
 
@@ -179,3 +183,69 @@
         return 0;
     }
     ```
+
+
+## 950DT/PR 接口
+
+以下带工作区的 C 接口适用于 Ascend 950DT/PR，不与前面的 A2/A3 七参数 C++ 接口混用。
+
+## 函数原型
+
+```c
+aclsolverStatus_t aclsolverCgeqrf_bufferSize(
+    aclsolverHandle_t handle, int m, int n, aclsolverFloatComplex *A, int lda, int *Lwork);
+
+aclsolverStatus_t aclsolverCgeqrf(
+    aclsolverHandle_t handle, int m, int n, aclsolverFloatComplex *A, int lda,
+    aclsolverFloatComplex *TAU, aclsolverFloatComplex *Workspace, int Lwork, int *devInfo);
+```
+
+## 参数说明
+
+| 参数 | 归属 | 说明 |
+| --- | --- | --- |
+| handle | Host | `aclsolverCreate` 创建的非空句柄；使用其 stream |
+| m、n | Host 标量 | 非负行数、列数；支持方阵、瘦高和扁宽矩阵 |
+| A | Device 输入/输出 | COMPLEX64 列主序，元素 `(r,c)` 位于 `A[r+c*lda]` |
+| lda | Host 标量 | `lda >= max(1,m)`；padding 保持不变 |
+| TAU | Device 输出 | 长度至少 `min(m,n)`，不得与 A、workspace 重叠 |
+| Workspace | Device 工作区 | 按本次 bufferSize 查询结果分配，使用 `aclrtMalloc` |
+| Lwork | Host | 查询时为输出指针；计算时为工作区的复数元素个数，单位为 8 字节 |
+| devInfo | Device 输出 | 一个 INT32；成功为 0，参数非法为 `-i`，参数编号不计 handle |
+
+## 约束与状态
+
+- 数据类型为两个连续 FLOAT32 的 `aclsolverFloatComplex {real, imag}`；不支持广播或行主序。
+- 任务保证范围为 `m,n` 从 1 到 4096 的合法组合，另外处理空问题；更大维数不作为本任务验收保证。
+- `m=0` 或 `n=0` 时成功写入 info=0，允许 A、TAU 为空；lda 仍须合法，devInfo 必须可写。
+- 非空问题的输入必须为有限复数。非有限输入、非法参数或不足的工作区返回
+  `ACLSOLVER_STATUS_INVALID_VALUE`，并在 info 可写时写入对应负编号。
+- 空 handle 返回已有的 `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR`。
+- bufferSize 不执行分解、不读取 Device 数据；计算不分配隐藏的 Device 工作区。
+- 输入有限性检查为满足同步返回状态要求，会同步调用方 stream；后续计算及 info 写入
+  使用同一 stream。读取结果或释放相关 Device 内存前，调用方应同步该 stream。
+- 核心运算在 AI Core 上完成，补偿 HF32 用于块更新；不使用 CPU 计算回退。
+
+## 输入检查与同步开销
+
+非空计算路径在下发主计算前，先由设备端扫描实际使用的输入，检查 NaN/Inf，
+随后同步 handle 对应的 stream，并将 4 字节检查结果复制到 Host，以同步返回
+`ACLSOLVER_STATUS_INVALID_VALUE`。该同步也会等待同一 stream 上此前排队的任务，
+因此调用不是完全异步；主计算仍在同一 stream 上下发，API 返回不代表主计算完成。
+空问题与参数拒绝路径不执行这次扫描。
+
+扫描增加与有效输入元素数相关的读取开销；leading-dimension padding 及反射器的
+隐式对角/上三角不属于有效输入。大矩阵应同时评估扫描 kernel 占比和完整调用耗时。
+kernel 性能统计应包含检查 kernel；仅统计主计算会低估成本。kernel 耗时不包含
+Host 等待和 D2H 回读的全部开销，不能据此宣称端到端延迟相同。
+当前不提供跳过检查的开关，以保持非有限输入的错误返回契约。
+
+## 调用与测试
+
+先创建 handle 并设置 stream，再查询 Lwork、分配 `Lwork*sizeof(aclsolverFloatComplex)`
+字节的 Device 工作区，调用计算接口并同步 stream，最后将 devInfo 和输出复制到 Host 检查。
+公开头文件支持 C 调用；完整资源管理示例见
+[profile_case.cpp](../../test/complex_qr/profile_case.cpp)，正确性和性能命令见
+[测试说明](../../test/complex_qr/README.md)。
+
+由反射器生成 Q 使用 [Cungqr](cungqr.md)，施加 Q 使用 [Cunmqr](cunmqr.md)。
