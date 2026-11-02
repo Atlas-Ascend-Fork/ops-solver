@@ -85,11 +85,11 @@
 
 1. 准备CANN开发环境
   
-   如果您想参与编码贡献，需要准备CANN开发环境，请参考[环境准备](./README.md#环境部署)。
+   如果您想参与编码贡献，需要准备CANN开发环境，请参考[环境准备](./docs/zh/install/quick_install.md)。
 
 2. 了解ops-solver的开发注意事项
 
-   1）请参考[工具版本要求与安装](./README.md#安装前准备)，了解编码贡献的一些环境和工具要求。
+   1）请参考[工具版本要求与安装](./docs/zh/install/quick_install.md#安装基础依赖)，了解编码贡献的一些环境和工具要求。
 
    2）ops-solver软件编码遵循许可协议：CANN Open Software License Agreement Version 2.0，详细的协议说明请参见[LICENSE](./LICENSE)文件，如果您贡献代码到ops-solver源码仓，请遵循此协议。
    
