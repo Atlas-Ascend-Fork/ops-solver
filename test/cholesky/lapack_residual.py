@@ -101,8 +101,10 @@ def evaluate(entry, arrays, dut):
     mapping = arrays.get("sample_map")
     if not mapping:
         return [
-            paired(op, arrays["A32"], dut["out32"], upper, arrays.get("B32"))
-            | {"physical_slots_checked": 1}
+            {
+                **paired(op, arrays["A32"], dut["out32"], upper, arrays.get("B32")),
+                "physical_slots_checked": 1,
+            }
         ]
     results = []
     output = dut["out32"]
@@ -124,8 +126,8 @@ def evaluate(entry, arrays, dut):
         checked += slots
         b = arrays["B32"][content] if "B32" in arrays else None
         results.append(
-            paired(op, arrays["A32"][content], output[representative], upper, b)
-            | {
+            {
+                **paired(op, arrays["A32"][content], output[representative], upper, b),
                 "content_idx": content,
                 "representative_slot": representative,
                 "physical_slots_checked": slots,

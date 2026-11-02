@@ -49,7 +49,7 @@ def main():
                 other = read("output/" + prefix + suffix[:-1] + "1.bin", columns)
                 if not np.array_equal(output.view(np.uint32), other.view(np.uint32)):
                     raise ValueError("Physical batch outputs differ bitwise")
-            rows.append(row | {"op": op, "uplo": "U" if upper else "L"})
+            rows.append({**row, "op": op, "uplo": "U" if upper else "L"})
     for row in rows:
         mean = sum(r["ratio_cpu"] for r in rows if r["op"] == row["op"]) / 2
         if row["op"].endswith("batched"):

@@ -7,6 +7,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 """Shared data hooks for the five native repository tests."""
 
+from __future__ import annotations
+
 import itertools
 import json
 import logging
@@ -48,6 +50,10 @@ STATUS_INVALID_VALUE = 3
 INFO_SENTINEL = -999
 EDGE_TEST_ORDER = 33
 ILL_CONDITIONED_MIN_EIGENVALUE = 1e-4
+
+
+def unbatch_op(op):
+    return op[: -len("Batched")] if op.endswith("Batched") else op
 
 
 @dataclass(frozen=True)
@@ -189,8 +195,8 @@ def base_case_shapes(op):
     cases.extend(
         (EDGE_TEST_ORDER, upper, 3, batch, "ill_conditioned") for upper in (False, True)
     )
-    failure = "nonpositive" if op.removesuffix("Batched") == "cpotrf" else "singular"
-    if op.removesuffix("Batched") != "cpotrs":
+    failure = "nonpositive" if unbatch_op(op) == "cpotrf" else "singular"
+    if unbatch_op(op) != "cpotrs":
         cases.extend(
             (EDGE_TEST_ORDER, upper, 3, batch, failure) for upper in (False, True)
         )
@@ -220,7 +226,7 @@ def boundary_case_shapes(op):
 
 def make_spec(op, index, shape):
     n, upper, padding, batch, kind = shape
-    solve = op.removesuffix("Batched") == "cpotrs"
+    solve = unbatch_op(op) == "cpotrs"
     nrhs = (1 if op.endswith("Batched") else 1 + 2 * (index % 2)) if solve else 0
     return CaseSpec(
         index,
@@ -236,7 +242,7 @@ def make_spec(op, index, shape):
 
 def invalid_specs(op, start_index):
     batch = 7 if op.endswith("Batched") else 1
-    solve = op.removesuffix("Batched") == "cpotrs"
+    solve = unbatch_op(op) == "cpotrs"
     result = []
     for upper in (False, True):
         shape = (-1, upper, 0, batch, "positive")
@@ -282,7 +288,7 @@ def case_specs(op):
 def generate_invalid(root, op, spec):
     """Keep valid backing storage while passing the deliberately invalid API dimensions."""
     n, batch = max(1, spec.n), max(1, spec.batch)
-    solve = op.removesuffix("Batched") == "cpotrs"
+    solve = unbatch_op(op) == "cpotrs"
     nrhs = max(1, spec.nrhs) if solve else 0
     a = np.broadcast_to(np.eye(n, dtype=np.complex64), (batch, n, n))
     b = np.ones((batch, n, nrhs), dtype=np.complex64)
@@ -295,7 +301,7 @@ def generate_invalid(root, op, spec):
 
 def generate(root, op=None):
     op = op or root.parent.name.replace("_batched", "Batched")
-    base = op.removesuffix("Batched")
+    base = unbatch_op(op)
     for directory in ("input", "output", "golden"):
         (root / directory).mkdir(parents=True, exist_ok=True)
     manifest = []
@@ -408,7 +414,7 @@ def elementwise_diagnostics(actual, golden, index):
 
 def verify_residuals(op, records):
     batched = op.endswith("Batched")
-    base = op.removesuffix("Batched")
+    base = unbatch_op(op)
     mean = np.mean([record["cpu_ratio"][0] for record in records]) if records else 0
     for record in records:
         cpu = record["cpu_ratio"]
@@ -446,7 +452,7 @@ def read_case(root, op, spec):
         spec.lda,
         spec.ldb,
     )
-    solve = op.removesuffix("Batched") == "cpotrs"
+    solve = unbatch_op(op) == "cpotrs"
     a_input = np.fromfile(root / "input" / f"{index}-A.bin", np.complex64).reshape(
         batch, n, lda
     )
@@ -506,7 +512,7 @@ def verify_invalid_case(root, spec):
 def verify_case(root, op, row):
     spec = CaseSpec(*map(int, row.split()))
     index, n, upper = spec.index, spec.n, spec.upper
-    base = op.removesuffix("Batched")
+    base = unbatch_op(op)
     solve = base == "cpotrs"
     if spec.expected_status != STATUS_SUCCESS:
         verify_invalid_case(root, spec)
