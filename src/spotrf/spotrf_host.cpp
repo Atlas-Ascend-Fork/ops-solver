@@ -44,8 +44,8 @@ bool GenerateGather(int blockM, int blockN, uint8_t *gatherBuf)
     {
         auto buf = reinterpret_cast<uint32_t *>(gatherBuf);
         int idx = 0;
-        for (int i = 0; i < blockM; ++i)      // 128
-            for (int j = 0; j < blockN; ++j)  // 64
+        for (int i = 0; i < blockM; ++i)      // 64
+            for (int j = 0; j < blockN; ++j)  // 128
                 buf[idx++] = (j * blockM + i) * 4;
     }
     catch (const std::exception &e)
@@ -241,16 +241,17 @@ static aclError AllocAndUploadMatrix(SpotrfBuffers &buf, int n, int lda, size_t 
 // gather 索引表：host 侧生成后整块搬到 device
 static aclError AllocAndUploadGather(SpotrfBuffers &buf, aclrtStream stream)
 {
-    CHECK_ACLRT(aclrtMallocHost((void **)(&buf.gatherbuf), 128 * 128 * sizeof(uint32_t)), ReleaseSpotrfBuffers(buf));
-    CHECK_ACLRT(aclrtMalloc((void **)(&buf.gatherbufDevice), 128 * 128 * sizeof(uint32_t), ACL_MEM_MALLOC_HUGE_FIRST),
+    // gather 表实际规模为 64x128 = 8192 项（kernel 侧按 128 * 64 读取），按实际规模分配与上传
+    CHECK_ACLRT(aclrtMallocHost((void **)(&buf.gatherbuf), 64 * 128 * sizeof(uint32_t)), ReleaseSpotrfBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)(&buf.gatherbufDevice), 64 * 128 * sizeof(uint32_t), ACL_MEM_MALLOC_HUGE_FIRST),
                 ReleaseSpotrfBuffers(buf));
     if (!GenerateGather(64, 128, buf.gatherbuf))
     {
         ReleaseSpotrfBuffers(buf);
         return ACL_ERROR_INTERNAL_ERROR;
     }
-    CHECK_ACLRT(aclrtMemcpyAsync(buf.gatherbufDevice, 128 * 128 * sizeof(uint32_t), buf.gatherbuf,
-                                 128 * 128 * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE, stream),
+    CHECK_ACLRT(aclrtMemcpyAsync(buf.gatherbufDevice, 64 * 128 * sizeof(uint32_t), buf.gatherbuf,
+                                 64 * 128 * sizeof(uint32_t), ACL_MEMCPY_HOST_TO_DEVICE, stream),
                 ReleaseSpotrfBuffers(buf));
     return ACL_SUCCESS;
 }

@@ -155,6 +155,8 @@ class PadCustom
         LocalTensor<T> bindLocal = Que.AllocTensor<T>();
         LocalTensor<T> bindLocal2 = Que2.AllocTensor<T>();
         LocalTensor<uint32_t> local = localQue.AllocTensor<uint32_t>();
+        // gather 表由 host 侧 GenerateGather(64, 128) 生成，规模 64x128 = 8192 项（行 x 列），
+        // 元素值为按列主序展开的源矩阵字节偏移
         DataCopy(local, gather, 128 * 64);
         DataCopyExtParams copyInParams{static_cast<uint16_t>(M), static_cast<uint16_t>(N * sizeof(T)),
                                        static_cast<uint16_t>((srcN - N) * sizeof(T)),
