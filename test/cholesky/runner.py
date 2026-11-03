@@ -246,7 +246,7 @@ def smoke_error(op, upper, inputs, x):
         x = np.triu(x) if upper else np.tril(x)
         gold = np.triu(gold) if upper else np.tril(gold)
     error = np.abs(x - gold)
-    ratio = float(np.mean(error <= 2**-16 + np.abs(gold) * 2**-10))
+    ratio = float(np.mean(error <= 2**-13 + np.abs(gold) * 2**-13))
     return float(error.max()), ratio
 
 

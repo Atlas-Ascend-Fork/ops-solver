@@ -89,7 +89,7 @@ def partial_factor(solver, n, k, upper, original):
         ii, jj = idx[0][selected], idx[1][selected]
         require(
             np.allclose(
-                logical[ii, jj], lower[ii, jj], rtol=2 ** (-10), atol=2 ** (-16)
+                logical[ii, jj], lower[ii, jj], rtol=2 ** (-13), atol=2 ** (-13)
             ),
             "contract condition failed",
         )
@@ -134,7 +134,7 @@ def pointers(solver, rng, n, upper):
         gold = la.cholesky(inputs[q].astype(np.float64), lower=not upper)
         idx = np.triu_indices(n) if upper else np.tril_indices(n)
         require(
-            np.allclose(raw[:, :n].T[idx], gold[idx], rtol=2 ** (-10), atol=2 ** (-16)),
+            np.allclose(raw[:, :n].T[idx], gold[idx], rtol=2 ** (-13), atol=2 ** (-13)),
             "contract condition failed",
         )
 
@@ -162,8 +162,8 @@ def batch_partial(solver, rng, n, k, upper):
         np.allclose(
             logical[ii[selected], jj[selected]],
             lower[ii[selected], jj[selected]],
-            rtol=2 ** (-10),
-            atol=2 ** (-16),
+            rtol=2 ** (-13),
+            atol=2 ** (-13),
         ),
         "contract condition failed",
     )
@@ -171,7 +171,7 @@ def batch_partial(solver, rng, n, k, upper):
     index = np.triu_indices(n) if upper else np.tril_indices(n)
     for q in (0, 2):
         require(
-            np.allclose(got[q][index], gold[index], rtol=2 ** (-10), atol=2 ** (-16)),
+            np.allclose(got[q][index], gold[index], rtol=2 ** (-13), atol=2 ** (-13)),
             "contract condition failed",
         )
 
@@ -229,7 +229,7 @@ def verify_solve_pointers(order, right, references, factors, originals, n):
         raw = right[q].cpu().numpy()
         require(np.all(raw[n:] == -12345.125), "contract condition failed")
         require(
-            np.allclose(raw[:n], references[q], rtol=2 ** (-10), atol=2 ** (-16)),
+            np.allclose(raw[:n], references[q], rtol=2 ** (-13), atol=2 ** (-13)),
             "contract condition failed",
         )
         require(
@@ -294,7 +294,7 @@ def verify_pool_streams(solver, streams, buffers, infos, inputs, n, count):
         idx = np.tril_indices(n) if q == 0 else np.triu_indices(n)
         for output in raw:
             require(
-                np.allclose(output.T[idx], gold[idx], rtol=2 ** (-10), atol=2 ** (-16)),
+                np.allclose(output.T[idx], gold[idx], rtol=2 ** (-13), atol=2 ** (-13)),
                 "contract condition failed",
             )
 

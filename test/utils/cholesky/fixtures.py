@@ -20,7 +20,8 @@ from scipy.linalg import lapack
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 # Elementwise tolerances are diagnostics; taskbook section 3.2.2 is the final gate.
-PRECISION_TOLERANCES = ((2**-10, 2**-16), (2**-13, 2**-13))
+# mixed_tolerance_standard.md 2026-09-17 修订版：FLOAT32 rtol = atol = 2^-13。
+PRECISION_TOLERANCES = ((2**-13, 2**-13),)
 MIN_MATCH_RATE = 0.99
 MAX_ABSOLUTE_ERROR = 1e-2
 MAX_ERROR_ULPS = 32

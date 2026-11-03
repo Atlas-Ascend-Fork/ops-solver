@@ -44,7 +44,7 @@
    ratio_cpu 为同一矩阵上 CPU 参考实现（f32 LAPACK cgeqrf + cungqr）的同一比值。
 
 2) 重构判据（硬性）: A = Q * R
-   Q 由 cungqr 从紧凑结果与 tau 构造；元素判据 2^-16 + 2^-10 * |A|，
+   Q 由 cungqr 从紧凑结果与 tau 构造；元素判据 2^-13 + 2^-13 * |A|，
    通过率 >= 99%，ULP 锚定硬限 max(1e-2, 32 * ULP(锚点))。
 
 3) 正交性判据（硬性）: max|Q^H Q - I| <= 1e-4
@@ -74,8 +74,8 @@ logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 # -------------------- 全局参数设置（官方口径） --------------------
 DTYPE = np.complex64
-RTOL = 2**-10  # 2^-10 = 9.765625e-04（相对容差）
-ATOL = 2**-16  # 2^-16 = 1.52587890625e-05（绝对容差）
+RTOL = 2**-13  # 2^-13 = 1.220703125e-04（相对容差）
+ATOL = 2**-13  # 2^-13 = 1.220703125e-04（绝对容差）
 FAIL_RATIO = 0.01  # 允许的不合格元素最大占比（超过则判定失败）
 ULP_FACTOR = 32  # 硬限中的 32*ULP
 HARD_LIMIT_FLOOR = 1e-2  # 硬限下限 1e-2
