@@ -206,6 +206,7 @@ if [ "${RUN_TEST}" == "ON" ]; then
 
     FAILED_OPS=()
     PASSED_OPS=()
+    SKIPPED_OPS=()
 
     for op in "${OP_ARRAY[@]}"; do
         # Some test suites drive several public interfaces through one runner.
@@ -258,6 +259,14 @@ if [ "${RUN_TEST}" == "ON" ]; then
                 ;;
         esac
 
+        # 数据脚本缺失的算子（如仅完成联调、尚未提供 data 脚本的算子）跳过运行阶段，
+        # 不再因 set -e 中止整个测试循环（issue #296）；独立运行型算子已在上方 case 分支处理
+        if [ ! -f "${GEN_SCRIPT}" ] || [ ! -f "${VERIFY_SCRIPT}" ]; then
+            echo "[INFO] ${op}: data/gen_data.py 或 data/verify_result.py 缺失，跳过运行（仅编译验证）"
+            SKIPPED_OPS+=("${op}")
+            continue
+        fi
+
         echo "step 1: generate test data..."
         python3 "${GEN_SCRIPT}"
 
@@ -292,6 +301,7 @@ if [ "${RUN_TEST}" == "ON" ]; then
     echo "Test Summary:"
     echo "  Passed: ${#PASSED_OPS[@]} - ${PASSED_OPS[*]}"
     echo "  Failed: ${#FAILED_OPS[@]} - ${FAILED_OPS[*]}"
+    echo "  Skipped: ${#SKIPPED_OPS[@]} - ${SKIPPED_OPS[*]}"
     echo "========================================"
 
     if [ ${#FAILED_OPS[@]} -gt 0 ]; then

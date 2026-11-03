@@ -68,13 +68,6 @@ extern "C"
         float imag;
     } aclFloatComplex;
 
-    typedef enum
-    {
-        ACLSOLVER_OP_N = 0,
-        ACLSOLVER_OP_T = 1,
-        ACLSOLVER_OP_C = 2
-    } aclsolverOperation_t;
-
     /*! \brief Triangle used by Hermitian solver routines. */
     typedef enum
     {
@@ -82,48 +75,47 @@ extern "C"
         ACLSOLVER_FILL_MODE_UPPER = 1
     } aclsolverFillMode_t;
 
+    /*! \brief Opaque parameter object. Passing nullptr selects the default parameters.
+     *
+     * Aligned with cusolverDnParams_t. An implementation that needs an explicit object
+     * must also ship aclsolverCreateParams / aclsolverDestroyParams.
+     */
+    typedef void* aclsolverParams_t;
 
-/*! \brief Opaque parameter object. Passing nullptr selects the default parameters.
- *
- * Aligned with cusolverDnParams_t. An implementation that needs an explicit object
- * must also ship aclsolverCreateParams / aclsolverDestroyParams.
- */
-typedef void* aclsolverParams_t;
+    /*! \brief Operation applied to a matrix operand, aligned with cublasOperation_t */
+    typedef enum
+    {
+        ACLSOLVER_OP_N = 0, /**< no transpose */
+        ACLSOLVER_OP_T = 1, /**< transpose */
+        ACLSOLVER_OP_C = 2  /**< conjugate transpose */
+    } aclsolverOperation_t;
 
-/*! \brief Operation applied to a matrix operand, aligned with cublasOperation_t */
-typedef enum
-{
-    ACLSOLVER_OP_N = 0, /**< no transpose */
-    ACLSOLVER_OP_T = 1, /**< transpose */
-    ACLSOLVER_OP_C = 2  /**< conjugate transpose */
-} aclsolverOperation_t;
+    /*! \brief Side from which an orthogonal factor is applied, aligned with cublasSideMode_t */
+    typedef enum
+    {
+        ACLSOLVER_SIDE_LEFT = 0, /**< aligned with CUBLAS_SIDE_LEFT */
+        ACLSOLVER_SIDE_RIGHT = 1 /**< aligned with CUBLAS_SIDE_RIGHT */
+    } aclsolverSideMode_t;
 
-/*! \brief Side from which an orthogonal factor is applied, aligned with cublasSideMode_t */
-typedef enum
-{
-    ACLSOLVER_SIDE_LEFT = 0, /**< aligned with CUBLAS_SIDE_LEFT */
-    ACLSOLVER_SIDE_RIGHT = 1 /**< aligned with CUBLAS_SIDE_RIGHT */
-} aclsolverSideMode_t;
+    /*! \brief Direction in which the elementary reflectors are stored */
+    typedef enum
+    {
+        ACLSOLVER_DIRECT_FORWARD = 0, /**< aligned with CUBLAS_DIRECT_FORWARD */
+        ACLSOLVER_DIRECT_BACKWARD = 1 /**< aligned with CUBLAS_DIRECT_BACKWARD */
+    } aclsolverDirectMode_t;
 
-/*! \brief Direction in which the elementary reflectors are stored */
-typedef enum
-{
-    ACLSOLVER_DIRECT_FORWARD = 0, /**< aligned with CUBLAS_DIRECT_FORWARD */
-    ACLSOLVER_DIRECT_BACKWARD = 1 /**< aligned with CUBLAS_DIRECT_BACKWARD */
-} aclsolverDirectMode_t;
+    /*! \brief Storage layout of the reflector vectors */
+    typedef enum
+    {
+        ACLSOLVER_STOREV_COLUMNWISE = 0 /**< aligned with CUBLAS_STOREV_COLUMNWISE */
+    } aclsolverStorevMode_t;
 
-/*! \brief Storage layout of the reflector vectors */
-typedef enum
-{
-    ACLSOLVER_STOREV_COLUMNWISE = 0 /**< aligned with CUBLAS_STOREV_COLUMNWISE */
-} aclsolverStorevMode_t;
-
-/*! \brief Element data type of a generic (X-prefixed) interface */
-typedef enum
-{
-    ACLSOLVER_R_32F = 0, /**< aligned with CUDA_R_32F */
-    ACLSOLVER_C_32F = 1  /**< aligned with CUDA_C_32F */
-} aclsolverDataType_t;
+    /*! \brief Element data type of a generic (X-prefixed) interface */
+    typedef enum
+    {
+        ACLSOLVER_R_32F = 0, /**< aligned with CUDA_R_32F */
+        ACLSOLVER_C_32F = 1  /**< aligned with CUDA_C_32F */
+    } aclsolverDataType_t;
 
 #ifdef __cplusplus
 }

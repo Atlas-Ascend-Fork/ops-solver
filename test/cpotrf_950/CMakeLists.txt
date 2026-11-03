@@ -7,7 +7,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 if(NOT SOC_VERSION_LOWER MATCHES "^ascend950")
-    message(FATAL_ERROR "cpotrf_950 tests require Ascend950")
+    # 非 950 SoC 跳过本目录而非配置失败：build.sh --run 默认遍历 test/ 全部算子，
+    # 配置期 FATAL_ERROR 会使其他 SoC 的全量构建/测试无法进行（issue #295）
+    message(WARNING "cpotrf_950 tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+    return()
 endif()
 
 add_executable(cpotrf_950_test
