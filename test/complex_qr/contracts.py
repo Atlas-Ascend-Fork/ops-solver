@@ -276,7 +276,7 @@ class ContractChecks:
         self.invoke(
             "CCgels", {3: 0, 4: None, 6: None, 8: None, 10: None, 11: 0}, 0, "zero_rhs"
         )
-        require(self.niter.value == 0, "contracts.py:197: niter.value == 0")
+        require(self.niter.value == 0, "niter.value == 0")
         self.invoke(
             "CCgels",
             {2: 0, 4: None, 6: None, 8: None, 9: 1, 10: None, 11: 0},

@@ -72,7 +72,7 @@ class Runtime:
     def upload(self, array):
         require(
             array.flags.f_contiguous or array.flags.c_contiguous,
-            "smoke.py:75: array.flags.f_contiguous or array.flags.c_contiguous",
+            "array.flags.f_contiguous or array.flags.c_contiguous",
         )
         ptr = self.alloc(array.nbytes)
         check(
@@ -118,7 +118,7 @@ class Runtime:
         )
         require(
             self.download(info, (1,), np.int32)[0] == 0,
-            "smoke.py:116: self.download(info, (1,), np.int32)[0] == 0",
+            "self.download(info, (1,), np.int32)[0] == 0",
         )
         if byte_workspace:
             require(niter.value >= 0, "CCgels did not write a valid Host niter")

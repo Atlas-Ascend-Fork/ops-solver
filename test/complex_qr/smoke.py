@@ -57,17 +57,17 @@ def smoke_factor(rt, rng, m, n, results):
     )
     require(
         rt.download(info, (1,), np.int32)[0] == 0,
-        "smoke.py:158: rt.download(info, (1,), np.int32)[0] == 0",
+        "rt.download(info, (1,), np.int32)[0] == 0",
     )
     fact = rt.download(a, padded.shape)
     factors = rt.download(tau, (min(m, n),))
     require(
         np.array_equal(fact[m:], padded[m:]),
-        "smoke.py:161: np.array_equal(fact[m:], padded[m:])",
+        "np.array_equal(fact[m:], padded[m:])",
     )
     k = min(m, n)
     q, _, status = cungqr(np.asfortranarray(fact[:m, :k]), factors)
-    require(status == 0, "smoke.py:164: status == 0")
+    require(status == 0, "status == 0")
     relative = np.linalg.norm(
         q.astype(np.complex128) @ np.triu(fact[:k]) - original
     ) / np.linalg.norm(original)
@@ -124,7 +124,7 @@ def run_smoke(rt):
         np.testing.assert_allclose(got, expected, rtol=5e-5, atol=5e-6)
         require(
             np.array_equal(rt.download(db, b.shape), b),
-            "smoke.py:208: np.array_equal(rt.download(db, b.shape), b)",
+            "np.array_equal(rt.download(db, b.shape), b)",
         )
         results.append(dict(op="ccgels", m=m, n=n, nrhs=3))
         rt.free_all()

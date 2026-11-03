@@ -7,8 +7,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 """Checks remain active under python -O; JSON diagnostics retain their format."""
 
+import inspect
 import logging
 import sys
+from os.path import basename
 
 LOGGER = logging.getLogger("complex_qr_tests")
 LOGGER.setLevel(logging.INFO)
@@ -21,7 +23,9 @@ if not LOGGER.handlers:
 
 def require(condition, message="Test condition failed"):
     if not condition:
-        raise AssertionError(message)
+        caller = inspect.stack()[1]
+        location = "{}:{}".format(basename(caller.filename), caller.lineno)
+        raise AssertionError("{}: {}".format(location, message))
 
 
 def report(message):

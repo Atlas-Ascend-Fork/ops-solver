@@ -156,7 +156,7 @@ def execute(rt, case, arrays):
     if op in ("cungqr", "cunmqr"):
         require(
             np.array_equal(rt.download(dt, arrays["tau32"].shape), arrays["tau32"]),
-            'package_accuracy.py:104: np.array_equal(rt.download(dt, arrays["tau32"].shape), arrays["tau32"])',
+            'np.array_equal(rt.download(dt, arrays["tau32"].shape), arrays["tau32"])',
         )
     if op == "cunmqr":
         require(np.array_equal(rt.download(da, a.shape), a), "read-only A modified")
@@ -164,7 +164,7 @@ def execute(rt, case, arrays):
         require(np.array_equal(rt.download(db, b.shape), b), "read-only B modified")
         extra["niter"] = niter.value
         if not is_info:
-            require(niter.value >= 0, "package_accuracy.py:111: niter.value >= 0")
+            require(niter.value >= 0, "niter.value >= 0")
     return dict(
         out32=np.ascontiguousarray(out[:active_rows]),
         info=actual_info,
@@ -298,7 +298,7 @@ def load_cases(args):
         wanted = set(args.case_id)
         require(
             wanted <= {c["case_id"] for c in cases},
-            'package_accuracy.py:152: wanted <= {c["case_id"] for c in cases}',
+            'wanted <= {c["case_id"] for c in cases}',
         )
         cases = [c for c in cases if c["case_id"] in wanted]
     return gen, by_id, cases

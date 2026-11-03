@@ -54,7 +54,7 @@ def pad(a, ld):
 
 def cpu_factor(a):
     qr, tau, _, info = cgeqrf(a)
-    require(info == 0, "official_accuracy.py:62: info == 0")
+    require(info == 0, "cpu_factor info == 0")
     return qr, tau
 
 
@@ -64,7 +64,7 @@ def cpu_q(qr, tau, n, high=False):
     a[:, : len(tau)] = qr[:, : len(tau)]
     fn = zungqr if high else cungqr
     q, _, info = fn(a, tau.astype(a.dtype))
-    require(info == 0, "official_accuracy.py:72: info == 0")
+    require(info == 0, "cpu_q info == 0")
     return q
 
 
@@ -83,7 +83,7 @@ def device_factor(rt, original, ld):
     )
     require(
         rt.download(info, (1,), np.int32)[0] == 0,
-        "official_accuracy.py:89: rt.download(info, (1,), np.int32)[0] == 0",
+        "device_factor devInfo == 0",
     )
     got = rt.download(da, a.shape)
     require(np.array_equal(got[m:], a[m:]), "A padding modified")
@@ -216,9 +216,9 @@ def evaluate_apply(rt, c, rng):
         original,
     )
     _, work, status = cunmqr(*args, -1)
-    require(status == 0, "official_accuracy.py:207: status == 0")
+    require(status == 0, "cunmqr workspace query status == 0")
     ref_out, _, status = cunmqr(*args, int(work[0].real))
-    require(status == 0, "official_accuracy.py:209: status == 0")
+    require(status == 0, "cunmqr reference status == 0")
     denom = order * norm1(original) * EPS
     return (
         ratio(norm1(expected - got[:m]), denom),
@@ -248,7 +248,7 @@ def evaluate_solve(rt, c, rng):
     require(np.array_equal(rt.download(db, pb.shape), pb), "B modified")
     require(np.array_equal(rt.download(da, pa.shape)[m:], pa[m:]), "A padding modified")
     _, ref, info = cgels(a, b)
-    require(info == 0, "official_accuracy.py:235: info == 0")
+    require(info == 0, "cgels reference info == 0")
     return (
         gels_ratio(a, b, x[:n]),
         gels_ratio(a, b, ref[:n]),
