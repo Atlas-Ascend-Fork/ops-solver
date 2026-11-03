@@ -74,7 +74,7 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
                   "or A, B, ipiv, info is nullptr.",
                   ACL_ERROR_INVALID_PARAM);
 
-    SOLVER_ECHECK(trans <= 2, "aclsolverSgetrs invalid param: trans must be 0, 1 or 2.", ACL_ERROR_INVALID_PARAM);
+    SOLVER_ECHECK(trans <= 2, "aclsolverCgetrs invalid param: trans must be 0, 1 or 2.", ACL_ERROR_INVALID_PARAM);
 
     aclrtStream stream = nullptr;
     if (handle != nullptr)
