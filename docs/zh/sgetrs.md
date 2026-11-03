@@ -193,10 +193,11 @@
         // 填充B矩阵数据...
 
         int32_t *ipiv = new int32_t[n];
-        int32_t *info;
+        int32_t infoVal = 0;
+        int32_t *info = &infoVal;
 
         // 调用 aclsolverSgetrs
-        auto ret = aclsolverSgetrs(handle, 0, n, nrhs, 0, n, nrhs, A, n, ipiv, B, nrhs, info);
+        auto ret = aclsolverSgetrs(handle, 0, n, nrhs, A, n, ipiv, B, nrhs, info);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverSgetrs failed. ERROR: %d\n", ret); return ret);
 
         // 释放资源

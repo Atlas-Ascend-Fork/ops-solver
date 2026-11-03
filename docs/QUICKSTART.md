@@ -152,6 +152,7 @@ plog 文件按类别落盘在 `~/ascend/log` 下（root 用户为 `/root/ascend/
 ## 算子开发实例
 
 我们以CmatinvBatched算子（批量复数矩阵求逆算子）为例，说明基于Solver库开发一个算子的主要流程。
+> **注意**：CmatinvBatched 现行契约以 `include/cann_ops_solver.h` 为准：返回 `aclsolverStatus_t`，`A`/`Ainv` 为 Device 侧指针数组（`const aclFloatComplex* const A[]`），`n` 取值范围 [0, 32]，超出范围直接返回参数错误、**不会**转发 CgetriBatched。本节保留接口新增的流程演示，文中出现的旧原型与旧约束请以现行头文件契约为准。
 
 
 ## 算子功能
@@ -172,8 +173,8 @@ $
 - `batchSize`: 批量矩阵的数量
 
 **算子约束：**
-- n ≤ 256
-- batchSize ≤ 3000
+- 0 ≤ n ≤ 32（超界返回参数错误，不转发 CgetriBatched）
+- batchSize ≥ 0；逐矩阵状态 info 由 Device 侧数组回写
 
 **示例：**
 输入"A"为：
@@ -210,10 +211,9 @@ $
 - 在`include`目录下的`cann_ops_solver.h`文件中新增以下算子接口原型：
 
     ```c++
-    aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float> *A,
-                                     const int64_t lda, std::complex<float> *Ainv,
-                                     const int64_t lda_inv, int32_t *info,
-                                     int64_t batchSize);
+    aclsolverStatus_t aclsolverCmatinvBatched(aclsolverHandle_t handle, int n, const aclFloatComplex* const A[],
+                                          int lda, aclFloatComplex* const Ainv[], int lda_inv, int* info,
+                                          int batchSize);
     ```
 
 ## 新增文件
@@ -344,6 +344,7 @@ CmatinvBatchedTilingData CalTilingData(uint32_t vecCoreNum, uint32_t dtype, uint
     return tilingData;
 }
 
+// 注：以下为该接口早期的实现示意（含已废弃的 CgetriBatched 转发路径）；现行实现基于 ComplexSolver 框架，契约以 include/cann_ops_solver.h 为准。
 aclError aclsolverCmatinvBatched(aclsolverHandle_t handle, const int64_t n, std::complex<float> *A,
                                  const int64_t lda, std::complex<float> *Ainv,
                                  const int64_t lda_inv, int32_t *info,
