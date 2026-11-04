@@ -40,17 +40,17 @@
 #ifndef CGEQRF_MIX_H
 #define CGEQRF_MIX_H
 
+#include "cgeqrf_launchers.hpp"
 #include "kernel/gemm.hpp"
 #include "kernel/gemm_impl.hpp"
 #include "kernel/gemm_tile.hpp"
 #include "kernel/householder_cube.hpp"
 #include "kernel/householder_vec.hpp"
-#include "kernel/householder_vec_impl.hpp"
 #include "kernel/householder_vec2.hpp"
 #include "kernel/householder_vec2_impl.hpp"
+#include "kernel/householder_vec_impl.hpp"
 #include "kernel/pad.hpp"
 #include "kernel/qr_common.hpp"
-#include "cgeqrf_launchers.hpp"
 
 // 内核主体与 paco cgeqrf 保持一致（含 A2/A3 修复）。host 侧已把 A 打包成 M 间距，
 // 故内核内部一律按 M 取步长；lda 只作用于 host 的 H2D/D2H pitch。
@@ -109,15 +109,6 @@ __aicore__ inline void RunSplitComplex(QrEnv& env, TBufPool<TPosition::VECCALC, 
     tbufPool.Reset();
     CrossCoreSetFlag<0x0, PIPE_MTE3>(0x0);
     CrossCoreWaitFlag(0x0);
-}
-// 返回 true 表示本核提前结束（不再做尾部的实虚合并）
-__aicore__ inline bool RunSingleCore(const QrEnv& env)
-{
-    if (env.blockIdx) return true;
-    AscendC::singleCoreHouseholderQR op;
-    op.Init();
-    op.Compute();
-    return false;
 }
 __aicore__ inline void RunVecSmall(QrEnv& env, TBufPool<TPosition::VECCALC, 16>& tbufPool)
 {
@@ -253,7 +244,9 @@ __aicore__ inline void qr_custom(int M, int N, int lda, int padM, GM_ADDR A, GM_
     if (env.N * align_to(env.M, 64) <= 0)
     {
 #ifdef __DAV_C220_VEC__
-        if (RunSingleCore(env)) return;
+        // 空 shape（N*align(M,64)<=0）仅主核继续，其余核提前结束；
+        // 单核 QR 死路径已删除（issue #334），行为等价
+        if (env.blockIdx) return;
 #elif __DAV_C220_CUBE__
         return;
 #endif
