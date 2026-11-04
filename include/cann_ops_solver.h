@@ -91,6 +91,8 @@ extern "C"
      * first positive zero U diagonal. Errors in an unusable info buffer cannot
      * be written to that buffer. Device metadata/value checks require caller-stream
      * synchronization to return INVALID_VALUE; matrix arithmetic stays on AI Core.
+     * The solve stage below is the exception: aclsolverSgetrs/Cgetrs take Host
+     * buffers and stage them internally, see their own contract comments.
      */
     aclsolverStatus_t aclsolverSgetrf_bufferSize(aclsolverHandle_t handle, int m, int n, float* A, int lda, int* Lwork);
     aclsolverStatus_t aclsolverSgetrf(aclsolverHandle_t handle, int m, int n, float* A, int lda, float* Workspace,
@@ -941,9 +943,58 @@ extern "C"
 {
 #endif
 
+    /**
+     * @brief Solve a real system of linear equations using LU factors from aclsolverSgetrf.
+     *
+     * Unlike the other dense real solver C APIs above, A, ipiv, B and info are HOST
+     * buffers: the call stages them to Device internally, runs the triangular solves
+     * on AI Core, synchronizes, and overwrites B with the solution X before returning.
+     *
+     * @param handle Solver handle used to select the stream for the staged work.
+     * @param trans 0 solves A * X = B, 1 solves A^T * X = B; other values are rejected.
+     * @param n Order of the factored matrix, 1 <= n <= 8192.
+     * @param nrhs Number of right-hand-side columns, 1 <= nrhs <= 8192.
+     * @param A Host buffer with the packed LU factors; at least lda * n floats.
+     * @param lda Leading dimension of A; lda >= n and lda - n <= 16383.
+     * @param ipiv Host buffer with the 1-based row-interchange sequence as returned by
+     *             aclsolverSgetrf; every entry must lie in [1, n], otherwise the call
+     *             is rejected before any Device work with info set to -4.
+     * @param B Host buffer with the right-hand sides; overwritten with the solution X;
+     *          at least ldb * nrhs floats.
+     * @param ldb Leading dimension of B; ldb >= nrhs and ldb - nrhs <= 16383.
+     * @param info Host output; set to 0 once the call completes successfully, set to -4
+     *             when an ipiv entry is outside [1, n], and left unmodified when the
+     *             call is rejected for other invalid arguments.
+     * @return ACL_SUCCESS, or ACL_ERROR_INVALID_PARAM for invalid arguments.
+     */
     aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
                              float* A, const int64_t lda, int32_t* ipiv, float* B, const int64_t ldb, int32_t* info);
 
+    /**
+     * @brief Solve a complex system of linear equations using LU factors from aclsolverCgetrf.
+     *
+     * A, ipiv, B and info are HOST buffers, staged to Device internally and written
+     * back before returning, exactly like aclsolverSgetrs; B is overwritten with X.
+     *
+     * @param handle Solver handle used to select the stream for the staged work.
+     * @param trans 0 solves A * X = B, 1 solves A^T * X = B, 2 solves A^H * X = B;
+     *              other values are rejected.
+     * @param n Order of the factored matrix, 1 <= n <= 8192.
+     * @param nrhs Number of right-hand-side columns, 1 <= nrhs <= 8192.
+     * @param A Host buffer with the packed LU factors; at least lda * n complex elements.
+     * @param lda Leading dimension of A; lda >= n and lda - n <= 8191.
+     * @param ipiv Host buffer with the 1-based row-interchange sequence as returned by
+     *             aclsolverCgetrf; every entry must lie in [1, n], otherwise the call
+     *             is rejected before any Device work with info set to -4.
+     * @param B Host buffer with the right-hand sides; overwritten with the solution X;
+     *          at least ldb * nrhs complex elements.
+     * @param ldb Leading dimension of B; ldb >= nrhs, ldb - nrhs <= 8191, and
+     *            ldb - nrhs <= 4095 when nrhs > 4096.
+     * @param info Host output; set to 0 once the call completes successfully, set to -4
+     *             when an ipiv entry is outside [1, n], and left unmodified when the
+     *             call is rejected for other invalid arguments.
+     * @return ACL_SUCCESS, or ACL_ERROR_INVALID_PARAM for invalid arguments.
+     */
     aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
                              std::complex<float>* A, const int64_t lda, int32_t* ipiv, std::complex<float>* B,
                              const int64_t ldb, int32_t* info);

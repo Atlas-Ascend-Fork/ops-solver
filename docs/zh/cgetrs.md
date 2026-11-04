@@ -118,7 +118,7 @@
     <tr>
         <td align="center">A</td>
         <td align="center">输入</td>
-        <td align="left">输入为经过LU分解后的矩阵A。<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, n]</td>
+        <td align="left">输入为经过LU分解后的矩阵A，位于Host内存（接口内部完成上/下板搬运）。<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, n]</td>
     </tr>
     <tr>
         <td align="center">lda</td>
@@ -128,12 +128,12 @@
     <tr>
         <td align="center">ipiv</td>
         <td align="center">输入</td>
-        <td align="left">置换矩阵的pivot信息，由aclsolverCgetrf输出。<br>数据类型支持int32_t，数据格式支持ND，shape为[n, 1]</td>
+        <td align="left">置换矩阵的pivot信息，由aclsolverCgetrf输出，位于Host内存，主元为1-based行号且取值须在[1, n]。<br>数据类型支持int32_t，数据格式支持ND，shape为[n, 1]</td>
     </tr>
     <tr>
         <td align="center">B</td>
         <td align="center">输入/输出</td>
-        <td align="left">输入为右端项矩阵B，输出为求解结果矩阵X。<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, nrhs]</td>
+        <td align="left">输入为右端项矩阵B，输出为求解结果矩阵X，位于Host内存（接口返回前将结果写回B）。<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, nrhs]</td>
     </tr>
     <tr>
         <td align="center">ldb</td>
@@ -143,18 +143,18 @@
     <tr>
         <td align="center">info</td>
         <td align="center">输出</td>
-        <td align="left">求解结果信息<br>数据类型支持int32_t</td>
+        <td align="left">求解结果信息，位于Host内存，成功完成时写入0，ipiv元素越界时写入-4，其他参数被拒绝时不修改<br>数据类型支持int32_t</td>
     </tr>
     </table>
 
 - 算子约束：
   - 输入矩阵A必须为aclsolverCgetrf分解后的LU矩阵。
-  - ipiv必须为aclsolverCgetrf输出的pivot信息。
+  - ipiv必须为aclsolverCgetrf输出的pivot信息（1-based行号，取值须在[1, n]，非法值在设备下发前被拦截：返回ACL_ERROR_INVALID_PARAM且info置-4）。
   - 当前仅支持COMPLEX64数据类型。
+  - A、ipiv、B、info 均为 Host 内存；接口内部搬运至 Device 计算，返回前将解 X 写回 B（与本仓其余 dense solver 接口的 Device 缓冲契约不同，详见头文件中 aclsolverCgetrs 的契约注释）。
   - n取值范围为[1, 8192]，超出返回ACL_ERROR_INVALID_PARAM。
   - nrhs取值范围为[1, 8192]，超出返回ACL_ERROR_INVALID_PARAM。
   - lda >= n且lda - n <= 8191；ldb >= nrhs且ldb - nrhs <= 8191（kernel以uint16_t字节计数承载行间隙，复数实/虚交织布局每元素占8字节）；nrhs > 4096时需进一步满足ldb - nrhs <= 4095。
-  - info参数在当前版本实际未启用。
 
 - 调用实现
 
