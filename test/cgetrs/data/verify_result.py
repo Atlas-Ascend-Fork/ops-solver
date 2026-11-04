@@ -10,8 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import sys
 import logging
+import sys
+
 import numpy as np
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
@@ -67,30 +68,32 @@ def main():
     nrhs = int(sys.argv[2]) if len(sys.argv) > 2 else 32
 
     # 读取数据
-    LU = np.fromfile(
-        "./test/cgetrs/data/input/A_gm.bin",
-        dtype=np.complex64
-    ).reshape(n, n)
+    lu = np.fromfile("./test/cgetrs/data/input/A_gm.bin", dtype=np.complex64).reshape(
+        n, n
+    )
 
-    B = np.fromfile(
-        "./test/cgetrs/data/input/B_gm.bin",
-        dtype=np.complex64
+    rhs = np.fromfile("./test/cgetrs/data/input/B_gm.bin", dtype=np.complex64).reshape(
+        n, nrhs
+    )
+
+    piv = np.fromfile("./test/cgetrs/data/input/W_gm.bin", dtype=np.uint32).reshape(n)
+
+    solution = np.fromfile(
+        "./test/cgetrs/data/output/X_gm.bin", dtype=np.complex64
     ).reshape(n, nrhs)
 
-    piv = np.fromfile(
-        "./test/cgetrs/data/input/W_gm.bin",
-        dtype=np.uint32
-    ).reshape(n)
-
-    X = np.fromfile(
-        "./test/cgetrs/data/output/X_gm.bin",
-        dtype=np.complex64
-    ).reshape(n, nrhs)
+    if not all(np.isfinite(array).all() for array in (lu, rhs, solution)):
+        logging.info("Non-finite input or solution cannot pass accuracy verification.")
+        return False
 
     # 计算 expected 解
-    X_ref = np.zeros_like(X)
+    reference = np.zeros_like(solution)
     for k in range(nrhs):
-        X_ref[:, k] = solve_lu(LU, B[:, k], piv)
+        reference[:, k] = solve_lu(lu, rhs[:, k], piv)
+
+    if not np.isfinite(reference).all():
+        logging.info("Non-finite reference solution cannot pass accuracy verification.")
+        return False
 
     logging.info("-------------------------------------------------------")
     cnt = 0
@@ -98,24 +101,23 @@ def main():
     for j in range(nrhs):
         for i in range(n):
             # 计算绝对误差
-            abs_err = np.abs(X_ref[i, j] - X[i, j])
-            
+            abs_err = np.abs(reference[i, j] - solution[i, j])
+
             # 计算相对误差（分母用参考值的绝对值，避免除零）
-            denom = np.abs(X_ref[i, j]) if np.abs(X_ref[i, j]) > 1e-12 else 1.0
+            denom = np.abs(reference[i, j]) if np.abs(reference[i, j]) > 1e-12 else 1.0
             rel_err = abs_err / denom
-            
-            # 判断条件：绝对误差 > eps 且 相对误差 > eps
-            # 或者数值本身有问题（NaN/Inf）
-            if (abs_err > eps and rel_err > eps) or np.isnan(X[i, j]) or np.isinf(X[i, j]):
+
+            # Arrays were checked for finite values before substitution.
+            if abs_err > eps and rel_err > eps:
                 cnt += 1
                 if cnt <= 32:
                     logging.info(
-                        f"index: {i}, {j}, golden: {X_ref[i, j]:.4f}, actual: {X[i, j]:.4f}, "
+                        f"index: {i}, {j}, golden: {reference[i, j]:.4f}, actual: {solution[i, j]:.4f}, "
                         f"abs_err: {abs_err:.4f}, rel_err: {rel_err:.4f}"
                     )
 
     logging.info(f"Wrong Indices: {cnt}, ratio: {cnt / (n * nrhs):.4f}")
-    logging.info(f"l1norm diff: {l1norm(X_ref - X) / l1norm(X_ref):.8f}")
+    logging.info(f"l1norm diff: {l1norm(reference - solution) / l1norm(reference):.8f}")
 
     return cnt / (n * nrhs) <= error_tol
 

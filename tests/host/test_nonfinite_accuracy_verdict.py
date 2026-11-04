@@ -177,3 +177,100 @@ def test_qr_ulp_cli_keeps_a_finite_hard_limit(sign, steps, tmp_path):
 def test_qr_ulp_spacing_matches_float32_grid(value, expected):
     module = runpy.run_path(str(ROOT / "test/cgeqrf/data/verify_result.py"))
     assert module["ulp_f32"](value) == expected
+
+
+CGETRS_SCRIPT = (
+    Path(__file__).resolve().parents[2] / "test/cgetrs/data/verify_result.py"
+)
+
+
+def identity_inputs(n=2, nrhs=1):
+    lu = np.eye(n, dtype=np.complex64)
+    rhs = np.ones((n, nrhs), dtype=np.complex64)
+    return {"LU": lu, "B": rhs, "X": rhs.copy(), "piv": np.arange(n, dtype=np.uint32)}
+
+
+def run_cli(directory, arrays):
+    data = directory / "test/cgetrs/data"
+    (data / "input").mkdir(parents=True)
+    (data / "output").mkdir()
+    for name, location in {
+        "LU": "input/A_gm.bin",
+        "B": "input/B_gm.bin",
+        "X": "output/X_gm.bin",
+        "piv": "input/W_gm.bin",
+    }.items():
+        arrays[name].tofile(data / location)
+    n, nrhs = arrays["X"].shape
+    return subprocess.run(
+        [sys.executable, str(CGETRS_SCRIPT), str(n), str(nrhs)],
+        cwd=directory,
+        env=dict(os.environ, OPENBLAS_NUM_THREADS="1"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("field", ("LU", "B", "X"))
+@pytest.mark.parametrize("bad", (float("nan"), float("inf"), float("-inf")))
+def test_cgetrs_nonfinite_input_or_solution_is_rejected(tmp_path, field, bad):
+    arrays = identity_inputs()
+    arrays[field][0, 0] = bad
+    run = run_cli(tmp_path, arrays)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "[Failed]" in run.stdout
+
+
+@pytest.mark.parametrize("case", ("overflow", "zero_division"))
+def test_cgetrs_nonfinite_reference_from_finite_arrays_is_rejected(tmp_path, case):
+    arrays = identity_inputs()
+    arrays["LU"][0, 0] = 1e-30 if case == "overflow" else 0
+    arrays["B"][0, 0] = 1e30 if case == "overflow" else 0
+    arrays["X"].fill(0)
+    assert all(np.isfinite(value).all() for value in arrays.values())
+    run = run_cli(tmp_path, arrays)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "Non-finite reference solution" in run.stdout
+    assert "[Failed]" in run.stdout
+
+
+@pytest.mark.parametrize(
+    "case", ("identity", "zero_rhs", "complex", "small_error", "large_error", "pivot")
+)
+def test_cgetrs_finite_reference_preserves_accuracy_verdict(tmp_path, case):
+    arrays = identity_inputs()
+    if case == "zero_rhs":
+        arrays["B"].fill(0)
+        arrays["X"].fill(0)
+    elif case == "complex":
+        arrays["LU"] *= 2 + 1j
+        arrays["B"] *= 2 + 1j
+    elif case in ("small_error", "large_error"):
+        arrays["X"][0, 0] += 5e-4 if case == "small_error" else 0.1
+    elif case == "pivot":
+        arrays["LU"] = np.array([[1, 1], [0, 2]], dtype=np.complex64)
+        arrays["B"] = np.array([[4], [3]], dtype=np.complex64)
+        arrays["X"] = np.array([[1], [2]], dtype=np.complex64)
+        arrays["piv"] = np.array([1, 1], dtype=np.uint32)
+    run = run_cli(tmp_path, arrays)
+    passed = case != "large_error"
+    assert run.returncode == (0 if passed else 1), run.stdout + run.stderr
+    assert ("[Success]" if passed else "[Failed]") in run.stdout
+
+
+def test_cgetrs_existing_finite_mismatch_fraction_is_preserved(tmp_path):
+    arrays = identity_inputs(128, 128)
+    arrays["X"][0, 0] += 0.1
+    run = run_cli(tmp_path, arrays)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "[Success]" in run.stdout
+
+
+@pytest.mark.parametrize("bad", (float("nan"), float("inf")))
+def test_cgetrs_nonfinite_solution_is_not_diluted_by_mismatch_fraction(tmp_path, bad):
+    arrays = identity_inputs(128, 128)
+    arrays["X"][0, 0] = bad
+    run = run_cli(tmp_path, arrays)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "[Failed]" in run.stdout
