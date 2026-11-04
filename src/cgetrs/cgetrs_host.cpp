@@ -86,7 +86,11 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     aclrtStream stream = nullptr;
     if (handle != nullptr)
     {
-        aclsolverGetStream(handle, &stream);
+        // GetStream 失败被吞时 stream 落 nullptr，kernel 同步静默改用默认流，破坏调用方
+        // 流语义（issue #311）；这里校验返回值并透传底层错误码，对齐 cheevj GetCheevjStream
+        // 的 #255 修复口径。
+        const aclError streamRet = aclsolverGetStream(handle, &stream);
+        SOLVER_ECHECK(streamRet == ACL_SUCCESS, "aclsolverCgetrs failed to get stream from handle.", streamRet);
     }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
