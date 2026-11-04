@@ -146,8 +146,9 @@ inline aclsolverStatus_t CompleteGetri(const int* pivots, const int* info, int c
     }
     if (aclrtFreeHost(host) != ACL_SUCCESS)
     {
+        // 释放失败只记日志、不覆盖已确定的业务错误码（issue #310）：
+        // 调用方应拿到 pivot/拷贝阶段的真实失败原因，而非笼统的 INTERNAL_ERROR。
         OP_LOGE(op, "info metadata release failed");
-        return ACLSOLVER_STATUS_INTERNAL_ERROR;
     }
     return status;
 }
@@ -347,8 +348,8 @@ inline aclsolverStatus_t ValidateMatrices(const void* a, const void* c, ComplexS
     }
     if (host != nullptr && aclrtFreeHost(host) != ACL_SUCCESS)
     {
+        // 同 CompleteGetri：释放失败只记日志，不覆盖已确定的校验错误码（issue #310）。
         OP_LOGE(op, "pointer metadata release failed");
-        return ACLSOLVER_STATUS_INTERNAL_ERROR;
     }
     return status;
 }
