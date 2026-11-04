@@ -240,6 +240,11 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverSgetrf` | 单精度实数矩阵LU分解，Device列主序 |
 | [`aclsolverSpotrf`](zh/spotrf.md) | 单精度 Cholesky 分解；A2/A3 与 Ascend 950 使用不同原型，详见接口说明 |
 | `aclsolverSgeqrf` | 单精度矩阵QR分解 |
+| `aclsolverSgeqrf_bufferSize` | 单精度矩阵 QR 分解 workspace 查询（FLOAT32 元素数） |
+| `aclsolverSorgqr` / `aclsolverSorgqr_bufferSize` | 显式生成正交矩阵 Q 及工作空间查询 |
+| `aclsolverSormqr` / `aclsolverSormqr_bufferSize` | 正交变换乘法及工作空间查询 |
+| `aclsolverXlarft` / `aclsolverXlarft_bufferSize` | 块反射子三角因子 T 生成及工作空间查询（字节） |
+| `aclsolverSSgels` / `aclsolverSSgels_bufferSize` | 单精度线性最小二乘求解及工作空间查询（字节） |
 | `aclsolverCgeqrf` | A2/A3 复数矩阵QR分解（七参数 C++ 接口） |
 | `aclsolverSgetri_bufferSize` | 单矩阵求逆workspace查询，返回FLOAT32元素数 |
 | `aclsolverSgetri` | 单精度实数矩阵求逆，输入LU和主元 |
