@@ -1014,11 +1014,11 @@ extern "C"
  *             values are rejected with ACL_ERROR_INVALID_PARAM. The factor is written into
  *             the triangular part selected by uplo (if uplo='U' the upper triangle contains U;
  *             if uplo='L' the lower triangle contains L).
- * @param n order of matrix A, must be positive
+ * @param n order of matrix A, valid range [1, 8192]
  * @param A input/output matrix, complex float (std::complex<float>), row-major with leading
  *          dimension lda; on return, contains the factor U (if uplo='U') or L (if uplo='L') in the
  *          specified triangular part; the other triangular part is unchanged.
- * @param lda Leading dimension of A; must be at least max(1, n).
+ * @param lda Leading dimension of A; must be at least max(1, n) and at most 16384.
  * @param info result info; not written in current version
  * @return aclError ACL_SUCCESS on success, ACL_ERROR_INVALID_PARAM on invalid input
  */

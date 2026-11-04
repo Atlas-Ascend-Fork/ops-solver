@@ -82,11 +82,24 @@ void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset,
     auto cOffset = reinterpret_cast<uint32_t*>(_cOffset);
     auto OffsetIdx = reinterpret_cast<uint32_t*>(_OffsetIdx);
 
+    int idx = 0;
+
+    // 发单表偏移以 uint32 存储，中间乘积一律按 int64 计算后再收窄，
+    // 防止分块数较大时 int 乘法回绕为负（issue #308）。
+    auto storeOffsets = [&](int y, int x, int z, int ptr)
+    {
+        const int64_t aOff = static_cast<int64_t>(y) * 128 * n * 128 + static_cast<int64_t>(x) * 128;
+        aOffset[idx] = static_cast<uint32_t>(aOff);
+        bOffset[idx] = static_cast<uint32_t>(aOff + static_cast<int64_t>(z - ptr) * 128);
+        cOffset[idx] = static_cast<uint32_t>(static_cast<int64_t>(x) * 128 * n * 128 + static_cast<int64_t>(x) * 128 +
+                                             static_cast<int64_t>(z - ptr) * 128);
+        idx++;
+    };
+
     if (n < 3)
     {
         return;
     }
-    int idx = 0;
     const int len = n - 2;
     std::vector<int> b(len, 0);
     int total = 0;
@@ -137,10 +150,7 @@ void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset,
                 wl -= top.z;
                 for (int ptr = 1; ptr <= top.z; ++ptr)
                 {
-                    aOffset[idx] = top.y * 128 * n * 128 + top.x * 128;
-                    bOffset[idx] = aOffset[idx] + (top.z - ptr) * 128;
-                    cOffset[idx] = top.x * 128 * n * 128 + top.x * 128 + (top.z - ptr) * 128;
-                    idx++;
+                    storeOffsets(top.y, top.x, top.z, ptr);
                 }
                 OffsetIdx[i - 1] += top.z;
                 pq.pop();
@@ -160,10 +170,7 @@ void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset,
                 wl -= top.z;
                 for (int ptr = 1; ptr <= top.z; ++ptr)
                 {
-                    aOffset[idx] = top.y * 128 * n * 128 + top.x * 128;
-                    bOffset[idx] = aOffset[idx] + (top.z - ptr) * 128;
-                    cOffset[idx] = top.x * 128 * n * 128 + top.x * 128 + (top.z - ptr) * 128;
-                    idx++;
+                    storeOffsets(top.y, top.x, top.z, ptr);
                 }
                 OffsetIdx[i - 1] += top.z;
             }
@@ -171,10 +178,7 @@ void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset,
             {
                 for (int ptr = 1; ptr <= wl; ++ptr)
                 {
-                    aOffset[idx] = top.y * 128 * n * 128 + top.x * 128;
-                    bOffset[idx] = aOffset[idx] + (top.z - ptr) * 128;
-                    cOffset[idx] = top.x * 128 * n * 128 + top.x * 128 + (top.z - ptr) * 128;
-                    idx++;
+                    storeOffsets(top.y, top.x, top.z, ptr);
                 }
                 top.z -= wl;
                 OffsetIdx[i - 1] += wl;
@@ -308,10 +312,14 @@ aclError LaunchCpotrf(CpotrfBuffers& buf, bool transpose, int64_t N, int64_t lda
 aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_t n, std::complex<float>* A,
                          const int64_t lda, int32_t* info)
 {
-    SOLVER_ECHECK((uplo == 'L' || uplo == 'U') && n > 0 && A != nullptr && lda >= n && info != nullptr,
-                  "aclsolverCpotrf invalid param: uplo != 'U'/'L', n, lda < n, or A, info is nullptr.",
+    // 参数契约对齐同族 aclsolverSpotrf（spotrf_host.cpp）：n 取 [1, 8192]（与
+    // aclsolverSgetrf 文档口径一致）、lda <= 16384（kernel 行间隙 uint16 计数约束）。
+    // n 上界同时保证 GEMM 发单表偏移恒在 32 位内（issue #308）。
+    SOLVER_ECHECK((uplo == 'L' || uplo == 'U') && n > 0 && n <= 8192 && A != nullptr && lda >= n && lda <= 16384 &&
+                      info != nullptr,
+                  "aclsolverCpotrf invalid param: uplo != 'U'/'L', n out of [1, 8192], lda < n, lda > 16384, "
+                  "or A, info is nullptr.",
                   ACL_ERROR_INVALID_PARAM);
-    SOLVER_ECHECK(n <= INT32_MAX, "aclsolverCpotrf invalid param: n exceeds int32 range.", ACL_ERROR_INVALID_PARAM);
     aclrtStream stream = nullptr;
     if (handle != nullptr)
     {
