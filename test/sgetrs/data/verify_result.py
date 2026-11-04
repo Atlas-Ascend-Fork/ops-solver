@@ -69,7 +69,8 @@ def main():
     # 读取数据
     LU = np.fromfile("./test/sgetrs/data/input/A_gm.bin", dtype=np.float32).reshape(n, n)
     B = np.fromfile("./test/sgetrs/data/input/B_gm.bin", dtype=np.float32).reshape(n, nrhs)
-    piv = np.fromfile("./test/sgetrs/data/input/W_gm.bin", dtype=np.uint32).reshape(n)
+    # W_gm.bin 为 1-based 主元契约（issue #344 对齐后），还原 0-based 供本脚本交换使用
+    piv = np.fromfile("./test/sgetrs/data/input/W_gm.bin", dtype=np.int32).reshape(n) - 1
     X = np.fromfile("./test/sgetrs/data/output/X_gm.bin", dtype=np.float32).reshape(n, nrhs)
 
     # 计算 expected 解

@@ -47,8 +47,9 @@ B = np.random.randn(n, nrhs).astype(np.float32)
 lu, piv = scipy.linalg.lu_factor(A)
 LU = lu.astype(np.float32)
 
-# 使用 0-based 索引（与 SciPy 返回的一致）
-IPIV = piv.astype(np.int32)
+# 本仓 getrs 契约为 1-based 主元（对齐 aclsolverSgetrf 输出与 laswp 消费口径，issue #298 定案）；
+# scipy 返回 0-based，此处 +1 对齐
+IPIV = (piv + 1).astype(np.int32)
 
 # 4. 计算参考解 X = A^(-1) * B (sgetrs 的等效操作)
 X_ref = scipy.linalg.lu_solve((lu, piv), B).astype(np.float32)
@@ -58,7 +59,7 @@ X_ref = scipy.linalg.lu_solve((lu, piv), B).astype(np.float32)
 with open("./test/sgetrs/data/input/A_gm.bin", "wb") as f:
     f.write(LU.tobytes())
 
-# 保存主元索引数组 (sgetrs 的输入 IPIV) - 0-based
+# 保存主元索引数组 (sgetrs 的输入 IPIV) - 1-based
 with open("./test/sgetrs/data/input/W_gm.bin", "wb") as f:
     f.write(IPIV.tobytes())
 
@@ -74,7 +75,7 @@ with open("./test/sgetrs/data/output/golden.bin", "wb") as f:
 # 打印信息用于验证
 logging.info(f"Generated SGETRS test data for {n}x{n} matrix with {nrhs} RHS vectors")
 logging.info(f"Input LU matrix (first 3x3):\n{LU[:3, :3]}")
-logging.info(f"Input IPIV array (first 10 elements, 0-based):\n{IPIV[:10] if len(IPIV) > 10 else IPIV}")
+logging.info(f"Input IPIV array (first 10 elements, 1-based):\n{IPIV[:10] if len(IPIV) > 10 else IPIV}")
 logging.info(f"Input vector B (first 3 rows, first 3 columns):\n{B[:3, :3] if nrhs >= 3 else B[:3, :]}")
 logging.info(f"Reference solution X (first 3 rows, first 3 columns):\n{X_ref[:3, :3] if nrhs >= 3 else X_ref[:3, :]}")
 
@@ -89,7 +90,7 @@ logging.info(f"Max absolute error: {max_error:.3e}")
 logging.info(f"Mean absolute error: {mean_error:.3e}")
 
 # 验证 LU 分解的正确性
-# 重建原始矩阵 A 从 LU 和 IPIV (0-based)
+# 重建原始矩阵 A 从 LU 和 IPIV (1-based)
 # 注意: scipy.linalg.lu_factor 返回的 LU 矩阵是包含 L 和 U 的组合形式
 # 这里简化验证，仅检查条件数
 logging.info(f"Condition number: {np.linalg.cond(A):.3e}")
