@@ -72,72 +72,15 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(32) void SolveVf(__gm__ const float* a, __gm
     }
 }
 
-__simt_vf__ __aicore__ LAUNCH_BOUND(512) void CachedSolveVf(__gm__ const float* a, __gm__ const float* y,
-                                                            __gm__ float* x, __ubuf__ float* cache, uint32_t n,
-                                                            uint64_t lda, uint64_t ldy, uint64_t ldx, uint32_t col,
-                                                            __gm__ int* info)
-{
-    if (threadIdx.x < 32)
-    {
-        uint32_t zero = ZeroDiagonal(a, n, lda);
-        if (threadIdx.x == 0)
-        {
-            cache[0] = static_cast<float>(zero);
-            if (col == 0)
-            {
-                *info = static_cast<int>(zero);
-            }
-        }
-    }
-    asc_syncthreads();
-    const bool singular = cache[0] != 0;
-    // Every thread must finish reading the flag before cache[0] becomes RHS data.
-    asc_syncthreads();
-    if (singular)
-    {
-        return;
-    }
-    for (uint32_t r = threadIdx.x; r < n; r += 512)
-    {
-        Store(cache, r, Load(y, r + uint64_t(col) * ldy));
-    }
-    asc_syncthreads();
-    for (uint32_t step = 0; step < n; ++step)
-    {
-        uint32_t column = n - 1 - step;
-        if (threadIdx.x == 0)
-        {
-            Store(cache, column, Divide(Load(cache, column), Load(a, column + uint64_t(column) * lda)));
-        }
-        asc_syncthreads();
-        Complex value = Load(cache, column);
-        for (uint32_t r = threadIdx.x; r < column; r += 512)
-        {
-            Store(cache, r, Sub(Load(cache, r), Mul(Load(a, r + uint64_t(column) * lda), value)));
-        }
-        asc_syncthreads();
-    }
-    for (uint32_t r = threadIdx.x; r < n; r += 512)
-    {
-        Store(x, r + uint64_t(col) * ldx, Load(cache, r));
-    }
-}
-
 __global__ __aicore__ void SolveKernel(__gm__ const float* a, __gm__ const float* y, __gm__ float* x, __gm__ int* info,
                                        ComplexQrShape s)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    __ubuf__ float cache[2 * 8192];
+    // n <= 8192 的调用在 LaunchSolveKernel 已全部路由 SolveSimdKernel，
+    // 此处只会以 n > 8192 进入，恒假分支与对应的缓存路径已删除（issue #335）。
     for (uint32_t c = AscendC::GetBlockIdx(); c < s.rhs; c += AscendC::GetBlockNum())
     {
-        if (s.n <= 8192)
-        {
-            asc_vf_call<CachedSolveVf>(dim3{512, 1, 1}, a, y, x, cache, s.n, s.lda, s.m, s.ldx, c, info);
-        }
-        else
-        {
-            asc_vf_call<SolveVf>(dim3{32, 1, 1}, a, y, x, s.n, s.lda, s.m, s.ldx, c, info);
-        }
+        asc_vf_call<SolveVf>(dim3{32, 1, 1}, a, y, x, s.n, s.lda, s.m, s.ldx, c, info);
     }
 }
 }  // namespace
