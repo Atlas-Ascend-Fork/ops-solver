@@ -43,13 +43,23 @@
 #define QR_CORE_FN inline
 #endif
 
-namespace QrCore {
+namespace QrCore
+{
 
-enum class Side { Left, Right };
-enum class Trans { NoTrans, Trans };
+enum class Side
+{
+    Left,
+    Right
+};
+enum class Trans
+{
+    NoTrans,
+    Trans
+};
 
 /// 一次实数 GEMM 的计划：D(m x n) [+]= A(m x k) * B(k x n)，全部按行主序视图表达
-struct GemmPlan {
+struct GemmPlan
+{
     int m = 0;
     int n = 0;
     int k = 0;
@@ -65,7 +75,12 @@ struct GemmPlan {
 };
 
 /// LARFB 的三个阶段
-enum class LarfbStage { VtC = 0, TW = 1, VW = 2 };
+enum class LarfbStage
+{
+    VtC = 0,
+    TW = 1,
+    VW = 2
+};
 
 /**
  * 生成 side = LEFT 的三个 GEMM 计划。
@@ -80,9 +95,11 @@ enum class LarfbStage { VtC = 0, TW = 1, VW = 2 };
  */
 /// trans = NoTrans 施加 Q（C <- (I - V T V^T) C），Trans 施加 Q^T（C <- (I - V T^T V^T) C）。
 /// 两者只差 G2 里 T 操作数的视图：T 缓冲按列主序存放，RowMajor 视图即 T^T。
-/// geqrf 的尾随更新要的是 Q^T，必须传 Trans::Trans。
+/// geqrf 的尾随更新要的是 Q^T；但 geqrf 侧的 T 按行主序存放（见 geqrf_mix.hpp），
+/// 相对本处"列主序 T"的视图定义含义取反，因此实际传 Trans::NoTrans——
+/// 数学上等价于列主序 T 下传 Trans::Trans 的效果，勿按本行上方视图定义望文生义。
 QR_CORE_FN void PlanLarfbLeft(int M, int N, int k, int ldv, int ldc, int ldw, int ldw2, int ldt, int64_t vOffset,
-                          int64_t cOffset, GemmPlan out[3], Trans trans = Trans::NoTrans)
+                              int64_t cOffset, GemmPlan out[3], Trans trans = Trans::NoTrans)
 {
     // G1: W = V^T * C   ->   W~(N x k) = C~(N x M, RowMajor ldc) * V~^T(M x k, ColumnMajor ldv)
     out[0].m = N;
@@ -142,7 +159,7 @@ QR_CORE_FN void PlanLarfbLeft(int M, int N, int k, int ldv, int ldc, int ldw, in
  */
 /// trans 的含义同 PlanLarfbLeft（这里 T 在 G2 的 A 侧）。
 QR_CORE_FN void PlanLarfbRight(int M, int N, int k, int ldv, int ldc, int ldw, int ldw2, int ldt, int64_t vOffset,
-                           int64_t cOffset, GemmPlan out[3], Trans trans = Trans::NoTrans)
+                               int64_t cOffset, GemmPlan out[3], Trans trans = Trans::NoTrans)
 {
     out[0].m = k;
     out[0].n = M;
