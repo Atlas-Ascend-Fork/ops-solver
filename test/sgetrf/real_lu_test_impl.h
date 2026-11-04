@@ -306,6 +306,9 @@ inline void RunBasicCases(Runtime& runtime)
     const int batch = MODE.batched ? 8 : 1;
     RunCase(runtime, MODE, MODE.factor ? 7 : 5, 5, batch, true, false);
     RunCase(runtime, MODE, 3, 3, batch, false, false);
+    // n==2 且部分主元发生行交换：PrepareMatrix 预交换行 0/1 后 getrf 仍会选出 piv[0]==2，
+    // 覆盖求逆按 U^-1 L^-1 P 重组的非对角元存储分支（issue #307）。
+    RunCase(runtime, MODE, 2, 2, batch, true, false);
     RunCase(runtime, MODE, 3, 3, batch, true, true);
     RunCase(runtime, MODE, 0, 0, batch, true, false);
     if (MODE.batched)

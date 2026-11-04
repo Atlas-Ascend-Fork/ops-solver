@@ -149,6 +149,10 @@ class Inverse
         a00 = a00 - a01 * lower;
         if (piv.GetValue(0) == 2)
         {
+            // 行交换时 A^-1 = U^-1 L^-1 P（P 为 2x2 交换阵），即对 x = U^-1 L^-1 做列交换。
+            // 本文件为列主序存储（见 StoreRhs：Store(c[j*ldc]) 写第 j 列），两次 Store
+            // 分别写第 0/1 列：col0=[x01,x11]、col1=[x00,x10]，与 950 路径参考实现
+            // real_lu_small_inverse.hpp 的 SmallInverse::InverseTwo 列交换语义一致。
             tmp.SetValue(0, a01);
             tmp.SetValue(1, a11);
             Store(c, tmp, 2);
