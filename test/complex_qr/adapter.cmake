@@ -25,9 +25,11 @@ if(NOT "arch35" IN_LIST SOC_ARCH_DIRS AND NOT TARGET ${QR_ADAPTER_TARGET}_arch_m
 endif()
 
 if("arch35" IN_LIST SOC_ARCH_DIRS AND NOT TEST ${QR_ADAPTER_TARGET}_independent)
+    # 用 bash 包装在子进程内 unset COMPLEX_QR_CASES_ROOT：cmake -E env 的 --unset
+    # 选项需 CMake 3.22，本仓声明的最低版本为 3.16（CMakeLists.txt），低版本 ctest
+    # 会因未知选项直接失败（issue #321）。
     add_test(NAME ${QR_ADAPTER_TARGET}_independent
-        COMMAND ${CMAKE_COMMAND} -E env --unset=COMPLEX_QR_CASES_ROOT
-            bash ${CMAKE_SOURCE_DIR}/test/${QR_ADAPTER_TARGET}/run_tests.sh ${CMAKE_BINARY_DIR})
+        COMMAND bash -c "unset COMPLEX_QR_CASES_ROOT; exec bash '${CMAKE_SOURCE_DIR}/test/${QR_ADAPTER_TARGET}/run_tests.sh' '${CMAKE_BINARY_DIR}'")
     set_tests_properties(${QR_ADAPTER_TARGET}_independent PROPERTIES
         RESOURCE_LOCK solver_npu TIMEOUT 600 LABELS "npu;operator")
 endif()
