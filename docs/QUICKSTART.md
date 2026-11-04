@@ -77,7 +77,7 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 
 ## 二、算子开发
 
-以下为从零开发一个 Solver 算子的完整流程。
+以下为从零开发一个 Solver 算子的完整流程，完整步骤见文末[算子开发实例](#算子开发实例)（含算子功能、修改文件、新增文件、Solver 算子实现与调测脚本示例）。
 
 ## 三、算子调试
 
