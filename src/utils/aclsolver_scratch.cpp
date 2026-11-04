@@ -78,6 +78,16 @@ aclsolverStatus_t AcquireScratch(aclsolverHandle_t handle, aclrtStream* stream, 
         else
         {
             capacity = bytes > 2 * it->bytes ? bytes : 2 * it->bytes;
+            // 扩容后旧块若不释放，会随每次变长请求按流累积驻留设备内存（issue #323）。
+            // 旧块上的在途任务可能仍未完成，先同步该流再释放，避免设备侧 UAF；
+            // 同步失败说明运行时处于异常状态，按执行失败上报，旧块交由句柄销毁统一回收。
+            if (aclrtSynchronizeStream(*stream) != ACL_SUCCESS)
+            {
+                return ReportError(ACLSOLVER_STATUS_EXECUTION_FAILED,
+                                   "cannot synchronize Cholesky stream before scratch growth");
+            }
+            aclrtFree(it->ptr);
+            scratch.erase(std::next(it).base());
         }
         break;
     }
