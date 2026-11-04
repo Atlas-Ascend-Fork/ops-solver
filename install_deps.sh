@@ -139,7 +139,9 @@ install_python() {
         macos)
             run_command brew install python@3.10
             echo 'export PATH="/usr/local/opt/python@3.10/bin:$PATH"' >> ~/.zshrc
-            run_command source ~/.zshrc
+            # 子 shell 中 source 不影响父脚本，且 ~/.zshrc 缺失时会导致安装中止（issue #305）：
+            # 追加落盘供后续会话使用，并在当前 shell 直接 export 供脚本内后续步骤使用
+            export PATH="/usr/local/opt/python@3.10/bin:$PATH"
             ;;
         euler)
             run_command sudo $PKG_MANAGER install -y python3 python3-pip python3-devel
@@ -211,7 +213,9 @@ install_gcc() {
             run_command brew install gcc@11
             echo 'export CC=/usr/local/bin/gcc-11' >> ~/.zshrc
             echo 'export CXX=/usr/local/bin/g++-11' >> ~/.zshrc
-            run_command source ~/.zshrc
+            # 同上（issue #305）：落盘 + 当前 shell 直接生效，不依赖子 shell source
+            export CC=/usr/local/bin/gcc-11
+            export CXX=/usr/local/bin/g++-11
             ;;
         euler)
             run_command sudo $PKG_MANAGER install -y gcc gcc-c++

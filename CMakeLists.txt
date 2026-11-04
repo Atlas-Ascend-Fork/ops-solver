@@ -57,7 +57,11 @@ message(STATUS "SOC_ARCH_DIRS=${SOC_ARCH_DIRS}")
 # 架构特定目录列表（全局定义）
 set(ARCH_SPECIFIC_DIRS arch35 arch20 CACHE INTERNAL "Architecture specific directories")
 
-set(ASCEND_CANN_PACKAGE_PATH $ENV{ASCEND_HOME_PATH})
+# CANN 包路径：尊重显式 -D 传入（issue #304）；未指定时回退到环境变量，
+# 两者皆空时保持为空并沿用 find_package(ASC) 的自动定位与报错路径
+if(NOT DEFINED ASCEND_CANN_PACKAGE_PATH)
+    set(ASCEND_CANN_PACKAGE_PATH $ENV{ASCEND_HOME_PATH})
+endif()
 set(RUN_MODE "npu" CACHE STRING "run mode: npu")
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type Release/Debug")
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_LIST_DIR}/build_out" CACHE STRING "install path" FORCE)
