@@ -24,6 +24,7 @@
 
 #include "../utils/assert.h"
 #include "../utils/gm_addr.h"
+#include "../utils/potrf_gemm_work.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "cpotrf_launchers.hpp"
@@ -65,45 +66,13 @@ void GenerateTiling(bool transpose, int M, int N, uint8_t* gatherBuf)
     }
 }
 
-struct L
+namespace
 {
-    int x, y, z;
-    bool operator>(const L& other) const
-    {
-        if (x != other.x) return x > other.x;
-        return y > other.y;
-    }
-};
-
-void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset, uint8_t* _cOffset, uint8_t* _OffsetIdx)
+// 按块数与矩阵规模计算各列的 tile 配额 b 与按体量分摊的 workload（原 GenerateGemmWork 前段）
+void ComputeTileQuota(int n, int blockNum, std::vector<int>& b, std::vector<int>& workload)
 {
-    auto aOffset = reinterpret_cast<uint32_t*>(_aOffset);
-    auto bOffset = reinterpret_cast<uint32_t*>(_bOffset);
-    auto cOffset = reinterpret_cast<uint32_t*>(_cOffset);
-    auto OffsetIdx = reinterpret_cast<uint32_t*>(_OffsetIdx);
-
-    int idx = 0;
-
-    // 发单表偏移以 uint32 存储，中间乘积一律按 int64 计算后再收窄，
-    // 防止分块数较大时 int 乘法回绕为负（issue #308）。
-    auto storeOffsets = [&](int y, int x, int z, int ptr)
-    {
-        const int64_t aOff = static_cast<int64_t>(y) * 128 * n * 128 + static_cast<int64_t>(x) * 128;
-        aOffset[idx] = static_cast<uint32_t>(aOff);
-        bOffset[idx] = static_cast<uint32_t>(aOff + static_cast<int64_t>(z - ptr) * 128);
-        cOffset[idx] = static_cast<uint32_t>(static_cast<int64_t>(x) * 128 * n * 128 + static_cast<int64_t>(x) * 128 +
-                                             static_cast<int64_t>(z - ptr) * 128);
-        idx++;
-    };
-
-    if (n < 3)
-    {
-        return;
-    }
     const int len = n - 2;
-    std::vector<int> b(len, 0);
     int total = 0;
-
     int denominator = blockNum;
     for (int i = 1; i <= n - 2; ++i)
     {
@@ -112,8 +81,6 @@ void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset,
         b[i - 1] = val;
         total += val;
     }
-
-    std::vector<int> workload(len, 0);
     if (total > 0)
     {
         for (int i = 1; i <= len; ++i)
@@ -123,76 +90,111 @@ void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset,
             workload[i - 1] = static_cast<int>((num + denom - 1) / denom);
         }
     }
+}
 
-    std::priority_queue<L, std::vector<L>, std::greater<L>> pq;
+// 写入单个 gemm 地址对：发单表偏移以 uint32 存储，中间乘积一律按 int64 计算后再收窄，
+// 防止分块数较大时 int 乘法回绕为负（issue #308）
+void StoreTileOffsets(uint32_t* aOffset, uint32_t* bOffset, uint32_t* cOffset, int& idx, int n, int y, int x, int z,
+                      int ptr)
+{
+    const int64_t aOff = static_cast<int64_t>(y) * 128 * n * 128 + static_cast<int64_t>(x) * 128;
+    aOffset[idx] = static_cast<uint32_t>(aOff);
+    bOffset[idx] = static_cast<uint32_t>(aOff + static_cast<int64_t>(z - ptr) * 128);
+    cOffset[idx] = static_cast<uint32_t>(static_cast<int64_t>(x) * 128 * n * 128 + static_cast<int64_t>(x) * 128 +
+                                         static_cast<int64_t>(z - ptr) * 128);
+    idx++;
+}
 
-    total = 0;
-    for (int i = 1; i <= n - 2; ++i)
+// 写入 count 个 (y, x, z) tile 的 gemm 地址对（z 固定，随 ptr 递减取偏移）
+void FillTileOffsets(uint32_t* aOffset, uint32_t* bOffset, uint32_t* cOffset, int& idx, int n, int y, int x, int z,
+                     int count)
+{
+    for (int ptr = 1; ptr <= count; ++ptr)
     {
-        OffsetIdx[i - 1] = 0;
-        for (int t = i + 1; t <= n - 1; ++t)
+        StoreTileOffsets(aOffset, bOffset, cOffset, idx, n, y, x, z, ptr);
+    }
+}
+
+// 优先队列中属于当前列次对角（top.x == i + 1）的 tile 全量配给当前列
+void DrainMatchedTiles(std::priority_queue<L, std::vector<L>, std::greater<L>>& pq, int i, int& wl, int n,
+                       uint32_t* aOffset, uint32_t* bOffset, uint32_t* cOffset, int& idx, uint32_t& offsetIdx)
+{
+    while (!pq.empty())
+    {
+        L top = pq.top();
+        if (top.x != i + 1)
         {
-            L item;
-            item.x = t;
-            item.y = i - 1;
-            item.z = n - t;
-            pq.push(item);
-            total += n - t;
+            break;
         }
+        wl -= top.z;
+        FillTileOffsets(aOffset, bOffset, cOffset, idx, n, top.y, top.x, top.z, top.z);
+        offsetIdx += top.z;
+        pq.pop();
+    }
+}
 
-        int& wl = workload[i - 1];
-        while (!pq.empty())
+// 当前列配额未用完时，从队列继续取 tile 分摊；跨界 tile 剩余部分回队
+void DistributeRemainingTiles(std::priority_queue<L, std::vector<L>, std::greater<L>>& pq, int& wl, int n,
+                              uint32_t* aOffset, uint32_t* bOffset, uint32_t* cOffset, int& idx, uint32_t& offsetIdx)
+{
+    while (wl > 0 && !pq.empty())
+    {
+        L top = pq.top();
+        pq.pop();
+        if (top.z < wl)
         {
-            L top = pq.top();
-
-            if (top.x == i + 1)
-            {
-                wl -= top.z;
-                for (int ptr = 1; ptr <= top.z; ++ptr)
-                {
-                    storeOffsets(top.y, top.x, top.z, ptr);
-                }
-                OffsetIdx[i - 1] += top.z;
-                pq.pop();
-            }
-            else
-            {
-                break;
-            }
+            wl -= top.z;
+            FillTileOffsets(aOffset, bOffset, cOffset, idx, n, top.y, top.x, top.z, top.z);
+            offsetIdx += top.z;
         }
-        while (wl > 0 && !pq.empty())
+        else
         {
-            L top = pq.top();
-            pq.pop();
-
-            if (top.z < wl)
+            FillTileOffsets(aOffset, bOffset, cOffset, idx, n, top.y, top.x, top.z, wl);
+            top.z -= wl;
+            offsetIdx += wl;
+            wl = 0;
+            if (top.z > 0)
             {
-                wl -= top.z;
-                for (int ptr = 1; ptr <= top.z; ++ptr)
-                {
-                    storeOffsets(top.y, top.x, top.z, ptr);
-                }
-                OffsetIdx[i - 1] += top.z;
-            }
-            else
-            {
-                for (int ptr = 1; ptr <= wl; ++ptr)
-                {
-                    storeOffsets(top.y, top.x, top.z, ptr);
-                }
-                top.z -= wl;
-                OffsetIdx[i - 1] += wl;
-                wl = 0;
-                if (top.z > 0)
-                {
-                    pq.push(top);
-                }
+                pq.push(top);
             }
         }
     }
-    return;
 }
 
+// 逐列调度：列 i 的 tile 入队，先配给次对角 tile，再分摊剩余 workload
+void ScheduleGemmTiles(int n, std::vector<int>& workload, uint32_t* aOffset, uint32_t* bOffset, uint32_t* cOffset,
+                       uint32_t* OffsetIdx, int& idx)
+{
+    std::priority_queue<L, std::vector<L>, std::greater<L>> pq;
+    for (int i = 1; i <= n - 2; ++i)
+    {
+        OffsetIdx[i - 1] = 0;
+        PushColumnTiles(pq, n, i);
+        int& wl = workload[i - 1];
+        DrainMatchedTiles(pq, i, wl, n, aOffset, bOffset, cOffset, idx, OffsetIdx[i - 1]);
+        DistributeRemainingTiles(pq, wl, n, aOffset, bOffset, cOffset, idx, OffsetIdx[i - 1]);
+    }
+}
+}  // namespace
+
+void GenerateGemmWork(int n, int blockNum, uint8_t* _aOffset, uint8_t* _bOffset, uint8_t* _cOffset, uint8_t* _OffsetIdx)
+{
+    auto aOffset = reinterpret_cast<uint32_t*>(_aOffset);
+    auto bOffset = reinterpret_cast<uint32_t*>(_bOffset);
+    auto cOffset = reinterpret_cast<uint32_t*>(_cOffset);
+    auto OffsetIdx = reinterpret_cast<uint32_t*>(_OffsetIdx);
+    // k < 3（N <= 256）或核数异常时直接返回，四张表保持未写入状态，上传前由调用方清零兜底
+    if (n < 3 || blockNum <= 0)
+    {
+        return;
+    }
+    int idx = 0;
+    const int len = n - 2;
+    std::vector<int> b(len, 0);
+    std::vector<int> workload(len, 0);
+    ComputeTileQuota(n, blockNum, b, workload);
+    ScheduleGemmTiles(n, workload, aOffset, bOffset, cOffset, OffsetIdx, idx);
+}
 struct CpotrfBuffers
 {
     uint8_t* aHost = nullptr;
@@ -323,7 +325,11 @@ aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_
     aclrtStream stream = nullptr;
     if (handle != nullptr)
     {
-        aclsolverGetStream(handle, &stream);
+        // GetStream 失败时向上报错而非静默改用默认流，与 950 Device 路径及
+        // getrs/cheevj 家族的修复口径一致（issue #326）。
+        const aclsolverStatus_t streamRet = aclsolverGetStream(handle, &stream);
+        SOLVER_ECHECK(streamRet == ACLSOLVER_STATUS_SUCCESS, "aclsolverCpotrf: failed to get stream from handle.",
+                      streamRet);
     }
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
     uint32_t numBlocks = 0;

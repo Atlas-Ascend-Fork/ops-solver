@@ -24,6 +24,7 @@
 
 #include "../utils/aicore_num.h"
 #include "../utils/assert.h"
+#include "../utils/potrf_gemm_work.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -56,20 +57,6 @@ bool GenerateGather(int blockM, int blockN, uint8_t *gatherBuf)
     return true;
 }
 }  // namespace
-
-// 数据结构 L，包含三个 int 变量 x, y, z
-struct L
-{
-    int x, y, z;
-    // 优先队列为小顶堆：x 越小优先级越高，x 相同则 y 越小优先级越高
-    // 使用 std::greater<L> 需要定义 operator>
-    bool operator>(const L &other) const
-    {
-        if (x != other.x) return x > other.x;
-        return y > other.y;
-    }
-};
-
 // 计算各对角块行 i 的 GEMM 配额 b[i] 与归一化工作量 workload[i]（原步骤 1/2 提取）
 static void FillWorkQuota(int n, int blockNum, std::vector<int> &b, std::vector<int> &workload)
 {
@@ -178,15 +165,8 @@ void GenerateGemmWork(int n, int blockNum, uint32_t *aOffset, uint32_t *bOffset,
     for (int i = 1; i <= n - 2; ++i)
     {
         OffsetIdx[i - 1] = 0;
-        // 4.1 创建 n-i 个 L，参数为 (t, i-1)，t = i+1 .. n
-        for (int t = i + 1; t <= n - 1; ++t)
-        {
-            L item;
-            item.x = t;
-            item.y = i - 1;
-            item.z = n - t;
-            pq.push(item);
-        }
+        // 4.1 第 i 列的次对角 tile 入队（公共实现见 utils/potrf_gemm_work.h）
+        PushColumnTiles(pq, n, i);
         DrainPendingTiles(i, workload[i - 1], pq, aOffset, bOffset, cOffset, idx, n, blocksize, OffsetIdx);
     }
 }
@@ -327,7 +307,11 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
     aclrtStream stream = nullptr;
     if (handle != nullptr)
     {
-        aclsolverGetStream(handle, &stream);
+        // GetStream 失败时向上报错而非静默改用默认流，与 950 Device 路径及
+        // getrs/cheevj 家族的修复口径一致（issue #326）。
+        const aclsolverStatus_t streamRet = aclsolverGetStream(handle, &stream);
+        SOLVER_ECHECK(streamRet == ACLSOLVER_STATUS_SUCCESS, "aclsolverSpotrf: failed to get stream from handle.",
+                      streamRet);
     }
     bool isTranse = false;
     if (uplo == 'L')
