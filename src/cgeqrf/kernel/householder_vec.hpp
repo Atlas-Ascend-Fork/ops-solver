@@ -15,7 +15,7 @@
  *
  * This program is free software: you may redistribute it and/or modify it under
  * the terms of the GPL. It is distributed "as is", without warranty.
- * See COPYING (full GPL) and COMMERCIAL-LICENSE (commercial terms) at the repo root.
+ * See COPYING-PACO (full GPL) and LICENSE-PACO (dual licensing notice) at the repo root.
  * Commercial licensing contact: yuantang@fudan.edu.cn
  *
  * -------------------------------------------------------------------------
@@ -30,7 +30,7 @@
  * 二者任选其一。默认条款以 GPL-3.0-or-later 为准。
  *
  * 本程序是自由软件，你可依 GPL 条款重新发布或修改；基于“原样”提供，无担保。
- * 详情见仓库根目录 COPYING（GPL 全文）与 COMMERCIAL-LICENSE（商业条款）。
+ * 详情见仓库根目录 COPYING-PACO（GPL 全文）与 LICENSE-PACO（双重许可说明）。
  * 商业授权联系：yuantang@fudan.edu.cn
  */
 /*!
@@ -93,8 +93,8 @@ class HouseholderQR_VEC : public HouseholderQRCommon
                                      GlobalTensor<float> yImag, GlobalTensor<float> yImagNeg, int M_, int N_, int padM_,
                                      int padN_)
     {
-        SetMatrixCommon(aReal, aImag, tau_, tReal, tImag, tImagNeg, wReal, wImag, yReal, yImag, yImagNeg, M_, N_,
-                        padM_, padN_);
+        SetMatrixCommon(aReal, aImag, tau_, tReal, tImag, tImagNeg, wReal, wImag, yReal, yImag, yImagNeg, M_, N_, padM_,
+                        padN_);
         InitRow();
     }
     __aicore__ inline void InitGather(GlobalTensor<uint32_t> gatherGlobal, int panel_size = 32)
@@ -107,10 +107,7 @@ class HouseholderQR_VEC : public HouseholderQRCommon
     {
         ProcessPanels(blockDim, blockIdx, min(M - CHANGE, N));
     }
-    __aicore__ inline void Process2(int blockDim, int blockIdx)
-    {
-        ProcessPanels(blockDim, blockIdx, min(M, N));
-    }
+    __aicore__ inline void Process2(int blockDim, int blockIdx) { ProcessPanels(blockDim, blockIdx, min(M, N)); }
     // 面板循环：limit 之前每 32 列一个面板推进；0 号核处理表头 64 行，其余核按 64 行均分剩余行
     // 面板开头：各核把自己的那一段 W / 范数缓冲清零（前 16 核清 W_real，次 16 核清 W_imag，32 号核清范数）
     __aicore__ inline void ZeroPanelBuffers(int blockIdx)
@@ -186,9 +183,8 @@ class HouseholderQR_VEC : public HouseholderQRCommon
     }
     // 把实部或虚部的一段行载入 UB，并累加到当前面板的列范数（行数非 8 的整数倍时走 pad 通路）
     __aicore__ inline void LoadRowsAndAccumNorm(GlobalTensor<float>& src, int offsetA, int rows, int columns,
-                                                int aligned_rows, int offset, int stride,
-                                                LocalTensor<float>& aLocal, LocalTensor<float>& norm_2Local,
-                                                int32_t eventIDMTE2ToV)
+                                                int aligned_rows, int offset, int stride, LocalTensor<float>& aLocal,
+                                                LocalTensor<float>& norm_2Local, int32_t eventIDMTE2ToV)
     {
         if (rows & 7)
         {
@@ -323,8 +319,8 @@ class HouseholderQR_VEC : public HouseholderQRCommon
     }
 
     // 本核负责的行区间做一次 rank-1 更新（w 由各核原子累加后读回，再作用到整个列块）
-    __aicore__ inline void Update(int k, int offsetM, int columns, int offset, int stride,
-                                  LocalTensor<float>& vReal, LocalTensor<float>& vImag, LocalTensor<float>& aLocalReal,
+    __aicore__ inline void Update(int k, int offsetM, int columns, int offset, int stride, LocalTensor<float>& vReal,
+                                  LocalTensor<float>& vImag, LocalTensor<float>& aLocalReal,
                                   LocalTensor<float>& aLocalImag, LocalTensor<float> wLocalReal,
                                   LocalTensor<float> wLocalImag, float tau_Real, float tau_Imag, int flag)
     {
@@ -500,8 +496,7 @@ class HouseholderQR_VEC : public HouseholderQRCommon
 
     // v = (x - beta * e_k) / |v0|^2 的实部与虚部（vImag 紧接在 vReal 之后）
     __aicore__ inline void BuildVector(int k, const RowCtx& ctx, LocalTensor<float>& aLocalReal,
-                                       LocalTensor<float>& aLocalImag, const Householder& h,
-                                       LocalTensor<float>& vReal)
+                                       LocalTensor<float>& aLocalImag, const Householder& h, LocalTensor<float>& vReal)
     {
         LocalTensor<float> vImag = vReal[ctx.offset];
         Muls(vReal, aLocalImag[k * ctx.stride], -h.invImag, ctx.offset);

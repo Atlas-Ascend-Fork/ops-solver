@@ -15,7 +15,7 @@
  *
  * This program is free software: you may redistribute it and/or modify it under
  * the terms of the GPL. It is distributed "as is", without warranty.
- * See COPYING (full GPL) and COMMERCIAL-LICENSE (commercial terms) at the repo root.
+ * See COPYING-PACO (full GPL) and LICENSE-PACO (dual licensing notice) at the repo root.
  * Commercial licensing contact: yuantang@fudan.edu.cn
  *
  * -------------------------------------------------------------------------
@@ -30,7 +30,7 @@
  * 二者任选其一。默认条款以 GPL-3.0-or-later 为准。
  *
  * 本程序是自由软件，你可依 GPL 条款重新发布或修改；基于“原样”提供，无担保。
- * 详情见仓库根目录 COPYING（GPL 全文）与 COMMERCIAL-LICENSE（商业条款）。
+ * 详情见仓库根目录 COPYING-PACO（GPL 全文）与 LICENSE-PACO（双重许可说明）。
  * 商业授权联系：yuantang@fudan.edu.cn
  */
 /*!
@@ -74,13 +74,13 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
                                      GlobalTensor<float> yImag, GlobalTensor<float> yImagNeg, int M_, int N_, int padM_,
                                      int padN_)
     {
-        SetMatrixCommon(aReal, aImag, tau_, tReal, tImag, tImagNeg, wReal, wImag, yReal, yImag, yImagNeg, M_, N_,
-                        padM_, padN_);
+        SetMatrixCommon(aReal, aImag, tau_, tReal, tImag, tImagNeg, wReal, wImag, yReal, yImag, yImagNeg, M_, N_, padM_,
+                        padN_);
     }
     // 一个面板的发单：前 align_blockdim 个核真正计算，其余核只做全核同步；
     // 之后翻转 flag、推进 offset 并按剩余行数重算 columns（顺序不能改）
-    __aicore__ inline void PanelStep(int blockDim, int blockIdx, int align_blockdim, int panel_size, int& offset, int& flag,
-                                     int& columns)
+    __aicore__ inline void PanelStep(int blockDim, int blockIdx, int align_blockdim, int panel_size, int& offset,
+                                     int& flag, int& columns)
     {
         if (blockIdx < align_blockdim)
         {
@@ -222,7 +222,7 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
 
     // 一个反射子（tau0, tau1）作用到第 j 列：先算两个内积，再实部/虚部各 2 次 Axpy
     __aicore__ inline void ApplyReflectorToColumn(const PanelCtx& ctx, LocalTensor<float>& a, LocalTensor<float>& b,
-                                                 LocalTensor<float>& workLocal, int j, float tau0, float tau1)
+                                                  LocalTensor<float>& workLocal, int j, float tau0, float tau1)
     {
         Mul(workLocal, a[ctx.offset * j], b, ctx.aligned_M);
         Mul(workLocal[4096], a[ctx.offset * j + 8192], b[4096], ctx.aligned_M);
@@ -274,9 +274,9 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
     }
 
     // C：逐列做 Householder 分解，v 写回 UB 并同步到 Y，tau 实时写 GM
-    __aicore__ inline void FactorizeColumns(const PanelCtx& ctx, LocalTensor<float>& a, LocalTensor<float>& householder_v,
-                                            LocalTensor<float>& workLocal, LocalTensor<float>& tauLocal,
-                                            LocalTensor<float>& v0Local, float* alpha)
+    __aicore__ inline void FactorizeColumns(const PanelCtx& ctx, LocalTensor<float>& a,
+                                            LocalTensor<float>& householder_v, LocalTensor<float>& workLocal,
+                                            LocalTensor<float>& tauLocal, LocalTensor<float>& v0Local, float* alpha)
     {
         int32_t eventIDMTE3ToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
         int32_t eventIDMTE3ToS = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
@@ -314,9 +314,9 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
     }
 
     // C2：退化列（已在下三角内）直接把 tau/v 置零并清 Y 的三块
-    __aicore__ inline void ZeroColumn(const PanelCtx& ctx, LocalTensor<float>& householder_v, LocalTensor<float>& tauLocal,
-                                      LocalTensor<float>& v0Local, float* alpha, int i, int32_t eventIDVToMTE3,
-                                      int32_t eventIDMTE3ToS)
+    __aicore__ inline void ZeroColumn(const PanelCtx& ctx, LocalTensor<float>& householder_v,
+                                      LocalTensor<float>& tauLocal, LocalTensor<float>& v0Local, float* alpha, int i,
+                                      int32_t eventIDVToMTE3, int32_t eventIDMTE3ToS)
     {
         alpha[i] = 0;
         tauLocal.SetValue(2 * i, 0.0f);
@@ -393,8 +393,8 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
     }
 
     // C5：把 v 的掩码段写回 a，并把实部/虚部/-虚部同步到 Y
-    __aicore__ inline void CommitColumn(const PanelCtx& ctx, LocalTensor<float>& a, LocalTensor<float>& householder_v, int i,
-                                        int32_t eventIDVToMTE3, int32_t eventIDMTE3ToV)
+    __aicore__ inline void CommitColumn(const PanelCtx& ctx, LocalTensor<float>& a, LocalTensor<float>& householder_v,
+                                        int i, int32_t eventIDVToMTE3, int32_t eventIDMTE3ToV)
     {
         int startM = ctx.blockIdx * ctx.columns / 64 * 64;
         uint64_t mask_update[2] = {(~0ULL) ^ ((1ULL << (ctx.blockIdx * ctx.columns + i - startM)) - 1), 0};
@@ -411,7 +411,8 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventIDVToMTE3);
         // 确保拷贝过去的v向量是没有脏元素的
-        DataCopy(yGlobalImag[ctx.offsetY + padM * (ctx.blockIdx * ctx.columns + i)], householder_v[4096], ctx.aligned_M);
+        DataCopy(yGlobalImag[ctx.offsetY + padM * (ctx.blockIdx * ctx.columns + i)], householder_v[4096],
+                 ctx.aligned_M);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIDMTE3ToV);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIDMTE3ToV);
@@ -452,6 +453,7 @@ class HouseholderQR_VEC2 : public HouseholderQRCommon
 
     // H：对角写回 -alpha，并把本列块的 a 写回 GM
     __aicore__ inline void StorePanel(const PanelCtx& ctx, LocalTensor<float>& a, float* alpha, int offsetA);
+
    private:
     int panelYSize, panelTSize;
     const int chunkSize = 8192;

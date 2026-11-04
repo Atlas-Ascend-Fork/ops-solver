@@ -17,7 +17,7 @@
 #
 # This program is free software: you may redistribute it and/or modify it under
 # the terms of the GPL. It is distributed "as is", without warranty.
-# See COPYING (full GPL) and COMMERCIAL-LICENSE (commercial terms) at the repo root.
+# See COPYING-PACO (full GPL) and LICENSE-PACO (dual licensing notice) at the repo root.
 # Commercial licensing contact: yuantang@fudan.edu.cn
 #
 # -------------------------------------------------------------------------
@@ -32,12 +32,11 @@
 # 二者任选其一。默认条款以 GPL-3.0-or-later 为准。
 #
 # 本程序是自由软件，你可依 GPL 条款重新发布或修改；基于“原样”提供，无担保。
-# 详情见仓库根目录 COPYING（GPL 全文）与 COMMERCIAL-LICENSE（商业条款）。
+# 详情见仓库根目录 COPYING-PACO（GPL 全文）与 LICENSE-PACO（双重许可说明）。
 # 商业授权联系：yuantang@fudan.edu.cn
 import logging
 import sys
 import os
-import argparse
 
 import numpy as np
 
@@ -79,7 +78,11 @@ def generate_test_matrix(m, n, zero_ratio=0.0):
 
     # 计算QR分解（complex64）
     q_matrix, r_matrix = np.linalg.qr(input_matrix.astype(np.complex64))
-    return input_matrix.astype(np.complex64), q_matrix.astype(np.complex64), r_matrix.astype(np.complex64)
+    return (
+        input_matrix.astype(np.complex64),
+        q_matrix.astype(np.complex64),
+        r_matrix.astype(np.complex64),
+    )
 
 
 def main():
@@ -101,10 +104,16 @@ def main():
     print_matrix_corner(r_matrix, "R")
 
     # 保存数据到文件（强制列主序）
-    input_matrix.astype(np.complex64).ravel(order='F').tofile("./test/cgeqrf/data/input/A_gm.bin")
+    input_matrix.astype(np.complex64).ravel(order="F").tofile(
+        "./test/cgeqrf/data/input/A_gm.bin"
+    )
 
-    logging.info(f"\nGenerated test matrix with shape ({m}, {n}), zero_ratio = {zero_ratio:.2f}")
-    logging.info(f"Saved input matrix (column-major complex64) to ./test/cgeqrf/data/input/A_gm.bin")
+    logging.info(
+        f"\nGenerated test matrix with shape ({m}, {n}), zero_ratio = {zero_ratio:.2f}"
+    )
+    logging.info(
+        "Saved input matrix (column-major complex64) to ./test/cgeqrf/data/input/A_gm.bin"
+    )
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
  *
  * This program is free software: you may redistribute it and/or modify it under
  * the terms of the GPL. It is distributed "as is", without warranty.
- * See COPYING (full GPL) and COMMERCIAL-LICENSE (commercial terms) at the repo root.
+ * See COPYING-PACO (full GPL) and LICENSE-PACO (dual licensing notice) at the repo root.
  * Commercial licensing contact: yuantang@fudan.edu.cn
  *
  * -------------------------------------------------------------------------
@@ -30,7 +30,7 @@
  * 二者任选其一。默认条款以 GPL-3.0-or-later 为准。
  *
  * 本程序是自由软件，你可依 GPL 条款重新发布或修改；基于“原样”提供，无担保。
- * 详情见仓库根目录 COPYING（GPL 全文）与 COMMERCIAL-LICENSE（商业条款）。
+ * 详情见仓库根目录 COPYING-PACO（GPL 全文）与 LICENSE-PACO（双重许可说明）。
  * 商业授权联系：yuantang@fudan.edu.cn
  */
 /*!
@@ -309,9 +309,9 @@ class HouseholderQR_CUBE
         {
             return false;
         }
-        int ii = t % iCount;               // 0-based 快变轴 -> 相邻核拿到不同 i
-        i = ii + 1;                        // 还原到 [1, cntM) 区间
-        j = (t / iCount + ii) % cntN;      // 对角错峰 -> 相邻核同时拿到不同 j
+        int ii = t % iCount;           // 0-based 快变轴 -> 相邻核拿到不同 i
+        i = ii + 1;                    // 还原到 [1, cntM) 区间
+        j = (t / iCount + ii) % cntN;  // 对角错峰 -> 相邻核同时拿到不同 j
         return true;
     }
     // FutureWork 第二步：首行块之外的 A 块原子加进 W（相邻核错峰取块）
@@ -361,8 +361,8 @@ class HouseholderQR_CUBE
         {
             return false;
         }
-        i = t % cntM;                      // 快变轴 -> 相邻核拿到不同的 i
-        j = (t / cntM + i) % cntN;         // 对角错峰 -> 相邻核同时也拿到不同 j
+        i = t % cntM;               // 快变轴 -> 相邻核拿到不同的 i
+        j = (t / cntM + i) % cntN;  // 对角错峰 -> 相邻核同时也拿到不同 j
         return true;
     }
     // FutureWork 第四步：A -= W·Y（原子累加）
@@ -490,8 +490,7 @@ class HouseholderQR_CUBE
     __aicore__ inline void FinishPanels4(int offset, int len, int start, int update, int blockIdx)
     {
         if (len) FutureWork(start, update, len, blockIdx);
-        if (N > M)
-            OverflowTail(offset, blockIdx);
+        if (N > M) OverflowTail(offset, blockIdx);
     }
 
     // N > M 时多出来的列块（只用 CurrentWork / CurrentWork2，不带 T 递推）

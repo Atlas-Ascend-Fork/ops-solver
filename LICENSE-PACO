@@ -10,7 +10,7 @@ following two licenses, at your option:
   1. Community edition (free, GPLv3)
      You may use, modify, and redistribute this software freely under the
      GNU General Public License version 3, or (at your option) any later
-     version (GPL-3.0-or-later). The full GPLv3 text is in the COPYING file
+     version (GPL-3.0-or-later). The full GPLv3 text is in the COPYING-PACO file
      in this repository, or at:
      https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -19,8 +19,7 @@ following two licenses, at your option:
      (including integrating it into a proprietary product, redistributing it
      in closed source, or selling it), you must obtain a separate commercial
      license from the copyright holder, in addition to the GPLv3. Commercial
-     terms are in the COMMERCIAL-LICENSE file (template); specific conditions
-     require a written agreement between the parties.
+     terms require a written agreement between the parties.
 
 By default, every file distributed with the source code is provided under
 GPL-3.0-or-later, while also offering you the option to obtain a commercial
@@ -45,14 +44,13 @@ PACO GEQRF — 双重许可（Dual Licensing）说明
   1. 社区版（免费，GPLv3）
      任何人可依据 GNU 通用公共许可证第 3 版或（你选择的）任何更新版本
      （GPL-3.0-or-later）自由地使用、修改和再分发本软件。
-     完整 GPLv3 文本见本仓库的 COPYING 文件，或访问：
+     完整 GPLv3 文本见本仓库的 COPYING-PACO 文件，或访问：
      https://www.gnu.org/licenses/gpl-3.0.html
 
   2. 商业版（单独授权）
      如需将本软件用于闭源商业目的（包括集成进专有产品、以闭源形式再分发
      或销售），请在遵守 GPLv3 之外，与版权人联系获取一份单独的商业许可。
-     商业许可条款见本仓库的 COMMERCIAL-LICENSE 文件（模板），
-     具体条件需双方书面约定。
+     商业许可条款需双方书面约定。
 
 默认情况下，随源代码分发的每个文件以 GPL-3.0-or-later 提供，并同时向你
 提供获取商业许可的选项（详见各文件头部的版权声明）。
