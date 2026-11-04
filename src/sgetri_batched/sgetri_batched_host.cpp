@@ -96,6 +96,11 @@ aclsolverStatus_t aclsolverSgetriBatched(aclsolverHandle_t handle, int n, const 
     {
         return real_lu::Invalid(handle, infoArray, batchSize < 0 ? 1 : batchSize, arg);
     }
+    if (batchSize > real_lu::MAX_BATCH)
+    {
+        // batchSize 健全性上限，口径与 cmatinv_batched 一致（issue #329）
+        return real_lu::Invalid(handle, infoArray, batchSize, 8);
+    }
     if (batchSize == 0)
     {
         return ACLSOLVER_STATUS_SUCCESS;

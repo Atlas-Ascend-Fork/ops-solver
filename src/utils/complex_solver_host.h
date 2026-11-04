@@ -19,6 +19,9 @@ namespace ComplexSolver
 {
 constexpr int MAX_ORDER = 4096;
 constexpr int MAX_BATCH = 1000000;
+// cmatinv_batched 专用上限：n<=32 的小矩阵直接求逆，单批内存占用小，上限放宽到 10000000（与
+// cmatinv_batched.md 文档口径一致）；cgetri_batched 维持 MAX_BATCH（文档口径 1000000）。issue #329。
+constexpr int MAX_BATCH_MATINV = 10000000;
 
 inline aclsolverStatus_t Context(aclsolverHandle_t handle, aclrtStream& stream, uint32_t& blocks, const char* op)
 {

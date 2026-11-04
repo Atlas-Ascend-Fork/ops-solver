@@ -105,7 +105,7 @@
     <tr>
         <td align="center">batchSize</td>
         <td align="center">输入</td>
-        <td align="left">矩阵数量，Host int，batchSize≥0；实际容量受可用设备内存限制</td>
+        <td align="left">矩阵数量，Host int，batchSize≥0 且 ≤10000000，超过返回参数错误；实际容量仍受可用设备内存限制</td>
     </tr>
     </table>
 

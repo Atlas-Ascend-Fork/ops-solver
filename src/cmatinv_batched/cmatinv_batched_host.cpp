@@ -26,7 +26,7 @@ int InvalidShape(int n, int lda, int ldc, int batch)
     if (n < 0 || n > 32) return 1;
     if (lda < std::max(1, n)) return 3;
     if (ldc < std::max(1, n)) return 5;
-    if (batch < 0 || batch > 10000000) return 7;
+    if (batch < 0 || batch > ComplexSolver::MAX_BATCH_MATINV) return 7;
     return 0;
 }
 }  // namespace
@@ -40,7 +40,8 @@ aclsolverStatus_t aclsolverCmatinvBatched(aclsolverHandle_t handle, int n, const
     if (status != ACLSOLVER_STATUS_SUCCESS) return status;
     int bad = InvalidShape(n, lda, ldc, batchSize);
     if (bad != 0)
-        return ComplexSolver::Reject(OP_NAME, bad, info, ComplexSolver::ErrorInfoCount(batchSize, 10000000), stream,
+        return ComplexSolver::Reject(OP_NAME, bad, info,
+                                     ComplexSolver::ErrorInfoCount(batchSize, ComplexSolver::MAX_BATCH_MATINV), stream,
                                      blocks);
     if (batchSize == 0) return ACLSOLVER_STATUS_SUCCESS;
     status = ComplexSolver::DeviceSpan(info, static_cast<uint64_t>(batchSize) * sizeof(int), alignof(int), OP_NAME, 6);

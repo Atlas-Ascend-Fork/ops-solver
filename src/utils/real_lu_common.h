@@ -13,6 +13,10 @@
 
 namespace real_lu
 {
+// 批量接口 batchSize 的健全性上限，与 cmatinv_batched 的 10000000 口径一致（issue #329）；
+// 实际可达规模仍受设备内存约束，该上限仅拦截异常量级的调用。
+constexpr int MAX_BATCH = 10000000;
+
 inline int BatchedOutputArgument(int n, const void *c, int ldc, int *info, int batch, bool factor)
 {
     if (n > 0 && batch > 0 && !Device(c))
