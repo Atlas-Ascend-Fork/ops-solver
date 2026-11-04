@@ -63,7 +63,9 @@ static constexpr int64_t CHEEVJ_BLOCK_SIZE = 32;
 static constexpr int64_t CHEEVJ_TILE_M = 512;
 static constexpr int64_t CHEEVJ_WORKSPACE_PLANES_N = 6;
 static constexpr int64_t CHEEVJ_WORKSPACE_PLANES_V = 10;
-static constexpr int64_t CHEEVJ_MAX_SWEEPS = 32;
+// host 侧写入 tiling 的 sweep 预算（kernel/jacobi.hpp 另有本地迭代上限
+// CHEEVJ_LOCAL_ITERATION_MAX_SWEEPS=120，两者用途不同、独立取值，勿混用）。
+static constexpr int64_t CHEEVJ_HOST_TILING_SWEEPS = 32;
 static constexpr int64_t CHEEVJ_FIXED_N512 = 512;
 static constexpr int64_t CHEEVJ_FIXED_N1024 = 1024;
 static constexpr int64_t CHEEVJ_FIXED_N2048 = 2048;
@@ -1593,7 +1595,10 @@ bool HostFallbackFeasible(int64_t n, bool computeVectors, int32_t* info)
         static_cast<double>(n) * static_cast<double>(n) * bytesPerElem / (1024.0 * 1024.0 * 1024.0);
     if (requestedGiB > kMaxHostMatrixGiB)
     {
-        InvalidParam(info, -5, "host fallback matrix exceeds the supported host memory budget");
+        // 负值码分段：-2~-7 为参数类（-5 仅表示 a 为空）；-9 起为非参数类失败（-8 为 kernel 侧 workspace 未分配保留，见
+        // jacobi_large_impl_part1.inc）， 避免内存类失败被头文件"negative for an invalid argument"契约误导排障（issue
+        // #309）。
+        InvalidParam(info, -9, "host fallback matrix exceeds the supported host memory budget");
         return false;
     }
     return true;
@@ -1719,7 +1724,7 @@ CheevjTilingData BuildCheevjTilingData(int64_t n, int64_t deviceLda, int32_t job
     tilingData.blockSize = static_cast<uint32_t>(CHEEVJ_BLOCK_SIZE);
     tilingData.tileM = static_cast<uint32_t>(CHEEVJ_TILE_M);
     tilingData.workspacePlanes = static_cast<uint32_t>(config.workspacePlanes);
-    tilingData.maxSweeps = static_cast<uint32_t>(CHEEVJ_MAX_SWEEPS);
+    tilingData.maxSweeps = static_cast<uint32_t>(CHEEVJ_HOST_TILING_SWEEPS);
     return tilingData;
 }
 
@@ -1929,13 +1934,13 @@ aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, acls
     catch (const std::bad_alloc&)
     {
         std::cerr << "Cheevj host allocation failed for n=" << n << std::endl;
-        InvalidParam(info, -5, "host allocation failed");
-        return ACL_ERROR_INVALID_PARAM;
+        InvalidParam(info, -10, "host allocation failed");
+        return ACL_ERROR_INTERNAL_ERROR;
     }
     catch (const std::exception& e)
     {
         std::cerr << "Cheevj unexpected host failure: " << e.what() << std::endl;
-        InvalidParam(info, -6, "unexpected host failure");
+        InvalidParam(info, -11, "unexpected host failure");
         return ACL_ERROR_INTERNAL_ERROR;
     }
 }

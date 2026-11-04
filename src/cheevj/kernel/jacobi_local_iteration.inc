@@ -12,7 +12,7 @@
                                      LocalTensor<float> vImag, int n, bool computeVectors)
     {
         const float tolerance = CHEEVJ_REL_TOL * EstimateNorm(aReal, aImag, n);
-        for (int sweep = 0; sweep < CHEEVJ_MAX_SWEEPS; ++sweep)
+        for (int sweep = 0; sweep < CHEEVJ_LOCAL_ITERATION_MAX_SWEEPS; ++sweep)
         {
             float maxOffDiagonal = 0.0f;
             for (int p = 0; p < n - 1; ++p)

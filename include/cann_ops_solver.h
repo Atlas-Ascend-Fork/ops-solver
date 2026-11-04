@@ -929,8 +929,11 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
  *          with the eigenvectors stored by column.
  * @param lda Leading dimension of A; must be at least max(1, n).
  * @param W Output array of n real eigenvalues in ascending order.
- * @param info Output status: 0 on success, negative for an invalid argument, and
- *             positive for a numerical failure.
+ * @param info Output status: 0 on success; negative for an invalid argument (-2 jobz,
+ *             -3 uplo, -4 n, -5 A, -6 lda, -7 W); -9 host fallback exceeds the host
+ *             memory budget, -10 host allocation failed, -11 unexpected host failure
+ *             (-8 is reserved for the kernel-side "workspace not allocated" marker);
+ *             and positive for a numerical failure.
  * @return ACL_SUCCESS on a completed call, otherwise an ACL error code.
  */
 aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, aclsolverFillMode_t uplo, const int64_t n,

@@ -39,7 +39,9 @@ constexpr int CHEEVJ_DEVICE_MAX_N = 32;
 constexpr int CHEEVJ_MATRIX_ELEMS = CHEEVJ_DEVICE_MAX_N * CHEEVJ_DEVICE_MAX_N;
 constexpr int CHEEVJ_COMPLEX_FLOATS = CHEEVJ_MATRIX_ELEMS * 2;
 constexpr int CHEEVJ_W_FLOATS = CHEEVJ_DEVICE_MAX_N;
-constexpr int CHEEVJ_MAX_SWEEPS = 120;
+// RunJacobi 本地迭代循环的 sweep 上限（jacobi_local_iteration.inc）；与 host 经 tiling
+// 下发的 CHEEVJ_HOST_TILING_SWEEPS=32 相互独立、用途不同（issue #316，两处曾重名同值不同）。
+constexpr int CHEEVJ_LOCAL_ITERATION_MAX_SWEEPS = 120;
 constexpr int CHEEVJ_LARGE_SCRATCH_PLANES_N = 3;
 constexpr int CHEEVJ_LARGE_SCRATCH_PLANES_V = 5;
 constexpr int CHEEVJ_LARGE_NAIVE_MAX_N = 32;
