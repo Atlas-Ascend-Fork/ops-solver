@@ -65,7 +65,7 @@ function(pack _soc_version)
   message(STATUS "CMAKE_SOURCE_DIR = ${CMAKE_SOURCE_DIR}")
   message(STATUS "CMAKE_BINARY_DIR = ${CMAKE_BINARY_DIR}")
   # ============= CPack =============
-  # arc 通过 uname -m 获取
+  # arch 通过 uname -m 获取
   execute_process(COMMAND uname -m OUTPUT_VARIABLE PACK_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE)
   # SOC_VERSION -> CPACK_CHIP_SHORT 映射（参考 ops-nn remove_ascend）
   string(TOLOWER "${_soc_version}" _soc_lower)

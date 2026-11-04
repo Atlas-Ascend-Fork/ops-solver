@@ -187,7 +187,7 @@ endforeach()
 # ========= 可选依赖：CATLASS（arch35 下 QR 系列算子的 GEMM 层）=========
 # CATLASS 不随 CANN 发布，也不在本仓内，需显式提供仓根目录：
 #   cmake ... -DCATLASS_HOME=/path/to/catlass
-# 不提供时本仓其余算子照常构建；QR 系列（sgeqrf/sorgqr/sormqr/xlarft/ssgels）
+# 不提供时本仓其余算子照常构建；QR 系列（sgeqrf/sorgqr/sormqr/xlarft/sgels）
 # 需要它，缺失时在这里直接报错，不要留到编译阶段才暴露成一堆找不到头文件。
 set(CATLASS_HOME "" CACHE STRING "CATLASS repository root, required by arch35 QR kernels")
 # 也接受环境变量，这样仓里自带的 build.sh（它不转发额外的 cmake 选项）可以直接用：
