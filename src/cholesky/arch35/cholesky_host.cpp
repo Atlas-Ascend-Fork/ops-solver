@@ -19,8 +19,19 @@
 
 namespace Cholesky
 {
-unsigned CubeCores() { return platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic(); }
-unsigned VectorCores() { return platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAiv(); }
+// Return 0 when the platform manager is not initialized; callers reject the call
+// through their existing numBlocks <= 0 paths. Same defensive style as
+// cholesky_kernels.cpp and complex_qr_platform.cpp (issue #324).
+unsigned CubeCores()
+{
+    auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
+    return platform ? platform->GetCoreNumAic() : 0;
+}
+unsigned VectorCores()
+{
+    auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
+    return platform ? platform->GetCoreNumAiv() : 0;
+}
 namespace
 {
 using Handle = _aclsolver_handle;
@@ -67,8 +78,21 @@ struct Buffer
     aclrtStream stream = nullptr;
     ~Buffer()
     {
-        if (quarantined && aclrtSynchronizeStream(stream) != ACL_SUCCESS) return;
-        if (recorded && aclrtSynchronizeEvent(event) != ACL_SUCCESS) return;
+        // The block is released only after completion of its pending work is
+        // proven: freeing in-flight memory would corrupt the device. Quarantined
+        // blocks (whose event was never recorded) rely on stream sync; recorded
+        // blocks check event sync first and fall back to stream sync. When
+        // neither sync succeeds the runtime is in an error state and the block
+        // is intentionally left behind - a bounded leak is safer than a UAF
+        // (issue #325).
+        if (quarantined && aclrtSynchronizeStream(stream) != ACL_SUCCESS)
+        {
+            return;
+        }
+        if (recorded && aclrtSynchronizeEvent(event) != ACL_SUCCESS && aclrtSynchronizeStream(stream) != ACL_SUCCESS)
+        {
+            return;
+        }
         if (event) aclrtDestroyEvent(event);
         if (allocation) aclrtFree(allocation);
     }
@@ -181,8 +205,7 @@ void Factor(MatrixBatch a, float *w, int *info, aclrtStream stream)
         Panel(w, pitch, a.n, k, a.count, info, stream);
         if (k + width == a.n) break;
         PanelSolve(w, pitch, a.n, k, a.count, info, stream);
-        Gram(w, product, pitch, a.n, k, width, a.count, info,
-             platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic(), stream);
+        Gram(w, product, pitch, a.n, k, width, a.count, info, CubeCores(), stream);
         Update(w, product, pitch, a.n, k + width, a.count, info, stream);
     }
     Unpack(a, w, pitch, info, stream);
