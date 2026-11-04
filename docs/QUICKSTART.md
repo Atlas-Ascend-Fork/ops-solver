@@ -106,7 +106,7 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 | --- | --- | --- | --- |
 | 107001 | ACL_ERROR_RT_INVALID_DEVICEID | 设备号无效 | 见下方"设备检查清单"，通常是设备不可见或设备号不存在 |
 | 107000 | ACL_ERROR_RT_PARAM_INVALID | 运行时参数无效 | 检查 API 入参 |
-| 100000 | ACL_ERROR_INVALID_PARAM | 接口参数非法 | 对照算子文档的"约束"（如 getri 族要求 n ≤ 8192） |
+| 100000 | ACL_ERROR_INVALID_PARAM | 接口参数非法 | 对照算子文档的"约束"（如 getri 族要求 0 ≤ n ≤ 4096，getrs 族要求 n、nrhs ∈ [1, 8192]） |
 | 507015 | ACL_ERROR_RT_AICORE_EXCEPTION | AI Core 执行异常（kernel 越界等） | 打开 plog 查看设备侧根因；确认输入满足算子约束 |
 | 507057 | ACL_ERROR_RT_SUSPECT_REMOTE_ERROR | 疑似远端错误（通常是其他根因的伴随错误） | 在 plog 中找**最早出现**的根因错误（常见伴随 507015） |
 
