@@ -41,7 +41,8 @@ struct EngineParams
     GM_ADDR tau;  // k 个
     GM_ADDR C;    // m x n（列主序，ldc），原地更新
     GM_ADDR wsY;  // 物化的 V 块：ldy x nb
-    GM_ADDR wsT;  // nb x nb（列主序 ldt = nb），存 -T
+    GM_ADDR wsT;  // nb x nb，存 -T；T 按行分核回写为行主序（ldt = nb，见文件头说明），
+                  // PlanLarfb* 的视图标志按"T 为列主序"定义，故传入 plan 的 trans 需取反
     GM_ADDR wsG;  // nb x nb（行主序）
     GM_ADDR wsW;  // nb x max(m,n)
     GM_ADDR wsW2;
