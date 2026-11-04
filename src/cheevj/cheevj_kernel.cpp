@@ -20,7 +20,6 @@
 #include "kernel/cheevj_her2k.hpp"
 #include "kernel/cheevj_householder_fixed.hpp"
 #include "kernel/cheevj_jobzv_assembly.hpp"
-#include "kernel/cheevj_tridiag_vectors.hpp"
 #include "kernel_operator.h"
 
 #define CHEEVJ_ENABLE_MIXED_AIV_WORKER_COUNT
@@ -326,64 +325,6 @@ __global__ __aicore__ void cheevj_fixed_apply_update_kernel(GM_ADDR packedReal, 
 #endif
 }
 
-__global__ __aicore__ void cheevj_fixed_tridiag_reset_kernel(GM_ADDR commandWorkspace, GM_ADDR barrierWorkspace, int n)
-{
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
-    AscendC::TPipe pipe;
-    if (n == kN512)
-    {
-        Cheevj::CheevjTridiag512VectorsReset reset;
-        reset.Init(&pipe, commandWorkspace, barrierWorkspace);
-        reset.Process();
-    }
-    else if (n == kN1024)
-    {
-        Cheevj::CheevjTridiag1024VectorsReset reset;
-        reset.Init(&pipe, commandWorkspace, barrierWorkspace);
-        reset.Process();
-    }
-    else if (n == kN2048)
-    {
-        Cheevj::CheevjTridiag2048VectorsReset reset;
-        reset.Init(&pipe, commandWorkspace, barrierWorkspace);
-        reset.Process();
-    }
-    pipe.Destroy();
-#endif
-}
-
-__global__ __aicore__ void cheevj_fixed_tridiag_vectors_kernel(GM_ADDR diagonal, GM_ADDR offDiagonal,
-                                                               GM_ADDR eigenvalues, GM_ADDR eigenvectors, GM_ADDR info,
-                                                               GM_ADDR commandWorkspace, GM_ADDR barrierWorkspace,
-                                                               int rowWave, int n)
-{
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-#ifdef __DAV_C220_VEC__
-    AscendC::TPipe pipe;
-    if (n == kN512)
-    {
-        Cheevj::CheevjTridiag512Vectors solver;
-        solver.Init(&pipe, diagonal, offDiagonal, eigenvalues, eigenvectors, info, commandWorkspace, barrierWorkspace);
-        solver.Process();
-    }
-    else if (n == kN1024)
-    {
-        Cheevj::CheevjTridiag1024Vectors solver;
-        solver.Init(&pipe, diagonal, offDiagonal, eigenvalues, eigenvectors, info, commandWorkspace, barrierWorkspace);
-        solver.Process();
-    }
-    else if (n == kN2048)
-    {
-        Cheevj::CheevjTridiag2048Vectors solver;
-        solver.Init(&pipe, diagonal, offDiagonal, eigenvalues, eigenvectors, info, commandWorkspace, barrierWorkspace,
-                    rowWave);
-        solver.Process();
-    }
-    pipe.Destroy();
-#endif
-}
-
 void cheevj_fixed_kernel_do(GM_ADDR matrixReal, GM_ADDR matrixImag, GM_ADDR packedReal, GM_ADDR packedImag,
                             GM_ADDR panelVReal, GM_ADDR panelVImag, GM_ADDR panelWReal, GM_ADDR panelWImag,
                             GM_ADDR wHReal, GM_ADDR wHImag, GM_ADDR wHImagNeg, GM_ADDR updateReal, GM_ADDR updateImag,
@@ -423,13 +364,12 @@ void cheevj_fixed_kernel_do(GM_ADDR matrixReal, GM_ADDR matrixImag, GM_ADDR pack
     }
 
     cheevj_fixed_finalize_do(diagonal, offDiagonal, tauReal, tauImag, matrixReal, matrixImag, bounds, info, n, stream);
-    if (!computeVectors)
-    {
-        cheevj_fixed_sturm_do(diagonal, offDiagonal, bounds, eigenvalues, lowWorkspace, highWorkspace, n, stream);
-        return;
-    }
-
+    // sturm 求值与 computeVectors 无关，两分支统一调用一次（issue #315），
+    // vectors 步骤仅在需要特征向量时执行。
     cheevj_fixed_sturm_do(diagonal, offDiagonal, bounds, eigenvalues, lowWorkspace, highWorkspace, n, stream);
-    cheevj_fixed_vectors_do(diagonal, offDiagonal, eigenvalues, tridiagonalEigenvectorsRowMajor, reflectorReal,
-                            reflectorImag, tauReal, tauImag, eigenvectorReal, eigenvectorImag, info, n, stream);
+    if (computeVectors)
+    {
+        cheevj_fixed_vectors_do(diagonal, offDiagonal, eigenvalues, tridiagonalEigenvectorsRowMajor, reflectorReal,
+                                reflectorImag, tauReal, tauImag, eigenvectorReal, eigenvectorImag, info, n, stream);
+    }
 }
