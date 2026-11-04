@@ -25,7 +25,7 @@
                 <!--filteritem type="filepath" name="abcdefg/.*.uvwxyz" desc="Describe the reason for filtering scan results"/-->
                 <!--filteritem type="filepath" name="projectroot/[a-zA-Z0-9]{20,}.sh" desc="Temp files"/-->
             </filefilter>
-            <filefilter name="defaultPolicyFilter" desc="Filters for compatibility，license header policies">
+            <filefilter name="defaultPolicyFilter" desc="Filters for compatibility, license header policies">
                 <filteritem type="filepath" name="tests/third_party/complex_qr/solver_adapter.h" desc="Unmodified official community task protocol header; provenance in adjacent README.md"/>
                 <filteritem type="filename" name="OAT.xml" desc="Describe commit owner"/>
                 <filteritem type="filename" name=".gitmodules" desc="git submodule "/>
@@ -39,7 +39,7 @@
                 <filteritem type="filepath" name="src/cgeqrf/.*" desc="PACO derived cgeqrf keeps its GPL-3.0-or-later dual license header"/>
                 <filteritem type="filepath" name="test/cgeqrf/.*" desc="PACO derived cgeqrf tests keep the GPL-3.0-or-later dual license header"/>
                 <filteritem type="filename" name="COPYING-PACO" desc="PACO GPL-3.0 full text kept at repo root"/>
-                <filteritem type="filename" name="LICENSE-PACO" desc="PACO GPL-2.0 dual license text kept at repo root"/>
+                <filteritem type="filename" name="LICENSE-PACO" desc="PACO GPL-3.0 dual license text kept at repo root"/>
             </filefilter>
             <filefilter name="copyrightPolicyFilter" desc="Filters for copyright header policies">
                 <filteritem type="filepath" name="tests/third_party/complex_qr/solver_adapter.h" desc="Unmodified official community task protocol header; do not invent a project copyright header"/>
@@ -54,7 +54,7 @@
                 <filteritem type="filepath" name="src/cgeqrf/.*" desc="PACO derived cgeqrf keeps the original author copyright"/>
                 <filteritem type="filepath" name="test/cgeqrf/.*" desc="PACO derived cgeqrf tests keep the original author copyright"/>
                 <filteritem type="filename" name="COPYING-PACO" desc="PACO GPL-3.0 full text kept at repo root"/>
-                <filteritem type="filename" name="LICENSE-PACO" desc="PACO GPL-2.0 dual license text kept at repo root"/>
+                <filteritem type="filename" name="LICENSE-PACO" desc="PACO GPL-3.0 dual license text kept at repo root"/>
                 <!--filteritem type="filename" name="*.uvwxyz" desc="Describe the reason for filtering scan results"/-->
                 <!--filteritem type="filepath" name="abcdefg/.*.uvwxyz" desc="Describe the reason for filtering scan results"/-->
                 <!--filteritem type="filepath" name="projectroot/[a-zA-Z0-9]{20,}.sh" desc="Temp files"/-->
