@@ -413,8 +413,8 @@ extern "C"
      * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE,
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
      */
-    aclsolverStatus_t aclsolverSpotrf_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A,
-                                                 int lda, int *Lwork);
+    aclsolverStatus_t aclsolverSpotrf_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float* A,
+                                                 int lda, int* Lwork);
 
     /**
      * @brief Factor a real symmetric positive definite matrix into L or U in place.
@@ -431,8 +431,8 @@ extern "C"
      *         ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_EXECUTION_FAILED,
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
      */
-    aclsolverStatus_t aclsolverSpotrf(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A, int lda,
-                                      float *Workspace, int Lwork, int *devInfo);
+    aclsolverStatus_t aclsolverSpotrf(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float* A, int lda,
+                                      float* Workspace, int Lwork, int* devInfo);
 
     /**
      * @brief Solve A*X=B using an existing real Cholesky factor; overwrite B with X.
@@ -451,7 +451,7 @@ extern "C"
      *         or ACLSOLVER_STATUS_ARCH_MISMATCH. Internal scratch is retained until handle destruction.
      */
     aclsolverStatus_t aclsolverSpotrs(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
-                                      const float *A, int lda, float *B, int ldb, int *devInfo);
+                                      const float* A, int lda, float* B, int ldb, int* devInfo);
 
     /**
      * @brief Query workspace for the inverse from a real Cholesky factor, without device work.
@@ -464,8 +464,8 @@ extern "C"
      * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE,
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
      */
-    aclsolverStatus_t aclsolverSpotri_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A,
-                                                 int lda, int *Lwork);
+    aclsolverStatus_t aclsolverSpotri_bufferSize(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float* A,
+                                                 int lda, int* Lwork);
 
     /**
      * @brief Form the selected triangle of the inverse from a real Cholesky factor in place.
@@ -484,8 +484,8 @@ extern "C"
      *         ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_EXECUTION_FAILED,
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
      */
-    aclsolverStatus_t aclsolverSpotri(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *A, int lda,
-                                      float *Workspace, int Lwork, int *devInfo);
+    aclsolverStatus_t aclsolverSpotri(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float* A, int lda,
+                                      float* Workspace, int Lwork, int* devInfo);
 
     /**
      * @brief Factor a batch of real symmetric positive definite matrices in place using device pointer arrays.
@@ -504,8 +504,8 @@ extern "C"
      *         ACLSOLVER_STATUS_EXECUTION_FAILED, ACLSOLVER_STATUS_HANDLE_IS_NULLPTR,
      *         or ACLSOLVER_STATUS_ARCH_MISMATCH. Internal scratch is retained until handle destruction.
      */
-    aclsolverStatus_t aclsolverSpotrfBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float *Aarray[],
-                                             int lda, int *infoArray, int batchSize);
+    aclsolverStatus_t aclsolverSpotrfBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, float* Aarray[],
+                                             int lda, int* infoArray, int batchSize);
 
     /**
      * @brief Solve a batch of real systems from Cholesky factors; overwrite each right-hand side with its solution.
@@ -526,7 +526,7 @@ extern "C"
      *         ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, or ACLSOLVER_STATUS_ARCH_MISMATCH.
      */
     aclsolverStatus_t aclsolverSpotrsBatched(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
-                                             float *Aarray[], int lda, float *Barray[], int ldb, int *info,
+                                             float* Aarray[], int lda, float* Barray[], int ldb, int* info,
                                              int batchSize);
 
     /**
@@ -546,7 +546,7 @@ extern "C"
      * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
      *         invalid argument.
      */
-    aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, int n, float *A, int lda, int *Lwork);
+    aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, int n, float* A, int lda, int* Lwork);
 
     /**
      * @brief QR factorization of a general single-precision real matrix, A = Q * R.
@@ -578,8 +578,8 @@ extern "C"
      *                invalid (the handle is not counted).
      * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
      */
-    aclsolverStatus_t aclsolverSgeqrf(aclsolverHandle_t handle, int m, int n, float *A, int lda, float *TAU,
-                                      float *Workspace, int Lwork, int *devInfo);
+    aclsolverStatus_t aclsolverSgeqrf(aclsolverHandle_t handle, int m, int n, float* A, int lda, float* TAU,
+                                      float* Workspace, int Lwork, int* devInfo);
 
     /**
      * @brief Query the workspace size, in elements, required by aclsolverSorgqr.
@@ -599,8 +599,8 @@ extern "C"
      * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
      *         invalid argument.
      */
-    aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, int n, int k, const float *A, int lda,
-                                                 const float *tau, int *lwork);
+    aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, int n, int k, const float* A, int lda,
+                                                 const float* tau, int* lwork);
 
     /**
      * @brief Generate the first n columns of the orthogonal factor Q = H(1) H(2) ... H(k).
@@ -625,8 +625,8 @@ extern "C"
      *                invalid (the handle is not counted).
      * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
      */
-    aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k, float *A, int lda, const float *tau,
-                                      float *work, int lwork, int *devInfo);
+    aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k, float* A, int lda,
+                                      const float* tau, float* work, int lwork, int* devInfo);
 
     /**
      * @brief Query the workspace size, in elements, required by aclsolverSormqr.
@@ -655,8 +655,8 @@ extern "C"
      *         invalid argument.
      */
     aclsolverStatus_t aclsolverSormqr_bufferSize(aclsolverHandle_t handle, aclsolverSideMode_t side,
-                                                 aclsolverOperation_t trans, int m, int n, int k, const float *A, int lda,
-                                                 const float *tau, const float *C, int ldc, int *lwork);
+                                                 aclsolverOperation_t trans, int m, int n, int k, const float* A,
+                                                 int lda, const float* tau, const float* C, int ldc, int* lwork);
 
     /**
      * @brief Multiply C by the orthogonal factor Q = H(1) H(2) ... H(k) of a QR factorization.
@@ -688,8 +688,8 @@ extern "C"
      * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
      */
     aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans,
-                                      int m, int n, int k, const float *A, int lda, const float *tau, float *C, int ldc,
-                                      float *work, int lwork, int *devInfo);
+                                      int m, int n, int k, const float* A, int lda, const float* tau, float* C, int ldc,
+                                      float* work, int lwork, int* devInfo);
 
     /**
      * @brief Query the workspace sizes, in bytes, required by aclsolverXlarft.
@@ -721,11 +721,11 @@ extern "C"
      */
     aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolverParams_t params,
                                                  aclsolverDirectMode_t direct, aclsolverStorevMode_t storev, int64_t n,
-                                                 int64_t k, aclsolverDataType_t dataTypeV, const void *V, int64_t ldv,
-                                                 aclsolverDataType_t dataTypeTau, const void *tau,
-                                                 aclsolverDataType_t dataTypeT, void *T, int64_t ldt,
-                                                 aclsolverDataType_t computeType, size_t *workspaceInBytesOnDevice,
-                                                 size_t *workspaceInBytesOnHost);
+                                                 int64_t k, aclsolverDataType_t dataTypeV, const void* V, int64_t ldv,
+                                                 aclsolverDataType_t dataTypeTau, const void* tau,
+                                                 aclsolverDataType_t dataTypeT, void* T, int64_t ldt,
+                                                 aclsolverDataType_t computeType, size_t* workspaceInBytesOnDevice,
+                                                 size_t* workspaceInBytesOnHost);
 
     /**
      * @brief Form the triangular factor T of a block reflector built from k elementary reflectors.
@@ -763,10 +763,10 @@ extern "C"
      */
     aclsolverStatus_t aclsolverXlarft(aclsolverHandle_t handle, aclsolverParams_t params, aclsolverDirectMode_t direct,
                                       aclsolverStorevMode_t storev, int64_t n, int64_t k, aclsolverDataType_t dataTypeV,
-                                      const void *V, int64_t ldv, aclsolverDataType_t dataTypeTau, const void *tau,
-                                      aclsolverDataType_t dataTypeT, void *T, int64_t ldt,
-                                      aclsolverDataType_t computeType, void *bufferOnDevice,
-                                      size_t workspaceInBytesOnDevice, void *bufferOnHost,
+                                      const void* V, int64_t ldv, aclsolverDataType_t dataTypeTau, const void* tau,
+                                      aclsolverDataType_t dataTypeT, void* T, int64_t ldt,
+                                      aclsolverDataType_t computeType, void* bufferOnDevice,
+                                      size_t workspaceInBytesOnDevice, void* bufferOnHost,
                                       size_t workspaceInBytesOnHost);
 
     /**
@@ -790,9 +790,9 @@ extern "C"
      * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an
      *         invalid argument.
      */
-    aclsolverStatus_t aclsolverSSgels_bufferSize(aclsolverHandle_t handle, int m, int n, int nrhs, float *dA, int ldda,
-                                                 float *dB, int lddb, float *dX, int lddx, void *dwork,
-                                                 size_t *lwork_bytes);
+    aclsolverStatus_t aclsolverSSgels_bufferSize(aclsolverHandle_t handle, int m, int n, int nrhs, float* dA, int ldda,
+                                                 float* dB, int lddb, float* dX, int lddx, void* dwork,
+                                                 size_t* lwork_bytes);
 
     /**
      * @brief Solve the least squares problem min ||A X - B|| for an m-by-n matrix with m >= n.
@@ -832,9 +832,9 @@ extern "C"
      *              (the handle is not counted).
      * @return ACLSOLVER_STATUS_SUCCESS when the work is submitted, otherwise a status code.
      */
-    aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nrhs, float *dA, int ldda, float *dB,
-                                      int lddb, float *dX, int lddx, void *dWorkspace, size_t lwork_bytes, int *niter,
-                                      int *dinfo);
+    aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nrhs, float* dA, int ldda, float* dB,
+                                      int lddb, float* dX, int lddx, void* dWorkspace, size_t lwork_bytes, int* niter,
+                                      int* dinfo);
 
 #ifdef __cplusplus
 }
@@ -934,12 +934,23 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
 aclError aclsolverCheevj(aclsolverHandle_t handle, aclsolverEigMode_t jobz, aclsolverFillMode_t uplo, const int64_t n,
                          std::complex<float>* A, const int64_t lda, float* W, int32_t* info);
 
-aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs, float* A,
-                         const int64_t lda, int32_t* ipiv, float* B, const int64_t ldb, int32_t* info);
+/* aclsolverSgetrs / aclsolverCgetrs 参数均为 C 兼容类型，按 C ABI 导出（issue #301：
+ * 此前声明位于 extern "C" 块之外，C 消费者链接时得到 C++ mangled 符号导致 undefined reference） */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
-aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
-                         std::complex<float>* A, const int64_t lda, int32_t* ipiv, std::complex<float>* B,
-                         const int64_t ldb, int32_t* info);
+    aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
+                             float* A, const int64_t lda, int32_t* ipiv, float* B, const int64_t ldb, int32_t* info);
+
+    aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
+                             std::complex<float>* A, const int64_t lda, int32_t* ipiv, std::complex<float>* B,
+                             const int64_t ldb, int32_t* info);
+
+#ifdef __cplusplus
+}
+#endif
 
 /**
  * @brief Cholesky factorization of a single complex Hermitian positive-definite matrix (A = L * L^H or U^H * U)

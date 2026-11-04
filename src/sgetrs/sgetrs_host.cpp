@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "../utils/assert.h"
+#include "../utils/pivot_check.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "sgetrs_launchers.hpp"
@@ -130,6 +131,12 @@ aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
                   ACL_ERROR_INVALID_PARAM);
 
     SOLVER_ECHECK(trans <= 1, "aclsolverSgetrs invalid param: trans must be 0 or 1.", ACL_ERROR_INVALID_PARAM);
+
+    // ipiv 内容校验对齐 getri 链路防御口径（issue #299），实现见 utils/pivot_check.h
+    if (!ValidatePivots(ipiv, n, info, "aclsolverSgetrs"))
+    {
+        return ACL_ERROR_INVALID_PARAM;
+    }
 
     aclrtStream stream = nullptr;
     if (handle != nullptr)
