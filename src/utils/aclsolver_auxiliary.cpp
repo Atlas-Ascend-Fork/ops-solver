@@ -174,7 +174,8 @@ extern "C"
         // Prevent repeated creation that would overwrite an existing pointer and cause memory leak.
         if (*handle != nullptr)
         {
-            return Cholesky::ReportError(ACLSOLVER_STATUS_INVALID_VALUE, "invalid solver handle or stream output");
+            return Cholesky::ReportError(ACLSOLVER_STATUS_INVALID_VALUE,
+                                         "handle already initialized (*handle is not nullptr)");
         }
 
         // Handle creation requires an initialized CANN context, as in the upstream lifecycle contract.
