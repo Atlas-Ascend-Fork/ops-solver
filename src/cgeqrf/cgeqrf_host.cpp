@@ -108,7 +108,10 @@ aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_
     SOLVER_ECHECK(m <= INT32_MAX && n <= INT32_MAX, "aclsolverCgeqrf invalid param: m or n exceeds int32 range.",
                   ACL_ERROR_INVALID_PARAM);
     aclrtStream stream = nullptr;
-    aclsolverGetStream(handle, &stream);
+    // GetStream 失败被吞时 stream 落 nullptr，随后被误报为 invalid param 而非透传底层错误码；
+    // 这里校验返回值并透传，对齐 getrs/spotrf 家族的修复口径（issue #311/#326，本修复见 #345）。
+    const aclError streamRet = aclsolverGetStream(handle, &stream);
+    SOLVER_ECHECK(streamRet == ACL_SUCCESS, "aclsolverCgeqrf failed to get stream from handle.", streamRet);
     SOLVER_ECHECK(stream != nullptr, "aclsolverCgeqrf invalid param: handle has no bound stream.",
                   ACL_ERROR_INVALID_PARAM);
     uint32_t numBlocks = GetAiCoreNumOrZero();
