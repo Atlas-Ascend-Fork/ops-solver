@@ -22,51 +22,74 @@
 #include <vector>
 
 #include "../utils/assert.h"
+#include "../utils/getrs_defs.h"
 #include "../utils/pivot_check.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "cgetrs_launchers.hpp"
 #include "tiling/platform/platform_ascendc.h"
 
-#define BLOCK_N 16                // base case N大小
-#define BLOCK_M 16                // base case M大小
-#define CACHE_LINE_SIZE_FP32 128  // 128 floats per cache line
-#define ADDITIONAL_PAD_SIZE 4096  // 当一行数据为4096的整数倍时，额外 pad 1个 cache line，提高访存效率
-#define TILE_LENGTH 4096          // 实虚结合时tile大小
+#define BLOCK_M 16           // base case M大小
+#define GATHER_SEG_LEN 4096  // gather 段宽（区别于 kernel 侧 laswp.hpp 的 TILE_LENGTH=8192，issue #328）
 
 #define GM_ADDR uint8_t *
 
 bool GenerateTiling(uint8_t *gatherBuf)
 {
-    try
+    auto buf = reinterpret_cast<uint32_t *>(gatherBuf);
+    int idx = 0;
+    for (int i = 0; i < GATHER_SEG_LEN; ++i)
     {
-        auto buf = reinterpret_cast<uint32_t *>(gatherBuf);
-        int idx = 0;
-        for (int i = 0; i < TILE_LENGTH; ++i)
-        {
-            buf[idx++] = i * sizeof(float);
-            buf[idx++] = (i + TILE_LENGTH) * sizeof(float);
-        }
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << e.what() << std::endl;
-        return false;
+        buf[idx++] = i * sizeof(float);
+        buf[idx++] = (i + GATHER_SEG_LEN) * sizeof(float);
     }
     return true;
 }
 
-aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
-                         std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B,
-                         const int64_t ldb, int32_t *info)
+namespace
 {
-    // n > 8192 会使 SplitRealImag 的 alignedN > TILE_LENGTH，CopyIn 第二段超过 UB buffer（issue #266 检视），
-    // 与 aclsolverSgetrf 的文档口径（valid range [1, 8192]）保持一致。
-    // nrhs 无上界时 int64 → int 静默截断可致按错值分配与寻址，与 aclsolverSgetrs 的 nrhs 契约保持一致（issue #277）。
-    // kernel 以 uint16_t 字节计数承载 DataCopyExtParams 行间隙，复数实/虚交织布局每元素占 8 字节：
-    // SplitRealImag::CopyIn 行间隙为 (lda - n) * 8 / (ldb - nrhs) * 8 字节，须 <= 65535，即元素差 <= 8191；
-    // trans == 0 时 restore 的 MergeRealImag::CopyOut 在 nrhs > 4096 的第二段行间隙为
-    // (ldb - nrhs + 4096) * 8 字节，故 nrhs > 4096 时需进一步限制 ldb - nrhs <= 4095（issue #266 检视）。
+// sgetrs 全部 host/device 缓冲；未申请的指针为空，ReleaseCgetrsBuffers 可安全调用
+struct CgetrsBuffers
+{
+    uint8_t *aMatrixHost = nullptr;
+    uint8_t *aMatrixDevice = nullptr;
+    uint8_t *aMatrixDeviceWork = nullptr;
+    uint8_t *wHost = nullptr;
+    uint8_t *wDevice = nullptr;
+    uint8_t *pDevice = nullptr;
+    uint8_t *bMatrixHost = nullptr;
+    uint8_t *bMatrixDevice = nullptr;
+    uint8_t *bMatrixDeviceWork = nullptr;
+    uint8_t *gatherHost = nullptr;
+    uint8_t *gatherDevice = nullptr;
+};
+
+// 释放所有已申请的 HBM / host 内存；未申请的指针为空，可安全跳过
+void ReleaseCgetrsBuffers(CgetrsBuffers &buf)
+{
+    if (buf.aMatrixDevice) aclrtFree(buf.aMatrixDevice);
+    if (buf.aMatrixDeviceWork) aclrtFree(buf.aMatrixDeviceWork);
+    if (buf.wDevice) aclrtFree(buf.wDevice);
+    if (buf.pDevice) aclrtFree(buf.pDevice);
+    if (buf.bMatrixDevice) aclrtFree(buf.bMatrixDevice);
+    if (buf.bMatrixDeviceWork) aclrtFree(buf.bMatrixDeviceWork);
+    if (buf.gatherDevice) aclrtFree(buf.gatherDevice);
+    if (buf.gatherHost) aclrtFreeHost(buf.gatherHost);
+}
+
+// 行宽向上取整到 cache line，2 的整数次幂达到阈值时再 pad 一个 cache line，提高访存效率
+int CalcPadStride(int x)
+{
+    int stride = (x + CACHE_LINE_SIZE_FP32 - 1) / CACHE_LINE_SIZE_FP32 * CACHE_LINE_SIZE_FP32;
+    if ((stride & -stride) >= ADDITIONAL_PAD_SIZE) stride += CACHE_LINE_SIZE_FP32;
+    return stride;
+}
+
+// 入参契约校验（口径注释见 aclsolverCgetrs 函数头），失败返回对应错误码
+aclError CheckCgetrsArgs(const uint64_t trans, const int64_t n, const int64_t nrhs, const int64_t lda,
+                         const int64_t ldb, std::complex<float> *A, std::complex<float> *B, int32_t *ipiv,
+                         int32_t *info)
+{
     SOLVER_ECHECK(n > 0 && n <= 8192 && nrhs > 0 && nrhs <= 8192 && lda >= n && ldb >= nrhs && A != nullptr &&
                       B != nullptr && ipiv != nullptr && info != nullptr && lda - n <= 8191 && ldb - nrhs <= 8191 &&
                       (nrhs <= 4096 || ldb - nrhs <= 4095),
@@ -74,13 +97,67 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
                   "ldb < nrhs, lda - n > 8191, ldb - nrhs > 8191 (or > 4095 when nrhs > 4096), "
                   "or A, B, ipiv, info is nullptr.",
                   ACL_ERROR_INVALID_PARAM);
-
     SOLVER_ECHECK(trans <= 2, "aclsolverCgetrs invalid param: trans must be 0, 1 or 2.", ACL_ERROR_INVALID_PARAM);
-
     // ipiv 内容校验对齐 getri 链路防御口径（issue #299），实现见 utils/pivot_check.h
     if (!ValidatePivots(ipiv, n, info, "aclsolverCgetrs"))
     {
         return ACL_ERROR_INVALID_PARAM;
+    }
+    return ACL_SUCCESS;
+}
+
+// 申请并上传 A/ipiv/B 与工作区缓冲（含 gather 表设备缓冲），失败时释放已申请部分
+aclError AllocAndUploadCgetrs(CgetrsBuffers &buf, int N, int NRHS, int lda, int ldb, int resizedN, int strideN,
+                              int strideNRHS)
+{
+    size_t aMatrixFileSize = N * lda * sizeof(float) * 2;
+    size_t bMatrixFileSize = N * ldb * sizeof(float) * 2;
+    size_t wFileSize = N * sizeof(int);
+    size_t resizedAMatrixFileSize = resizedN * strideN * sizeof(float) * 2;
+    size_t resizedBMatrixFileSize = resizedN * strideNRHS * sizeof(float) * 3;
+    size_t gatherSize = GATHER_SEG_LEN * 2 * sizeof(uint32_t);
+
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.aMatrixDevice, aMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST),
+                ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(
+        aclrtMemcpy(buf.aMatrixDevice, aMatrixFileSize, buf.aMatrixHost, aMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
+        ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.aMatrixDeviceWork, resizedAMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST),
+                ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.pDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMemcpy(buf.wDevice, wFileSize, buf.wHost, wFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
+                ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMemset(buf.pDevice, wFileSize, -1, wFileSize), ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.bMatrixDevice, bMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST),
+                ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(
+        aclrtMemcpy(buf.bMatrixDevice, bMatrixFileSize, buf.bMatrixHost, bMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
+        ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.bMatrixDeviceWork, resizedBMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST),
+                ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMallocHost((void **)(&buf.gatherHost), gatherSize), ReleaseCgetrsBuffers(buf));
+    CHECK_ACLRT(aclrtMalloc((void **)&buf.gatherDevice, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST),
+                ReleaseCgetrsBuffers(buf));
+    return ACL_SUCCESS;
+}
+}  // namespace
+
+aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
+                         std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B,
+                         const int64_t ldb, int32_t *info)
+{
+    // n > 8192 会使 SplitRealImag 后 alignedN > TILE_LENGTH，CopyIn 第二段超出 UB buffer（issue #266 检视）；
+    // 与 aclsolverSgetrf 的文档口径（valid range [1, 8192]）保持一致；
+    // nrhs 无上界时 int64 转 int 静默截断可致按错值分配与寻址，与 aclsolverSgetrs 的 nrhs 契约保持一致（issue #277）；
+    // kernel 侧 uint16_t 字节计数承载 DataCopyExtParams 行间隙，复数实虚交织布局每元素占 8 字节；
+    // SplitRealImag::CopyIn 行间隙为 (lda - n) * 8 / (ldb - nrhs) * 8 字节，须 <= 65535，即元素差 <= 8191；
+    // trans == 0 时 restore 的 MergeRealImag::CopyOut 对 nrhs > 4096 的第二段行间隙为
+    // (ldb - nrhs + 4096) * 8 字节，故 nrhs > 4096 时需进一步限制 ldb - nrhs <= 4095（issue #266 检视）。
+    aclError check = CheckCgetrsArgs(trans, n, nrhs, lda, ldb, A, B, ipiv, info);
+    if (check != ACL_SUCCESS)
+    {
+        return check;
     }
 
     aclrtStream stream = nullptr;
@@ -100,99 +177,37 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
         numBlocks = ascendcPlatform->GetCoreNumAic();
     }
 
-    int N, NRHS, blockDim, blockN, blockM;
-
-    N = n;
-    NRHS = nrhs;
-    blockDim = numBlocks;
-
-    blockN = BLOCK_N;
-    blockM = BLOCK_M;
-
+    int N = n, NRHS = nrhs, blockDim = numBlocks, blockM = BLOCK_M;
     int resizedN = (N + CACHE_LINE_SIZE_FP32 - 1) / CACHE_LINE_SIZE_FP32 * CACHE_LINE_SIZE_FP32;
+    int strideN = CalcPadStride(N);
+    int strideNRHS = CalcPadStride(NRHS);
 
-    int strideN = (N + CACHE_LINE_SIZE_FP32 - 1) / CACHE_LINE_SIZE_FP32 * CACHE_LINE_SIZE_FP32;
-    if ((strideN & -strideN) >= ADDITIONAL_PAD_SIZE) strideN += CACHE_LINE_SIZE_FP32;
+    CgetrsBuffers buf;
+    buf.aMatrixHost = reinterpret_cast<uint8_t *>(A);
+    buf.wHost = reinterpret_cast<uint8_t *>(ipiv);
+    buf.bMatrixHost = reinterpret_cast<uint8_t *>(B);
+    CHECK_ACLRT(AllocAndUploadCgetrs(buf, N, NRHS, lda, ldb, resizedN, strideN, strideNRHS), ReleaseCgetrsBuffers(buf));
 
-    int strideNRHS = (NRHS + CACHE_LINE_SIZE_FP32 - 1) / CACHE_LINE_SIZE_FP32 * CACHE_LINE_SIZE_FP32;
-    if ((strideNRHS & -strideNRHS) >= ADDITIONAL_PAD_SIZE) strideNRHS += CACHE_LINE_SIZE_FP32;
-
-    size_t aMatrixFileSize = N * lda * sizeof(float) * 2;
-    size_t bMatrixFileSize = N * ldb * sizeof(float) * 2;
-    size_t wFileSize = N * sizeof(int);
-
-    size_t resizedAMatrixFileSize = resizedN * strideN * sizeof(float) * 2;
-    size_t resizedBMatrixFileSize = resizedN * strideNRHS * sizeof(float) * 3;
-
-    uint8_t *aMatrixHost = reinterpret_cast<uint8_t *>(A);
-    uint8_t *aMatrixDevice = nullptr;
-    uint8_t *aMatrixDeviceWork = nullptr;
-
-    uint8_t *wHost = reinterpret_cast<uint8_t *>(ipiv);
-    uint8_t *wDevice = nullptr;
-    uint8_t *pDevice = nullptr;
-
-    uint8_t *bMatrixHost = reinterpret_cast<uint8_t *>(B);
-    uint8_t *bMatrixDevice = nullptr;
-    uint8_t *bMatrixDeviceWork = nullptr;
-
-    uint8_t *gatherHost = nullptr;
-    uint8_t *gatherDevice = nullptr;
-
-    uint8_t *sync = nullptr;
-
-    auto cleanup = [&]()
+    if (!GenerateTiling(buf.gatherHost))
     {
-        if (aMatrixDevice) aclrtFree(aMatrixDevice);
-        if (aMatrixDeviceWork) aclrtFree(aMatrixDeviceWork);
-        if (wDevice) aclrtFree(wDevice);
-        if (pDevice) aclrtFree(pDevice);
-        if (bMatrixDevice) aclrtFree(bMatrixDevice);
-        if (bMatrixDeviceWork) aclrtFree(bMatrixDeviceWork);
-        if (gatherDevice) aclrtFree(gatherDevice);
-        if (gatherHost) aclrtFreeHost(gatherHost);
-    };
-
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDevice, aMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemcpy(aMatrixDevice, aMatrixFileSize, aMatrixHost, aMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
-                cleanup());
-
-    CHECK_ACLRT(aclrtMalloc((void **)&aMatrixDeviceWork, resizedAMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    CHECK_ACLRT(aclrtMalloc((void **)&wDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&pDevice, wFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemcpy(wDevice, wFileSize, wHost, wFileSize, ACL_MEMCPY_HOST_TO_DEVICE), cleanup());
-    CHECK_ACLRT(aclrtMemset(pDevice, wFileSize, -1, wFileSize), cleanup());
-
-    CHECK_ACLRT(aclrtMalloc((void **)&bMatrixDevice, bMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-    CHECK_ACLRT(aclrtMemcpy(bMatrixDevice, bMatrixFileSize, bMatrixHost, bMatrixFileSize, ACL_MEMCPY_HOST_TO_DEVICE),
-                cleanup());
-
-    CHECK_ACLRT(aclrtMalloc((void **)&bMatrixDeviceWork, resizedBMatrixFileSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    size_t gatherSize = TILE_LENGTH * 2 * sizeof(uint32_t);
-    CHECK_ACLRT(aclrtMallocHost((void **)(&gatherHost), gatherSize), cleanup());
-    CHECK_ACLRT(aclrtMalloc((void **)&gatherDevice, gatherSize, ACL_MEM_MALLOC_HUGE_FIRST), cleanup());
-
-    if (!GenerateTiling(gatherHost))
-    {
-        cleanup();
+        ReleaseCgetrsBuffers(buf);
         return ACL_ERROR_INTERNAL_ERROR;
     }
+    size_t gatherSize = GATHER_SEG_LEN * 2 * sizeof(uint32_t);
+    CHECK_ACLRT(aclrtMemcpy(buf.gatherDevice, gatherSize, buf.gatherHost, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE),
+                ReleaseCgetrsBuffers(buf));
 
-    CHECK_ACLRT(aclrtMemcpy(gatherDevice, gatherSize, gatherHost, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE), cleanup());
+    cgetrs_kernel_do(N, NRHS, trans, lda, ldb, blockM, buf.aMatrixDevice, buf.aMatrixDeviceWork, buf.wDevice,
+                     buf.pDevice, buf.bMatrixDevice, buf.bMatrixDeviceWork, buf.gatherDevice, blockDim, stream);
 
-    CHECK_ACLRT(aclrtGetHardwareSyncAddr((void **)&sync), cleanup());
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseCgetrsBuffers(buf));
 
-    cgetrs_kernel_do(sync, N, NRHS, trans, lda, ldb, blockM, blockN, aMatrixDevice, aMatrixDeviceWork, wDevice, pDevice,
-                     bMatrixDevice, bMatrixDeviceWork, gatherDevice, blockDim, stream);
+    size_t bMatrixFileSize = N * ldb * sizeof(float) * 2;
+    CHECK_ACLRT(
+        aclrtMemcpy(buf.bMatrixHost, bMatrixFileSize, buf.bMatrixDevice, bMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
+        ReleaseCgetrsBuffers(buf));
 
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), cleanup());
-
-    CHECK_ACLRT(aclrtMemcpy(bMatrixHost, bMatrixFileSize, bMatrixDevice, bMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
-                cleanup());
-
-    cleanup();
+    ReleaseCgetrsBuffers(buf);
 
     *info = 0;
 

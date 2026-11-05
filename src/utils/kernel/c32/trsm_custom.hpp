@@ -176,7 +176,6 @@ __aicore__ inline void custom_trsm(TBufPool<TPosition::VECCALC, 16> &tbufPool, M
 #endif
 
     int big_block_m = 0;
-    int big_block_slice_m;
     int big_block_offsetA, big_block_offsetB, big_block_offsetC;
     for (int i = 1, offset_m = block_m, big_block_offset_m = 0; i < cnt; ++i, offset_m += block_m)
     {

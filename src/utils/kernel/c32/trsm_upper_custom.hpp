@@ -179,7 +179,6 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
 #endif
 
     int big_block_m = 0;
-    int big_block_slice_m;
     int big_block_offsetA, big_block_offsetB, big_block_offsetC;
     for (int i = 1, offset_m = M - block_m * 2, big_block_offset_m = M; i < cnt; ++i, offset_m -= block_m)
     {
@@ -206,7 +205,6 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
             int big_block_tmp = big_block_offsetA / strideN >= baseM ? baseM : big_block_offsetA / strideN;
             big_block_offsetA -= min(big_block_offsetA / strideN, baseM) * strideN;
             big_block_offsetC -= min(big_block_offsetC / strideN, baseM) * strideN;
-            int t = big_block_offsetA / strideN;
             opmm.Process(big_block_offsetA, big_block_offsetB, big_block_offsetC, big_block_tmp, realBlockN,
                          big_block_m);
         }

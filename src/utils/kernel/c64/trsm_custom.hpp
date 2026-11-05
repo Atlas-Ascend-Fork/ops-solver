@@ -227,7 +227,6 @@ __aicore__ inline void custom_trsm(TBufPool<TPosition::VECCALC, 16> &tbufPool, C
 #endif
 
     int big_block_m = 0;
-    int big_block_slice_m;
     int big_block_offsetA;
     int big_block_offsetB;
     int big_block_offsetC;

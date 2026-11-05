@@ -12,17 +12,10 @@
 
 #include <cstdint>
 
+#include "../../utils/getrs_defs.h"
 #include "kernel_operator.h"
-
 using namespace AscendC;
 using namespace matmul;
-
-#define VEC_CUBE_FLAGID 0x0
-#define CUBE_VEC_FLAGID 0x1
-#define ALL_VEC_FLAGID 0x2
-#define ALL_CUBE_FLAGID 0x3
-#define CACHE_LINE_SIZE_FP32 128  // 128 floats per cache line
-#define ADDITIONAL_PAD_SIZE 4096  // 当一行数据为4096的整数倍时，额外 pad 1个 cache line，提高访存效率
 
 template <typename T>
 class PadCustom

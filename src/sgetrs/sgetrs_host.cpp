@@ -22,16 +22,14 @@
 #include <vector>
 
 #include "../utils/assert.h"
+#include "../utils/getrs_defs.h"
 #include "../utils/pivot_check.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 #include "sgetrs_launchers.hpp"
 #include "tiling/platform/platform_ascendc.h"
 
-#define BLOCK_N 16                // base case N大小
-#define BLOCK_M 16                // base case M大小
-#define CACHE_LINE_SIZE_FP32 128  // 128 floats per cache line
-#define ADDITIONAL_PAD_SIZE 4096  // 当一行数据为4096的整数倍时，额外 pad 1个 cache line，提高访存效率
+#define BLOCK_M 16  // base case M大小
 
 #define GM_ADDR uint8_t *
 
@@ -47,7 +45,6 @@ struct SgetrsBuffers
     uint8_t *bHost = nullptr;        // 用户输入/输出矩阵 B（host 侧首地址）
     uint8_t *bDevice = nullptr;      // 上载后的 B
     uint8_t *bDeviceWork = nullptr;  // B 的 pad 工作区
-    uint8_t *sync = nullptr;         // 硬件同步地址
 };
 
 // 释放所有已申请的 HBM 内存（原 cleanup lambda 提取）
@@ -104,11 +101,10 @@ static aclError AllocAndUploadB(SgetrsBuffers &buf, size_t bSize, size_t bWorkSi
 
 // 下发 kernel，等待完成后把结果按 ldb 行宽搬回 host
 static aclError LaunchSgetrs(SgetrsBuffers &buf, int n, int nrhs, uint64_t trans, int64_t lda, int64_t ldb, int blockM,
-                             int blockN, uint32_t blockNum, aclrtStream stream)
+                             uint32_t blockNum, aclrtStream stream)
 {
-    CHECK_ACLRT(aclrtGetHardwareSyncAddr((void **)&buf.sync), ReleaseSgetrsBuffers(buf));
-    sgetrs_kernel_do(buf.sync, n, nrhs, trans, lda, ldb, blockM, blockN, buf.aDevice, buf.aDeviceWork, buf.wDevice,
-                     buf.pDevice, buf.bDevice, buf.bDeviceWork, blockNum, stream);
+    sgetrs_kernel_do(n, nrhs, trans, lda, ldb, blockM, buf.aDevice, buf.aDeviceWork, buf.wDevice, buf.pDevice,
+                     buf.bDevice, buf.bDeviceWork, blockNum, stream);
     CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseSgetrsBuffers(buf));
     size_t bSize = n * ldb * sizeof(float);
     CHECK_ACLRT(aclrtMemcpy(buf.bHost, bSize, buf.bDevice, bSize, ACL_MEMCPY_DEVICE_TO_HOST),
@@ -157,7 +153,6 @@ aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
 
     int N = static_cast<int>(n);
     int NRHS = static_cast<int>(nrhs);
-    int blockN = BLOCK_N;
     int blockM = BLOCK_M;
 
     // A/B 侧 pad 后行宽（A 侧不含额外 pad，B 侧按 stride 规则可能追加一个 cache line）
@@ -174,8 +169,7 @@ aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     CHECK_ACLRT(AllocAndUploadPivots(buf, N * sizeof(int)), ReleaseSgetrsBuffers(buf));
     CHECK_ACLRT(AllocAndUploadB(buf, N * ldb * sizeof(float), resizedN * strideNRHS * sizeof(float)),
                 ReleaseSgetrsBuffers(buf));
-    CHECK_ACLRT(LaunchSgetrs(buf, N, NRHS, trans, lda, ldb, blockM, blockN, numBlocks, stream),
-                ReleaseSgetrsBuffers(buf));
+    CHECK_ACLRT(LaunchSgetrs(buf, N, NRHS, trans, lda, ldb, blockM, numBlocks, stream), ReleaseSgetrsBuffers(buf));
 
     ReleaseSgetrsBuffers(buf);
 

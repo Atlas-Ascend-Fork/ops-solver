@@ -17,8 +17,7 @@
 
 #include <cstdint>
 
-void sgetrs_kernel_do(uint8_t *sync, int orgN, int orgNRHS, int trans, int lda, int ldb, int blockM, int blockN,
-                     uint8_t *A_org, uint8_t *A_work, uint8_t *W, uint8_t *P, uint8_t *B_org, uint8_t *B_work,
-                     uint32_t numBlocks, void *stream);
+void sgetrs_kernel_do(int orgN, int orgNRHS, int trans, int lda, int ldb, int blockM, uint8_t *A_org, uint8_t *A_work,
+                      uint8_t *W, uint8_t *P, uint8_t *B_org, uint8_t *B_work, uint32_t numBlocks, void *stream);
 
 #endif  // SGETRS_LAUNCHERS_HPP
