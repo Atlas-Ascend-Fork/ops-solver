@@ -73,10 +73,18 @@ def main():
     piv = np.fromfile("./test/sgetrs/data/input/W_gm.bin", dtype=np.int32).reshape(n) - 1
     X = np.fromfile("./test/sgetrs/data/output/X_gm.bin", dtype=np.float32).reshape(n, nrhs)
 
+    if not all(np.isfinite(array).all() for array in (LU, B, X)):
+        logging.info("Non-finite input or solution cannot pass accuracy verification.")
+        return False
+
     # 计算 expected 解
     X_ref = np.zeros_like(X)
     for k in range(nrhs):
         X_ref[:, k] = solve_lu(LU, B[:, k], piv)
+
+    if not np.isfinite(X_ref).all():
+        logging.info("Non-finite reference solution cannot pass accuracy verification.")
+        return False
 
     logging.info("-------------------------------------------------------")
     cnt = 0
@@ -91,8 +99,8 @@ def main():
             rel_err = abs_err / denom
             
             # 判断条件：绝对误差 > eps 且 相对误差 > eps
-            # 或者数值本身有问题（NaN/Inf）
-            if (abs_err > eps and rel_err > eps) or np.isnan(X[i, j]) or np.isinf(X[i, j]):
+            # Arrays were checked for finite values before substitution.
+            if abs_err > eps and rel_err > eps:
                 cnt += 1
                 if cnt <= 32:
                     logging.info(

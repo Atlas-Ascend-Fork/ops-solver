@@ -55,6 +55,11 @@ def check_complex_matrix(uplo, n):
     logging.info(f"正在加载矩阵: {file_std} ...")
     B = load_complex_matrix(file_std, n)
 
+    # 非有限的输出或参考值不参与误差比较，也不受错配占比稀释（issue #347）
+    if not (np.isfinite(A).all() and np.isfinite(B).all()):
+        logging.info("Non-finite output or reference cannot pass accuracy verification.")
+        return False
+
     # 定义三角掩码
     if uplo == 'U':
         mask = np.triu(np.ones((n, n), dtype=bool))
@@ -82,7 +87,7 @@ def check_complex_matrix(uplo, n):
     # 打印不合格示例（最多10个）
     if num_failed > 0:
         failed_indices = indices[~qualified]
-        logging.info(f"\n不合格元素示例 (最多显示10个):")
+        logging.info("\n不合格元素示例 (最多显示10个):")
         logging.info("  行  列      实部误差        虚部误差        误差模")
         count = 0
         for i, j in failed_indices:
