@@ -27,7 +27,7 @@
 
    <img src="../figures/cloudIDE.png" alt="云平台"  width="750px" height="85px">
 
-2. 根据页面提示创建NPU环境并配置规格，启动云开发环境后，单击“`连接 > WebIDE`”进入一站式开发平台。
+2. 根据页面提示创建NPU环境并配置规格，启动云开发环境后，单击“`连接 > CANNLab`”进入一站式开发平台。
   
    当前开源项目资源默认在`/mnt/workspace/gitCode/${gitCode_id}`目录下，\$\{gitCode\_id\}表示开发者个人gitCode账号。
 
@@ -167,9 +167,9 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 - **检查CANN版本**
 
     ```bash
-    # 查看CANN toolkit包版本信息（默认路径安装），WebIDE场景下将/usr/local替换为/home/developer
+    # 查看CANN toolkit包版本信息（默认路径安装），CANNLab场景下将/usr/local替换为/home/developer
     cat /usr/local/Ascend/cann/${arch}-linux/ascend_toolkit_install.info
-    # 查看CANN ops包版本信息（默认路径安装），WebIDE场景下将/usr/local替换为/home/developer
+    # 查看CANN ops包版本信息（默认路径安装），CANNLab场景下将/usr/local替换为/home/developer
     cat /usr/local/Ascend/cann/${arch}-linux/ascend_ops_install.info
     ```
 
