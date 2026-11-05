@@ -8,3 +8,5 @@ protobuf
 pyyaml
 setuptools
 wheel
+pytest
+cmake
