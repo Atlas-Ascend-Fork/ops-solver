@@ -26,7 +26,7 @@ Solver Spotrf算子实现。
 - 算子功能：
     Spotrf算子对实数矩阵进行cholesky分解，对应的数学表达式为：
     $$A = L \cdot L^T$$
-    其中$A$为$m \times n$阶实数对称正定矩阵，$L$为单位下三角矩阵，$L^T$为上三角矩阵。
+    其中$A$为$n \times n$阶实数对称正定矩阵，$L$为对角元为正的下三角矩阵，$L^T$为上三角矩阵。
 
 - 算子规格：
     <table>
@@ -85,7 +85,11 @@ Solver Spotrf算子实现。
     </table>
 
 
-- 算子约束：无。
+- 算子约束：
+    - 输入矩阵A必须为对称正定（SPD）方阵，当前仅支持FLOAT32数据类型；m == n（Cholesky要求方阵，m≠n返回ACL_ERROR_INVALID_PARAM）。
+    - n取值范围为[1, 8192]。
+    - uplo仅支持'U'（A = UᵀU）与'L'（A = LLᵀ），其他取值返回ACL_ERROR_INVALID_PARAM。
+    - lda >= n且lda <= 16384（kernel以uint16_t字节计数承载行间隙）；只读写uplo指定的三角，另一三角与padding保持不变。
 
 - 调用实现
     使用内核调用符<<<>>>调用核函数。

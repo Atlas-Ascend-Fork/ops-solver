@@ -120,7 +120,12 @@ Solver Cgetrs算子实现。
         </tr>
     </table>
 
-* 算子约束：无。
+* 算子约束：
+    * 输入矩阵A必须为aclsolverCgetrf分解后的LU矩阵；ipiv必须为其输出的pivot信息（1-based行号，取值须在[1, n]，非法值返回ACL_ERROR_INVALID_PARAM且info置-4）。
+    * A、ipiv、B、info 均为 Host 内存；接口内部搬运至 Device 计算，返回前将解 X 写回 B（详见 docs/zh/cgetrs.md）。
+    * n、nrhs取值范围均为[1, 8192]；lda >= n且lda - n <= 8191；ldb >= nrhs且ldb - nrhs <= 8191（kernel以uint16_t字节计数承载行间隙，复数实/虚交织布局每元素占8字节）；nrhs > 4096时需进一步满足ldb - nrhs <= 4095。
+    * trans支持0（AX=B）、1（AᵀX=B）、2（AᴴX=B），其他取值返回ACL_ERROR_INVALID_PARAM。
+    * 当前仅支持COMPLEX64数据类型。
 
 * 调用实现
   使用内核调用符<<<>>>调用核函数。
