@@ -43,11 +43,10 @@
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/gemm/tile/tile_copy.hpp"
 #include "catlass/layout/layout.hpp"
-#include "tla/layout.hpp"
-
 #include "householder.hpp"
 #include "larfb_plan.hpp"
 #include "t_rowparallel.hpp"
+#include "tla/layout.hpp"
 
 // ---- cube 侧类型 ----
 // ★ 本文件（以及 *_mix.hpp）只被 src/<op>/arch35/<op>_kernel.cpp 引入，
@@ -69,7 +68,9 @@ using MmadRR = MmadOf<layout::RowMajor, layout::RowMajor>;
 using MmadRC = MmadOf<layout::RowMajor, layout::ColumnMajor>;
 
 // ---- 公共上限与分段 ----
-/// kernel 支持的最大行数（host 侧已拦住更大的形状）
+/// 单列驻留缓冲行数，仅供下游 sorgqr/sormqr kernel（orgqr_mix.hpp / ormqr_mix.hpp）
+/// 使用，对应 host 侧约束 nq <= 4096（ORGQR_MAX_ROWS / ORMQR_MAX_ROWS）；
+/// sgeqrf 自身的行数上限见 arch35/sgeqrf_host.cpp 的 MaxRowsSupported()（8192）。
 constexpr uint32_t MAX_ROWS = 4096;
 constexpr uint32_t RED_CAP = 2048;  // partial 归约的 UB 分段长度
 
@@ -79,10 +80,7 @@ constexpr uint32_t kL1K = tla::get<2>(L1TileShape{});
 constexpr uint32_t KSPLIT_MAX = 32;
 
 // ---- 对齐与上取整（除数为 0 时返回原值，不做除法）----
-__aicore__ inline uint32_t AlignUp32(uint32_t x, uint32_t a)
-{
-    return (a == 0U) ? x : (x + a - 1U) / a * a;
-}
+__aicore__ inline uint32_t AlignUp32(uint32_t x, uint32_t a) { return (a == 0U) ? x : (x + a - 1U) / a * a; }
 
 __aicore__ inline uint32_t CeilDivU(uint32_t x, uint32_t a) { return (a == 0) ? 0 : (x + a - 1) / a; }
 
@@ -130,20 +128,35 @@ __aicore__ inline void VecWaitCube() { AscendC::CrossCoreWaitFlag(0x2); }
 /// 分 K 的份数。**cube 侧与 vec 侧都调这一个函数**：两侧各写一份公式会漂移，
 /// 症状是归约漏掉一份 partial（大形状 tile 够多、S=1 时看不出来，小形状才错）。
 /// 规则：让 tiles*S 填满 AIC；每份至少 L1K 行；再被 host 给的容量 clamp。
-__aicore__ inline uint32_t KSplitCount(uint32_t pm, uint32_t pn, uint32_t pk, uint32_t aicNum, uint64_t capElems)
+__aicore__ inline uint32_t KSplitCount(uint32_t pm, uint32_t cols, uint32_t pk, uint32_t aicNum, uint64_t capElems)
 {
-    const uint64_t one = static_cast<uint64_t>(pm) * static_cast<uint64_t>(pn);
-    if (one == 0 || pk == 0 || aicNum == 0) { return 1; }
-    const uint32_t tiles = CeilDivU(pm, kL1M) * CeilDivU(pn, kL1N);
-    if (tiles == 0) { return 1; }
+    const uint64_t one = static_cast<uint64_t>(pm) * static_cast<uint64_t>(cols);
+    if (one == 0 || pk == 0 || aicNum == 0)
+    {
+        return 1;
+    }
+    const uint32_t tiles = CeilDivU(pm, kL1M) * CeilDivU(cols, kL1N);
+    if (tiles == 0)
+    {
+        return 1;
+    }
     uint32_t smax = KSPLIT_MAX;
     const uint32_t byK = CeilDivU(pk, kL1K);  // 每份至少 L1K 行，否则白付固定开销
-    if (smax > byK) { smax = byK; }
+    if (smax > byK)
+    {
+        smax = byK;
+    }
     // host 给的容量是硬上限。one 在上面已判过非 0，这里就地再判一次：
     // 静态检查不做跨语句的常量传播，守卫必须和除法在同一个表达式里。
     const uint32_t byCap = (one == 0) ? KSPLIT_MAX : static_cast<uint32_t>(capElems / one);
-    if (smax > byCap) { smax = byCap; }
-    if (smax <= 1) { return 1; }
+    if (smax > byCap)
+    {
+        smax = byCap;
+    }
+    if (smax <= 1)
+    {
+        return 1;
+    }
     // 选让"最忙核的轮数 / 份数"最小的 S，也就是让 tiles*S 尽量正好铺满 AIC 的整数轮。
     // ★ 不能用 S = ceil(AIC/tiles)：tiles=16、AIC=28 时它给 S=2 ⇒ 32 份要跑 2 轮，
     //   makespan 和 S=1 的 1 轮**完全一样**，白付一次归约（实测 4096^3 ormqr 只快 4%）。
@@ -151,9 +164,11 @@ __aicore__ inline uint32_t KSplitCount(uint32_t pm, uint32_t pn, uint32_t pk, ui
     // 比较用整数交叉相乘，取严格更优才换 ⇒ 平手时保留更小的 S（开销更小）。
     uint32_t bestS = 1;
     uint32_t bestRounds = CeilDivU(tiles, aicNum);
-    for (uint32_t sp = 2; sp <= smax; ++sp) {
+    for (uint32_t sp = 2; sp <= smax; ++sp)
+    {
         const uint32_t r = CeilDivU(tiles * sp, aicNum);
-        if (r * bestS < bestRounds * sp) {
+        if (r * bestS < bestRounds * sp)
+        {
             bestS = sp;
             bestRounds = r;
         }
@@ -162,18 +177,16 @@ __aicore__ inline uint32_t KSplitCount(uint32_t pm, uint32_t pn, uint32_t pk, ui
 }
 
 /// 每份的 K 长度（按 L1K 对齐，保证分形不被切碎）
-__aicore__ inline uint32_t KSplitChunkLen(uint32_t pk, uint32_t sp)
-{
-    return CeilDivU(CeilDivU(pk, sp), kL1K) * kL1K;
-}
+__aicore__ inline uint32_t KSplitChunkLen(uint32_t pk, uint32_t sp) { return CeilDivU(CeilDivU(pk, sp), kL1K) * kL1K; }
 
 /// 份数与每份长度一起算出来（**调用点不要再推一遍 chunk 长度**：份数是由长度反推的，
 /// 两处各算一次有机会给出不一致的一对，表现是 partial 漏算或越界）
-__aicore__ inline uint32_t KSplitChunks(uint32_t pm, uint32_t pn, uint32_t pk, uint32_t aicNum, uint64_t capElems,
+__aicore__ inline uint32_t KSplitChunks(uint32_t pm, uint32_t cols, uint32_t pk, uint32_t aicNum, uint64_t capElems,
                                         uint32_t* chunkLen)
 {
-    const uint32_t sp = KSplitCount(pm, pn, pk, aicNum, capElems);
-    if (sp <= 1) {
+    const uint32_t sp = KSplitCount(pm, cols, pk, aicNum, capElems);
+    if (sp <= 1)
+    {
         *chunkLen = pk;
         return 1;
     }
@@ -188,13 +201,15 @@ __aicore__ inline uint32_t KSplitChunks(uint32_t pm, uint32_t pn, uint32_t pk, u
 template <class Mmad, class TagA, class TagB>
 __aicore__ inline void RunPlanOnCube(QrCore::GemmPlan const& plan, GM_ADDR pa, GM_ADDR pb, GM_ADDR pd)
 {
-    if (plan.m == 0 || plan.n == 0 || plan.k == 0) { return; }
+    if (plan.m == 0 || plan.n == 0 || plan.k == 0)
+    {
+        return;
+    }
     Arch::Resource<ArchTag> resource;
     Mmad mmad(resource);
     TagA tagA(static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.k), static_cast<int64_t>(plan.lda));
     TagB tagB(static_cast<uint32_t>(plan.k), static_cast<uint32_t>(plan.n), static_cast<int64_t>(plan.ldb));
-    layout::RowMajor tagD(static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.n),
-                          static_cast<int64_t>(plan.ldd));
+    layout::RowMajor tagD(static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.n), static_cast<int64_t>(plan.ldd));
     AscendC::GlobalTensor<Element> gmA, gmB, gmD;
     gmA.SetGlobalBuffer((__gm__ Element*)pa + plan.aOffset);
     gmB.SetGlobalBuffer((__gm__ Element*)pb + plan.bOffset);
@@ -208,8 +223,12 @@ __aicore__ inline void RunPlanOnCube(QrCore::GemmPlan const& plan, GM_ADDR pa, G
     GemmCoord shape{static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.n), static_cast<uint32_t>(plan.k)};
     Gemm::Block::GemmIdentityBlockSwizzle<3, 0> sched(shape, MakeCoord(L1M, L1N));
     uint32_t loops = sched.GetCoreLoops();
-    if (plan.accumulate) { AscendC::SetAtomicAdd<Element>(); }
-    for (uint32_t i = AscendC::GetBlockIdx(); i < loops; i += AscendC::GetBlockNum()) {
+    if (plan.accumulate)
+    {
+        AscendC::SetAtomicAdd<Element>();
+    }
+    for (uint32_t i = AscendC::GetBlockIdx(); i < loops; i += AscendC::GetBlockNum())
+    {
         GemmCoord bc = sched.GetBlockCoord(i);
         GemmCoord act = sched.GetActualBlockShape(bc);
         auto ta = GetTile(tA, tla::MakeCoord(bc.m() * L1M, bc.k() * L1K), tla::MakeShape(act.m(), act.k()));
@@ -217,7 +236,10 @@ __aicore__ inline void RunPlanOnCube(QrCore::GemmPlan const& plan, GM_ADDR pa, G
         auto td = GetTile(tD, tla::MakeCoord(bc.m() * L1M, bc.n() * L1N), tla::MakeShape(act.m(), act.n()));
         mmad(ta, tb, td, act);
     }
-    if (plan.accumulate) { AscendC::SetAtomicNone(); }
+    if (plan.accumulate)
+    {
+        AscendC::SetAtomicNone();
+    }
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
@@ -226,17 +248,44 @@ __aicore__ inline void RunPlanOnCube(QrCore::GemmPlan const& plan, GM_ADDR pa, G
 /// **不用 SetAtomicAdd**：原子加的到达顺序不定 ⇒ fp32 和每趟都可能不同，而任务书
 /// §3.5 要求同输入逐位可复现。
 /// 要求 plan.dOffset == 0 且 plan.accumulate == false（调用点保证）。
+/// 求分 K 版第 i 个全局任务的份号 s、块内 tile 号与 K 区间（第 s 份从 s*kc 起，每份
+/// 至多 kc 行）；k0 越出矩阵 K（末尾空转块）或 tiles 为 0 时返回 false。
+__aicore__ inline bool KSplitChunkRange(uint32_t i, uint32_t tiles, uint32_t kTotal, uint32_t kc, uint32_t& sIdx,
+                                        uint32_t& tIdx, uint32_t& k0, uint32_t& klen)
+{
+    if (tiles == 0)
+    {
+        // 调用方对 tiles==0 已提前返回，这里兜底防除零（G.EXP.22）。
+        return false;
+    }
+    sIdx = i / tiles;
+    tIdx = i - sIdx * tiles;
+    k0 = sIdx * kc;
+    if (k0 >= kTotal)
+    {
+        return false;
+    }
+    klen = kTotal - k0;
+    if (klen > kc)
+    {
+        klen = kc;
+    }
+    return true;
+}
+
 template <class Mmad, class TagA, class TagB>
 __aicore__ inline void RunPlanOnCubeSplitK(QrCore::GemmPlan const& plan, GM_ADDR pa, GM_ADDR pb, GM_ADDR pd,
                                            uint32_t nChunks, uint32_t kc)
 {
-    if (plan.m == 0 || plan.n == 0 || plan.k == 0) { return; }
+    if (plan.m == 0 || plan.n == 0 || plan.k == 0)
+    {
+        return;
+    }
     Arch::Resource<ArchTag> resource;
     Mmad mmad(resource);
     TagA tagA(static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.k), static_cast<int64_t>(plan.lda));
     TagB tagB(static_cast<uint32_t>(plan.k), static_cast<uint32_t>(plan.n), static_cast<int64_t>(plan.ldb));
-    layout::RowMajor tagD(static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.n),
-                          static_cast<int64_t>(plan.n));
+    layout::RowMajor tagD(static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.n), static_cast<int64_t>(plan.n));
     AscendC::GlobalTensor<Element> gmA, gmB, gmD;
     gmA.SetGlobalBuffer((__gm__ Element*)pa + plan.aOffset);
     gmB.SetGlobalBuffer((__gm__ Element*)pb + plan.bOffset);
@@ -247,16 +296,19 @@ __aicore__ inline void RunPlanOnCubeSplitK(QrCore::GemmPlan const& plan, GM_ADDR
     GemmCoord shape{static_cast<uint32_t>(plan.m), static_cast<uint32_t>(plan.n), static_cast<uint32_t>(plan.k)};
     Gemm::Block::GemmIdentityBlockSwizzle<3, 0> sched(shape, MakeCoord(kL1M, kL1N));
     const uint32_t tiles = sched.GetCoreLoops();
-    if (tiles == 0) { return; }  // 没有 tile 时下面的 i / tiles 不成立
+    if (tiles == 0)
+    {
+        return;
+    }  // 没有 tile 时下面的 i / tiles 不成立
     const uint32_t loops = tiles * nChunks;
     const uint64_t one = static_cast<uint64_t>(plan.m) * static_cast<uint64_t>(plan.n);
-    for (uint32_t i = AscendC::GetBlockIdx(); i < loops; i += AscendC::GetBlockNum()) {
-        const uint32_t sIdx = i / tiles;
-        const uint32_t tIdx = i - sIdx * tiles;
-        const uint32_t k0 = sIdx * kc;
-        if (k0 >= static_cast<uint32_t>(plan.k)) { continue; }
-        uint32_t klen = static_cast<uint32_t>(plan.k) - k0;
-        if (klen > kc) { klen = kc; }
+    for (uint32_t i = AscendC::GetBlockIdx(); i < loops; i += AscendC::GetBlockNum())
+    {
+        uint32_t sIdx, tIdx, k0, klen;
+        if (!KSplitChunkRange(i, tiles, static_cast<uint32_t>(plan.k), kc, sIdx, tIdx, k0, klen))
+        {
+            continue;
+        }
         GemmCoord bc = sched.GetBlockCoord(tIdx);
         GemmCoord act = sched.GetActualBlockShape(bc);
         auto ta = GetTile(tA, tla::MakeCoord(bc.m() * kL1M, k0), tla::MakeShape(act.m(), klen));
@@ -278,15 +330,17 @@ __aicore__ inline void RunPlanOnCubeSplitK(QrCore::GemmPlan const& plan, GM_ADDR
 /// 就只有 1 个核在串着读 2*jb*rows 个元素。rows=4096 时实测约 20 us/块。
 /// orgqr 与 ormqr 的这一步逐字相同（只有 params 结构体类型不同），所以收在这里，
 /// 两边各留一个取字段的包装。
-__aicore__ inline void GemmGBlock(GM_ADDR wsY, GM_ADDR wsG, GM_ADDR wsP, uint32_t rows, uint32_t jb,
-                                  uint32_t ldy, uint32_t gChunks, uint32_t gChunkLen)
+__aicore__ inline void GemmGBlock(GM_ADDR wsY, GM_ADDR wsG, GM_ADDR wsP, uint32_t rows, uint32_t jb, uint32_t ldy,
+                                  uint32_t gChunks, uint32_t gChunkLen)
 {
     QrCore::GemmPlan gp[3];
     QrCore::PlanLarfbLeft(rows, jb, jb, ldy, ldy, jb, jb, jb, 0, 0, gp);
-    if (gChunks > 1) {
-        RunPlanOnCubeSplitK<MmadRC, layout::RowMajor, layout::ColumnMajor>(gp[0], wsY, wsY, wsP, gChunks,
-                                                                          gChunkLen);
-    } else {
+    if (gChunks > 1)
+    {
+        RunPlanOnCubeSplitK<MmadRC, layout::RowMajor, layout::ColumnMajor>(gp[0], wsY, wsY, wsP, gChunks, gChunkLen);
+    }
+    else
+    {
         RunPlanOnCube<MmadRC, layout::RowMajor, layout::ColumnMajor>(gp[0], wsY, wsY, wsG);
     }
     CubeBarrier();
@@ -303,7 +357,8 @@ __aicore__ inline void GemmGBlock(GM_ADDR wsY, GM_ADDR wsG, GM_ADDR wsP, uint32_
 /// 只有 0 号核做；devInfo 允许为空（Xlarft 这类没有 devInfo 的接口传 nullptr）。
 __aicore__ inline void ZeroDevInfo(GM_ADDR devInfo, const AscendC::LocalTensor<float>& scratch, uint32_t coreId)
 {
-    if (devInfo == nullptr || coreId != 0) {
+    if (devInfo == nullptr || coreId != 0)
+    {
         return;
     }
     AscendC::GlobalTensor<float> infoT;
@@ -319,16 +374,16 @@ __aicore__ inline void ZeroDevInfo(GM_ADDR devInfo, const AscendC::LocalTensor<f
 ///
 /// UB 张量偏移一律为 0；非对齐的一侧交给 DataCopyPad 在 GM 上处理。
 /// src 是列主序的反射子来源（orgqr 用 A、ormqr 用 V），ldSrc 是它的行距。
-__aicore__ inline void MaterializeVBlock(const AscendC::GlobalTensor<float>& src,
-                                         const AscendC::GlobalTensor<float>& Y,
+__aicore__ inline void MaterializeVBlock(const AscendC::GlobalTensor<float>& src, const AscendC::GlobalTensor<float>& Y,
                                          AscendC::TQue<AscendC::QuePosition::VECIN, 1>& qIn,
                                          const AscendC::LocalTensor<float>& work, uint32_t j, uint32_t jb,
-                                         uint32_t rows, uint32_t ldSrc, uint32_t ldy, uint32_t coreId,
-                                         uint32_t coreNum)
+                                         uint32_t rows, uint32_t ldSrc, uint32_t ldy, uint32_t coreId, uint32_t coreNum)
 {
-    for (uint32_t c = coreId; c < jb; c += coreNum) {
+    for (uint32_t c = coreId; c < jb; c += coreNum)
+    {
         const uint32_t len = rows - c;
-        if (c > 0) {
+        if (c > 0)
+        {
             AscendC::Duplicate(work, 0.0f, AlignUp32(c, 8));
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::DataCopyExtParams cpz{1, static_cast<uint32_t>(c * sizeof(float)), 0, 0, 0};
@@ -363,13 +418,12 @@ __aicore__ inline void MaterializeVBlock(const AscendC::GlobalTensor<float>& src
 /// UB 行距取 AlignUp32(jb,8)：用 jb 本身时，jb 非 8 倍数会让后面 DataCopyPad 的
 /// UB 源偏移不对齐 ⇒ **静默什么都不搬**（小 jb 才暴露）。
 /// T 是 jb x jb 列主序（ldt = jb），本核的"行 r"在列主序里是跨步的，所以逐行写。
-__aicore__ inline void BuildMinusTBlock(const AscendC::GlobalTensor<float>& T,
-                                        const AscendC::GlobalTensor<float>& G,
+__aicore__ inline void BuildMinusTBlock(const AscendC::GlobalTensor<float>& T, const AscendC::GlobalTensor<float>& G,
                                         const AscendC::GlobalTensor<float>& tau,
                                         AscendC::TQue<AscendC::QuePosition::VECIN, 1>& qG,
                                         AscendC::TQue<AscendC::QuePosition::VECIN, 1>& qTau,
-                                        const AscendC::LocalTensor<float>& tl, uint32_t j, uint32_t jb,
-                                        uint32_t coreId, uint32_t coreNum)
+                                        const AscendC::LocalTensor<float>& tl, uint32_t j, uint32_t jb, uint32_t coreId,
+                                        uint32_t coreNum)
 {
     AscendC::DataCopyPadExtParams<float> pd{false, 0, 0, 0};
     AscendC::LocalTensor<float> gl = qG.AllocTensor<float>();
@@ -384,16 +438,17 @@ __aicore__ inline void BuildMinusTBlock(const AscendC::GlobalTensor<float>& T,
     taul = qTau.DeQue<float>();
 
     const uint32_t ldtUb = AlignUp32(jb, 8);
-    const uint32_t myRows =
-        QrCore::BuildTRowParallel<false, false>(tl, ldtUb, gl, jb, G, taul, jb, coreId, coreNum);
-    if (myRows > 0) {
+    const uint32_t myRows = QrCore::BuildTRowParallel<false, false>(tl, ldtUb, gl, jb, G, taul, jb, coreId, coreNum);
+    if (myRows > 0)
+    {
         AscendC::Muls(tl, tl, -1.0f, myRows * ldtUb);
         AscendC::PipeBarrier<PIPE_ALL>();
     }
     qG.FreeTensor(gl);
     qTau.FreeTensor(taul);
     uint32_t q = 0;
-    for (uint32_t r = coreId; r < jb; r += coreNum, ++q) {
+    for (uint32_t r = coreId; r < jb; r += coreNum, ++q)
+    {
         AscendC::DataCopyExtParams cpR{1, static_cast<uint32_t>(jb * sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPad(T[static_cast<uint64_t>(r) * jb], tl[q * ldtUb], cpR);
     }
@@ -405,23 +460,33 @@ __aicore__ inline void BuildMinusTBlock(const AscendC::GlobalTensor<float>& T,
 /// 顺序固定（s 从 0 到 nChunks-1、片由 coreId 决定）⇒ 结果逐位可复现。
 __aicore__ inline void ReducePartials(AscendC::GlobalTensor<float> dst, AscendC::GlobalTensor<float> src,
                                       uint64_t elems, uint32_t nChunks, AscendC::LocalTensor<float> acc,
-                                      AscendC::LocalTensor<float> tmp, uint32_t cap, uint32_t coreId,
-                                      uint32_t coreNum)
+                                      AscendC::LocalTensor<float> tmp, uint32_t cap, uint32_t coreId, uint32_t coreNum)
 {
     const uint64_t per = AlignUp32(CeilDivU(static_cast<uint32_t>(elems), static_cast<uint32_t>(coreNum)), 8U);
     const uint64_t beg = static_cast<uint64_t>(coreId) * per;
-    if (beg >= elems) { return; }
+    if (beg >= elems)
+    {
+        return;
+    }
     uint64_t len = elems - beg;
-    if (len > per) { len = per; }
-    for (uint64_t off = 0; off < len; off += cap) {
+    if (len > per)
+    {
+        len = per;
+    }
+    for (uint64_t off = 0; off < len; off += cap)
+    {
         uint32_t cnt = static_cast<uint32_t>(len - off);
-        if (cnt > cap) { cnt = cap; }
+        if (cnt > cap)
+        {
+            cnt = cap;
+        }
         AscendC::DataCopyExtParams cp{1, cnt * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
         AscendC::DataCopyPadExtParams<float> pd{false, 0, 0, 0};
         AscendC::DataCopyPad(acc, src[beg + off], cp, pd);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-        for (uint32_t sIdx = 1; sIdx < nChunks; ++sIdx) {
+        for (uint32_t sIdx = 1; sIdx < nChunks; ++sIdx)
+        {
             AscendC::DataCopyPad(tmp, src[static_cast<uint64_t>(sIdx) * elems + beg + off], cp, pd);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -445,16 +510,15 @@ __aicore__ inline void ReducePartials(AscendC::GlobalTensor<float> dst, AscendC:
 /// 这里的 Wait/Notify 必须与 cube 侧 lp[0] 之后那对 Notify/Wait 一一对应。
 /// orgqr 与 ormqr 的这一步逐字相同；orgqr 还要在之后再等一次"本块做完"，
 /// 那次等待留在它自己的包装里，跨核配对不变。
-__aicore__ inline void LarfbReduceVec(const AscendC::GlobalTensor<float>& W,
-                                      const AscendC::GlobalTensor<float>& P, const QrCore::GemmPlan* lp,
-                                      const AscendC::LocalTensor<float>& work,
+__aicore__ inline void LarfbReduceVec(const AscendC::GlobalTensor<float>& W, const AscendC::GlobalTensor<float>& P,
+                                      const QrCore::GemmPlan* lp, const AscendC::LocalTensor<float>& work,
                                       const AscendC::LocalTensor<float>& red, uint32_t wChunks, uint32_t coreId,
                                       uint32_t coreNum)
 {
-    if (wChunks > 1) {
+    if (wChunks > 1)
+    {
         VecWaitCube();  // partial 齐了
-        ReducePartials(W, P, static_cast<uint64_t>(lp[0].m) * lp[0].n, wChunks, work, red, RED_CAP, coreId,
-                       coreNum);
+        ReducePartials(W, P, static_cast<uint64_t>(lp[0].m) * lp[0].n, wChunks, work, red, RED_CAP, coreId, coreNum);
         VecBarrier();
         VecNotifyCube();  // 归约完，cube 可以做 lp[1]
     }
