@@ -510,7 +510,7 @@ __aicore__ inline void custom_llt(int orgM, int orgN, int blockM, int blockN, in
 
 #ifdef __DAV_C220_VEC__
     CustomLltVector(pipe, tbufPool, orgM, orgN, blockN, lda, isTranse, strideN, blockNum, blockIdx, tensors);
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C220_CUBE__)
     CustomLltCube(pipe, orgM, orgN, blockN, strideN, blockNum, blockIdx, tensors);
 #endif
 }

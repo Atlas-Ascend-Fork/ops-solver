@@ -247,7 +247,7 @@ __aicore__ inline void qr_custom(int M, int N, int lda, int padM, GM_ADDR A, GM_
         // 空 shape（N*align(M,64)<=0）仅主核继续，其余核提前结束；
         // 单核 QR 死路径已删除（issue #334），行为等价
         if (env.blockIdx) return;
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C220_CUBE__)
         return;
 #endif
     }
@@ -255,7 +255,7 @@ __aicore__ inline void qr_custom(int M, int N, int lda, int padM, GM_ADDR A, GM_
     {
 #ifdef __DAV_C220_VEC__
         RunVec(env, tbufPool);
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C220_CUBE__)
         RunCube(env, pipe);
 #endif
     }

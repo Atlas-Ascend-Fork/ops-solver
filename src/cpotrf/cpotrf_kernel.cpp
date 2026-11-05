@@ -536,7 +536,7 @@ __aicore__ inline void cholesky_custom(int orgN, int lda, GM_ADDR A_org, GM_ADDR
     CrossCoreSetFlag<0x0, PIPE_MTE3>(0x0);
     CrossCoreWaitFlag(0x0);
     CpotrfMergeStage<trans>(t, tbufPool, orgN, strideN, blockNum, blockIdx);
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C220_CUBE__)
     if (CPOTRF_BLOCK_N >= orgN)
     {
         return;

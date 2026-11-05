@@ -46,7 +46,7 @@ __aicore__ inline void custom_getrs(int orgN, int orgNRHS, int trans, int lda, i
     MatmulCustom<float> opmm;
 #ifdef __DAV_C220_VEC__
     pipe.InitBufPool(tbufPool, 192 * 1024);
-#elif __DAV_C220_CUBE__
+#elif defined(__DAV_C220_CUBE__)
     opmm.Init(&pipe);
 #endif
     pad(tbufPool, orgN, orgN, lda, A_org, A_work);
