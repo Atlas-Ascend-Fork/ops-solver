@@ -80,10 +80,10 @@
         const uint64_t trans,
         const int64_t n,
         const int64_t nrhs,
-        std::complex<float> *A,
+        aclFloatComplex *A,
         const int64_t lda,
         int32_t *ipiv,
-        std::complex<float> *B,
+        aclFloatComplex *B,
         const int64_t ldb,
         int32_t *info);
     ```
@@ -187,11 +187,12 @@
         // 构造输入数据
         int64_t n = 4;
         int64_t nrhs = 1;
-        size_t aMatrixFileSize = n * n * sizeof(std::complex<float>);
-        size_t bMatrixFileSize = n * nrhs * sizeof(std::complex<float>);
+        // 形参为 C 兼容的 aclFloatComplex（两个连续 float32，与 std::complex<float> 布局等价）
+        size_t aMatrixFileSize = n * n * sizeof(aclFloatComplex);
+        size_t bMatrixFileSize = n * nrhs * sizeof(aclFloatComplex);
 
-        std::complex<float>* A;
-        std::complex<float>* B;
+        aclFloatComplex* A;
+        aclFloatComplex* B;
         aclrtMallocHost((void**)(&A), aMatrixFileSize);
         aclrtMallocHost((void**)(&B), bMatrixFileSize);
 

@@ -191,7 +191,8 @@ extern "C"
      * @param lda Column stride in complex elements, at least max(1,n).
      * @param Workspace Device workspace; may be null when the queried count is zero.
      * @param Lwork Available workspace count in complex elements, at least the queried count.
-     * @param devInfo Device scalar: zero, positive first zero real diagonal (one based), or
+     * @param devInfo Device scalar: zero, positive one-based index of the first invalid diagonal
+     *                (non-positive real part, non-zero imaginary part, or non-finite value), or
      *                negative invalid argument index excluding handle.
      * @return SUCCESS (including numerical failure in devInfo), INVALID_VALUE, NOT_INITIALIZED,
      *         or a handle/stream error. See the shared info validity contract.
@@ -978,6 +979,9 @@ extern "C"
      *
      * A, ipiv, B and info are HOST buffers, staged to Device internally and written
      * back before returning, exactly like aclsolverSgetrs; B is overwritten with X.
+     * A and B use the C-compatible aclFloatComplex type (two consecutive IEEE float32,
+     * layout-identical to std::complex<float>), so C consumers can call this entry
+     * without reinterpret_cast.
      *
      * @param handle Solver handle used to select the stream for the staged work.
      * @param trans 0 solves A * X = B, 1 solves A^T * X = B, 2 solves A^H * X = B;
@@ -999,7 +1003,7 @@ extern "C"
      * @return ACL_SUCCESS, or ACL_ERROR_INVALID_PARAM for invalid arguments.
      */
     aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
-                             std::complex<float>* A, const int64_t lda, int32_t* ipiv, std::complex<float>* B,
+                             aclFloatComplex* A, const int64_t lda, int32_t* ipiv, aclFloatComplex* B,
                              const int64_t ldb, int32_t* info);
 
 #ifdef __cplusplus

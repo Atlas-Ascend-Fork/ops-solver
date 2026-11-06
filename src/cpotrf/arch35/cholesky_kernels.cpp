@@ -9,6 +9,7 @@
  */
 
 #include "cholesky_device.h"
+#include "simt_api/math_functions.h"
 
 namespace Cholesky
 {
@@ -485,13 +486,19 @@ __simt_vf__ __aicore__ __launch_bounds__(VF_THREADS) void FusedSolveVF(
 }
 
 // Preparation checks singularity before any factor entry can be overwritten.
+// Hermitian 正定因子的对角元必须是正实数；对齐同族实数实现（cholesky_simt.cpp
+// 的 IdentityKernel）的拦截口径：非正实部（含负数与零）、非零虚部、NaN/Inf
+// 一律判为非法因子，devInfo 返回对应的 k+1（issue #352）。
 __simt_callee__ inline void InitializeInverseInfo(const __gm__ aclsolverFloatComplex* a, int n, int lda,
                                                   __gm__ int* info)
 {
     int failure = 0;
     for (int k = 0; k < n; ++k)
     {
-        if (a[static_cast<int64_t>(k) * lda + k].real == 0)
+        // __gm__ 结构体不能整体拷贝构造（地址空间限制），按成员读入标量后判定。
+        const float dReal = a[static_cast<int64_t>(k) * lda + k].real;
+        const float dImag = a[static_cast<int64_t>(k) * lda + k].imag;
+        if (!(dReal > 0.0f) || dImag != 0.0f || !isfinite(dReal) || !isfinite(dImag))
         {
             failure = k + 1;
             break;

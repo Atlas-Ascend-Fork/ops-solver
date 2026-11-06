@@ -32,6 +32,12 @@
 #define BLOCK_M 16           // base case M大小
 #define GATHER_SEG_LEN 4096  // gather 段宽（区别于 kernel 侧 laswp.hpp 的 TILE_LENGTH=8192，issue #328）
 
+// 公共 ABI 契约（issue #354）：aclsolverCgetrs 形参已改为 C 兼容的 aclFloatComplex，
+// 与 std::complex<float> 布局逐字节等价（两个连续 IEEE float32），实现侧按该断言安全直传。
+static_assert(sizeof(aclFloatComplex) == sizeof(std::complex<float>) &&
+                  alignof(aclFloatComplex) == alignof(std::complex<float>),
+              "aclFloatComplex must be layout-compatible with std::complex<float>");
+
 #define GM_ADDR uint8_t *
 
 bool GenerateTiling(uint8_t *gatherBuf)
@@ -87,8 +93,7 @@ int CalcPadStride(int x)
 
 // 入参契约校验（口径注释见 aclsolverCgetrs 函数头），失败返回对应错误码
 aclError CheckCgetrsArgs(const uint64_t trans, const int64_t n, const int64_t nrhs, const int64_t lda,
-                         const int64_t ldb, std::complex<float> *A, std::complex<float> *B, int32_t *ipiv,
-                         int32_t *info)
+                         const int64_t ldb, aclFloatComplex *A, aclFloatComplex *B, int32_t *ipiv, int32_t *info)
 {
     SOLVER_ECHECK(n > 0 && n <= 8192 && nrhs > 0 && nrhs <= 8192 && lda >= n && ldb >= nrhs && A != nullptr &&
                       B != nullptr && ipiv != nullptr && info != nullptr && lda - n <= 8191 && ldb - nrhs <= 8191 &&
@@ -144,8 +149,8 @@ aclError AllocAndUploadCgetrs(CgetrsBuffers &buf, int N, int NRHS, int lda, int 
 }  // namespace
 
 aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const int64_t n, const int64_t nrhs,
-                         std::complex<float> *A, const int64_t lda, int32_t *ipiv, std::complex<float> *B,
-                         const int64_t ldb, int32_t *info)
+                         aclFloatComplex *A, const int64_t lda, int32_t *ipiv, aclFloatComplex *B, const int64_t ldb,
+                         int32_t *info)
 {
     // n > 8192 会使 SplitRealImag 后 alignedN > TILE_LENGTH，CopyIn 第二段超出 UB buffer（issue #266 检视）；
     // 与 aclsolverSgetrf 的文档口径（valid range [1, 8192]）保持一致；

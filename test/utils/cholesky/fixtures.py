@@ -51,6 +51,25 @@ STATUS_INVALID_VALUE = 3
 INFO_SENTINEL = -999
 EDGE_TEST_ORDER = 33
 ILL_CONDITIONED_MIN_EIGENVALUE = 1e-4
+# Non-finite factor families: POTRI consumes the factored triangle directly, and
+# their originals contain non-finite values (kept for residual-diagnostics skip).
+NONFINITE_FACTOR_KINDS = (
+    "singular",
+    "negative_diagonal",
+    "nan_diagonal",
+    "inf_diagonal",
+)
+INVALID_FACTOR_KINDS = ("nonpositive",) + NONFINITE_FACTOR_KINDS
+INVALID_DIAGONAL_VALUES = {
+    "nonpositive": -1,
+    "singular": 0,
+    "negative_diagonal": -1,
+    "nan_diagonal": complex(np.nan, 0),
+    "inf_diagonal": complex(np.inf, 0),
+}
+# LAPACK zpotri only rejects zero diagonals; the kernel contract (issue #352)
+# expects the 1-based index of the first invalid diagonal instead.
+OVERRIDDEN_INFO_KINDS = ("negative_diagonal", "nan_diagonal", "inf_diagonal")
 
 
 def unbatch_op(op):
@@ -72,7 +91,7 @@ class CaseSpec:
 
 
 def cpu_reference(op, a, b, upper, kind):
-    if kind == "singular":
+    if kind in ("singular", "negative_diagonal", "nan_diagonal", "inf_diagonal"):
         # POTRI consumes an already factored triangular input, not a Hermitian matrix.
         factor = a.copy()
     else:
@@ -118,9 +137,82 @@ class MatrixData:
     infos: list[int]
 
 
-def generate_matrices(base, spec, rng):
-    n, nrhs, batch, upper = spec.n, spec.nrhs, spec.batch, spec.upper
+def ill_conditioned_factor(z, n):
+    q, _ = np.linalg.qr(z)
+    eigenvalues = np.geomspace(1, ILL_CONDITIONED_MIN_EIGENVALUE, n)
+    return ((q * eigenvalues) @ q.conj().T).astype(np.complex64)
+
+
+def invalid_diagonal_factor(kind, n, matrix, batch):
+    """Identity factor with one invalid diagonal; batched failures rotate pivots."""
+    a = np.eye(n, dtype=np.complex64)
+    # Batched POTRF mixes successful matrices and failures at different pivots.
+    if batch != 1 and matrix % 3:
+        return a, None
+    invalid_pivot = 1 + matrix % (n - 1)
+    a[invalid_pivot, invalid_pivot] = INVALID_DIAGONAL_VALUES[kind]
+    return a, invalid_pivot
+
+
+def sample_factor(rng, spec, matrix, batch):
+    """Draw one factor matrix plus its invalid-diagonal pivot (None if positive)."""
+    n, kind = spec.n, spec.kind
+    z = rng.normal(size=(n, n)) + 1j * rng.normal(size=(n, n))
+    if kind == "ill_conditioned":
+        return ill_conditioned_factor(z, n), None
+    if kind in INVALID_FACTOR_KINDS:
+        return invalid_diagonal_factor(kind, n, matrix, batch)
+    return (z.conj().T @ z + max(1, n) * np.eye(n)).astype(np.complex64), None
+
+
+def random_rhs(rng, n, nrhs):
+    return (rng.normal(size=(n, nrhs)) + 1j * rng.normal(size=(n, nrhs))).astype(
+        np.complex64
+    )
+
+
+def original_input(a, kind):
+    if kind not in NONFINITE_FACTOR_KINDS:
+        return a.copy()
+    # invalid 因子族（singular/负实部/NaN/Inf）的 original 含非有限值，
+    # 抑制 matmul 的 RuntimeWarning 噪声（该族用例不参与残差比对）。
+    with np.errstate(invalid="ignore"):
+        return a @ a.conj().T
+
+
+def cpu_reference_outputs(base, spec, a, b, solve):
+    """CPU reference quadruple; empty-matrix cases bypass LAPACK entirely."""
+    if spec.n:
+        return cpu_reference(base, a, b if solve else None, spec.upper, spec.kind)
+    golden = np.empty((0, spec.nrhs if solve else 0), np.complex128)
+    return a, golden.astype(np.complex64), golden, 0
+
+
+def mask_unused_triangle(prepared, upper, n):
+    unused = np.tril_indices(n, -1) if upper else np.triu_indices(n, 1)
+    prepared[unused] = complex(np.nan, np.nan)
+    return prepared
+
+
+def append_matrix_case(data, base, spec, rng, matrix):
     solve = base == "cpotrs"
+    a, invalid_pivot = sample_factor(rng, spec, matrix, spec.batch)
+    b = random_rhs(rng, spec.n, spec.nrhs)
+    data.originals.append(original_input(a, spec.kind))
+    prepared, cpu, golden, info = cpu_reference_outputs(base, spec, a, b, solve)
+    if spec.kind in OVERRIDDEN_INFO_KINDS:
+        # LAPACK zpotri 仅拦截零对角元（负实部/NaN/Inf 时 info=0，弱于本仓实数
+        # 路径）。期望值按修复后的 kernel 契约覆写：首个非法对角元的 1-based
+        # 序号，与实数 IdentityKernel 口径一致（issue #352）；批内合法矩阵为 0。
+        info = invalid_pivot + 1 if invalid_pivot is not None else 0
+    data.inputs.append(mask_unused_triangle(prepared, spec.upper, spec.n))
+    data.right_hand_sides.append(b)
+    data.references.append(golden)
+    data.cpu_outputs.append(cpu)
+    data.infos.append(info)
+
+
+def generate_matrices(base, spec, rng):
     data = MatrixData(
         inputs=[],
         right_hand_sides=[],
@@ -129,38 +221,8 @@ def generate_matrices(base, spec, rng):
         cpu_outputs=[],
         infos=[],
     )
-    for matrix in range(batch):
-        z = rng.normal(size=(n, n)) + 1j * rng.normal(size=(n, n))
-        if spec.kind == "ill_conditioned":
-            q, _ = np.linalg.qr(z)
-            eigenvalues = np.geomspace(1, ILL_CONDITIONED_MIN_EIGENVALUE, n)
-            a = ((q * eigenvalues) @ q.conj().T).astype(np.complex64)
-        elif spec.kind in ("nonpositive", "singular"):
-            a = np.eye(n, dtype=np.complex64)
-            # Batched POTRF mixes successful matrices and failures at different pivots.
-            if batch == 1 or matrix % 3 == 0:
-                pivot = 1 + matrix % (n - 1)
-                a[pivot, pivot] = -1 if spec.kind == "nonpositive" else 0
-        else:
-            a = (z.conj().T @ z + max(1, n) * np.eye(n)).astype(np.complex64)
-        b = (rng.normal(size=(n, nrhs)) + 1j * rng.normal(size=(n, nrhs))).astype(
-            np.complex64
-        )
-        data.originals.append(a @ a.conj().T if spec.kind == "singular" else a.copy())
-        if n:
-            prepared, cpu, golden, info = cpu_reference(
-                base, a, b if solve else None, upper, spec.kind
-            )
-        else:
-            prepared, golden = a, np.empty((0, nrhs if solve else 0), np.complex128)
-            cpu, info = golden.astype(np.complex64), 0
-        unused = np.tril_indices(n, -1) if upper else np.triu_indices(n, 1)
-        prepared[unused] = complex(np.nan, np.nan)
-        data.inputs.append(prepared)
-        data.right_hand_sides.append(b)
-        data.references.append(golden)
-        data.cpu_outputs.append(cpu)
-        data.infos.append(info)
+    for matrix in range(spec.batch):
+        append_matrix_case(data, base, spec, rng, matrix)
     return data
 
 
@@ -200,6 +262,14 @@ def base_case_shapes(op):
     if unbatch_op(op) != "cpotrs":
         cases.extend(
             (EDGE_TEST_ORDER, upper, 3, batch, failure) for upper in (False, True)
+        )
+    if unbatch_op(op) == "cpotri":
+        # issue #352：负实部 / NaN / Inf 对角元的负向用例；追加在既有用例之后，
+        # 保持存量 case 序号与 RNG 种子稳定。
+        cases.extend(
+            (EDGE_TEST_ORDER, upper, 3, batch, kind)
+            for upper in (False, True)
+            for kind in ("negative_diagonal", "nan_diagonal", "inf_diagonal")
         )
     return cases
 

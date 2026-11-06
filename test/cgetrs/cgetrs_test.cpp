@@ -41,12 +41,14 @@ int main(int argc, char **argv)
     CHECK_ACL(aclsolverCreate(&handle));
     CHECK_ACL(aclsolverSetStream(handle, stream));
 
-    size_t aMatrixFileSize = N * N * sizeof(std::complex<float>);
+    size_t aMatrixFileSize = N * N * sizeof(aclFloatComplex);
     size_t ipivFileSize = N * sizeof(int32_t);
-    size_t bMatrixFileSize = N * NRHS * sizeof(std::complex<float>);
+    size_t bMatrixFileSize = N * NRHS * sizeof(aclFloatComplex);
 
-    std::complex<float> *A = nullptr;
-    std::complex<float> *B = nullptr;
+    // C ABI 契约（issue #354）：aclsolverCgetrs 形参为 C 兼容的 aclFloatComplex，
+    // 与 std::complex<float> 布局逐字节等价，测试直接使用该类型调用。
+    aclFloatComplex *A = nullptr;
+    aclFloatComplex *B = nullptr;
     int32_t *ipiv = nullptr;
 
     auto cleanup = [&]() -> aclError

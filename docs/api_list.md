@@ -258,7 +258,7 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `aclsolverCunmqr` / `aclsolverCunmqr_bufferSize` | 酉变换及工作区查询 |
 | `aclsolverCCgels` / `aclsolverCCgels_bufferSize` | 复数最小二乘及工作区查询 |
 | `aclsolverSgetrs` | 单精度线性方程组求解 |
-| `aclsolverCgetrs` | 复数线性方程组求解 |
+| `aclsolverCgetrs` | 复数线性方程组求解（C ABI，复数形参为 aclFloatComplex） |
 | `aclsolverCpotrf` | 复数矩阵Cholesky分解 |
 
 ### 复数 LU/求逆接口迁移
