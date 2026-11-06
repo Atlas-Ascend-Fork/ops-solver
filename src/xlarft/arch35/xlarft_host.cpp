@@ -27,7 +27,6 @@
 
 // 五个 host 都要的那批头（标准库、acl、assert/gm_addr/align_up、platform）收在这里
 #include "../../utils/host_common.h"
-
 #include "../kernel/xlarft_launch.h"
 
 namespace
@@ -41,7 +40,6 @@ constexpr int64_t XLARFT_WS_ALIGN = 128;
 constexpr int64_t XLARFT_LDY_ALIGN = 64;
 // 分 K 的份数上限。必须 >= kernel 里的 KSPLIT_MAX；kernel 只用 capP 做 clamp
 constexpr int64_t XLARFT_KSPLIT_MAX = 32;
-
 
 /// workspace 布局（单位：float 元素个数；对外的查询值换成字节）
 struct WsLayout
@@ -59,7 +57,8 @@ WsLayout PlanWorkspace(int64_t n, int64_t k)
     WsLayout ws;
     ws.ldy = AlignUp64(std::max<int64_t>(n, 1), XLARFT_LDY_ALIGN);
     int64_t cur = 0;
-    auto take = [&cur](int64_t elems) {
+    auto take = [&cur](int64_t elems)
+    {
         const int64_t off = cur;
         cur += AlignUp64(elems, XLARFT_WS_ALIGN);
         return off;
@@ -104,7 +103,7 @@ aclsolverStatus_t CheckArgs(aclsolverParams_t params, aclsolverDirectMode_t dire
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
-} // namespace
+}  // namespace
 
 aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolverParams_t params,
                                              aclsolverDirectMode_t direct, aclsolverStorevMode_t storev, int64_t n,
@@ -114,15 +113,14 @@ aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolver
                                              aclsolverDataType_t computeType, size_t *workspaceInBytesOnDevice,
                                              size_t *workspaceInBytesOnHost)
 {
-    (void)handle; // 尺寸查询与 handle/stream 无关
+    (void)handle;  // 尺寸查询与 handle/stream 无关
     // V / tau / T 不参与尺寸推导（既不读内容也不读地址），允许传 nullptr：
     // 调用方常在分配之前先查 workspace 尺寸。
     (void)V;
     (void)tau;
     (void)T;
     SOLVER_ECHECK(workspaceInBytesOnDevice != nullptr,
-                  "aclsolverXlarft_bufferSize: workspaceInBytesOnDevice is nullptr.",
-                  ACLSOLVER_STATUS_INVALID_VALUE);
+                  "aclsolverXlarft_bufferSize: workspaceInBytesOnDevice is nullptr.", ACLSOLVER_STATUS_INVALID_VALUE);
     SOLVER_ECHECK(workspaceInBytesOnHost != nullptr, "aclsolverXlarft_bufferSize: workspaceInBytesOnHost is nullptr.",
                   ACLSOLVER_STATUS_INVALID_VALUE);
     const aclsolverStatus_t st =
@@ -138,19 +136,24 @@ aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolver
         *workspaceInBytesOnDevice = 0;
         return ACLSOLVER_STATUS_SUCCESS;
     }
+    // 与执行入口同一对上限：超限的入参在尺寸推导（int64 乘法）之前拒绝，
+    // 避免 ldy*k / k*k*KSPLIT_MAX 的有符号溢出 UB 误导 workspace 分配。
+    SOLVER_ECHECK(n <= XLARFT_MAX_N, "aclsolverXlarft: n 超过当前 kernel 上限 4096。", ACLSOLVER_STATUS_NOT_SUPPORTED);
+    SOLVER_ECHECK(k <= XLARFT_MAX_K, "aclsolverXlarft: k 超过当前 kernel 上限 256。", ACLSOLVER_STATUS_NOT_SUPPORTED);
     const WsLayout ws = PlanWorkspace(n, k);
     *workspaceInBytesOnDevice = static_cast<size_t>(ws.total) * sizeof(float);
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
-namespace {
+namespace
+{
 /// 取流、查核数，然后把 kernel 下发出去。
 ///
 /// MIX kernel 的 blockDim 以 AIC 块数为单位（每块配 2 个 AIV）。kernel 里 T 的行按
 /// AIV 核号轮转分配、UB 只给 32 行 ⇒ 要求 2*numBlocks*32 >= k。
 aclsolverStatus_t XlarftLaunch(aclsolverHandle_t handle, aclsolverDirectMode_t direct, int64_t n, int64_t k,
-                               const void *V, int64_t ldv, const void *tau, void *T, int64_t ldt,
-                               void *bufferOnDevice, const WsLayout &ws)
+                               const void *V, int64_t ldv, const void *tau, void *T, int64_t ldt, void *bufferOnDevice,
+                               const WsLayout &ws)
 {
     aclrtStream stream = nullptr;
     const aclsolverStatus_t stRt = aclsolverGetStream(handle, &stream);
@@ -169,19 +172,21 @@ aclsolverStatus_t XlarftLaunch(aclsolverHandle_t handle, aclsolverDirectMode_t d
                      static_cast<int32_t>(ldv), static_cast<int32_t>(ldt), static_cast<int32_t>(ws.ldy),
                      (direct == ACLSOLVER_DIRECT_BACKWARD) ? 1u : 0u, ws.offY, ws.offG, ws.offP, ws.capP);
 
-    return ACLSOLVER_STATUS_SUCCESS;
+    // Kernel launches are asynchronous; do not report success when enqueueing
+    // failed. Device execution errors are still observed by stream synchronization.
+    return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
+                                                                    : ACLSOLVER_STATUS_EXECUTION_FAILED;
 }
 }  // namespace
 
 aclsolverStatus_t aclsolverXlarft(aclsolverHandle_t handle, aclsolverParams_t params, aclsolverDirectMode_t direct,
                                   aclsolverStorevMode_t storev, int64_t n, int64_t k, aclsolverDataType_t dataTypeV,
                                   const void *V, int64_t ldv, aclsolverDataType_t dataTypeTau, const void *tau,
-                                  aclsolverDataType_t dataTypeT, void *T, int64_t ldt,
-                                  aclsolverDataType_t computeType, void *bufferOnDevice,
-                                  size_t workspaceInBytesOnDevice, void *bufferOnHost,
+                                  aclsolverDataType_t dataTypeT, void *T, int64_t ldt, aclsolverDataType_t computeType,
+                                  void *bufferOnDevice, size_t workspaceInBytesOnDevice, void *bufferOnHost,
                                   size_t workspaceInBytesOnHost)
 {
-    (void)bufferOnHost; // host workspace 尺寸恒为 0，不读
+    (void)bufferOnHost;  // host workspace 尺寸恒为 0，不读
     SOLVER_ECHECK(handle != nullptr, "aclsolverXlarft: handle is nullptr.", ACLSOLVER_STATUS_HANDLE_IS_NULLPTR);
     const aclsolverStatus_t stChk =
         CheckArgs(params, direct, storev, n, k, dataTypeV, ldv, dataTypeTau, dataTypeT, ldt, computeType);
@@ -196,10 +201,8 @@ aclsolverStatus_t aclsolverXlarft(aclsolverHandle_t handle, aclsolverParams_t pa
         return ACLSOLVER_STATUS_SUCCESS;
     }
 
-    SOLVER_ECHECK(n <= XLARFT_MAX_N, "aclsolverXlarft: n 超过当前 kernel 上限 4096。",
-                  ACLSOLVER_STATUS_NOT_SUPPORTED);
-    SOLVER_ECHECK(k <= XLARFT_MAX_K, "aclsolverXlarft: k 超过当前 kernel 上限 256。",
-                  ACLSOLVER_STATUS_NOT_SUPPORTED);
+    SOLVER_ECHECK(n <= XLARFT_MAX_N, "aclsolverXlarft: n 超过当前 kernel 上限 4096。", ACLSOLVER_STATUS_NOT_SUPPORTED);
+    SOLVER_ECHECK(k <= XLARFT_MAX_K, "aclsolverXlarft: k 超过当前 kernel 上限 256。", ACLSOLVER_STATUS_NOT_SUPPORTED);
 
     SOLVER_ECHECK(V != nullptr, "aclsolverXlarft: V is nullptr.", ACLSOLVER_STATUS_INVALID_VALUE);
     SOLVER_ECHECK(tau != nullptr, "aclsolverXlarft: tau is nullptr.", ACLSOLVER_STATUS_INVALID_VALUE);

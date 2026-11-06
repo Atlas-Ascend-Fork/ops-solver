@@ -33,9 +33,10 @@
 
 // acl/acl.h、cann_ops_solver.h 以及 algorithm / chrono / random / string / vector
 // 这批都由 qr_test_utils.h 统一提供，这里只列本文件额外要的。
-#include "../utils/qr_test_utils.h"
 #include <cmath>
+
 #include "../../src/sgeqrf/kernel/householder.hpp"
+#include "../utils/qr_test_utils.h"
 
 namespace
 {
@@ -103,28 +104,21 @@ struct XCase
 {
     bool backward;
     int64_t n, k, ldv, ldt;
-    aclsolverDirectMode_t Direct() const
-    {
-        return backward ? ACLSOLVER_DIRECT_BACKWARD : ACLSOLVER_DIRECT_FORWARD;
-    }
-    size_t TBytes() const
-    {
-        return static_cast<size_t>(ldt) * static_cast<size_t>(k) * sizeof(float);
-    }
+    aclsolverDirectMode_t Direct() const { return backward ? ACLSOLVER_DIRECT_BACKWARD : ACLSOLVER_DIRECT_FORWARD; }
+    size_t TBytes() const { return static_cast<size_t>(ldt) * static_cast<size_t>(k) * sizeof(float); }
 };
 
 /// T 的投毒值：既能看出"该写的没写"，也能看出"不该写的被写了"
 constexpr float kPoison = -7.0f;
 
 /// 查 workspace 大小并把输入搬上设备。hostBytes 预置非 0，接口必须把它改写成 0。
-bool XlarftAlloc(aclsolverHandle_t handle, const XCase &c, const std::vector<float> &Vh,
-                 const std::vector<float> &tauH, Buffers *buf, size_t *devBytes)
+bool XlarftAlloc(aclsolverHandle_t handle, const XCase &c, const std::vector<float> &Vh, const std::vector<float> &tauH,
+                 Buffers *buf, size_t *devBytes)
 {
     size_t hostBytes = 123;
-    if (aclsolverXlarft_bufferSize(handle, nullptr, c.Direct(), ACLSOLVER_STOREV_COLUMNWISE, c.n, c.k,
-                                   ACLSOLVER_R_32F, nullptr, c.ldv, ACLSOLVER_R_32F, nullptr, ACLSOLVER_R_32F,
-                                   nullptr, c.ldt, ACLSOLVER_R_32F, devBytes, &hostBytes)
-        != ACLSOLVER_STATUS_SUCCESS)
+    if (aclsolverXlarft_bufferSize(handle, nullptr, c.Direct(), ACLSOLVER_STOREV_COLUMNWISE, c.n, c.k, ACLSOLVER_R_32F,
+                                   nullptr, c.ldv, ACLSOLVER_R_32F, nullptr, ACLSOLVER_R_32F, nullptr, c.ldt,
+                                   ACLSOLVER_R_32F, devBytes, &hostBytes) != ACLSOLVER_STATUS_SUCCESS)
     {
         printf("  bufferSize 失败\n");
         return false;
@@ -139,8 +133,8 @@ bool XlarftAlloc(aclsolverHandle_t handle, const XCase &c, const std::vector<flo
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->V), vBytes, ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->tau), tauBytes, ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->T), c.TBytes(), ACL_MEM_MALLOC_HUGE_FIRST));
-    TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->ws), std::max<size_t>(*devBytes, 1),
-                           ACL_MEM_MALLOC_HUGE_FIRST));
+    TEST_CHECK(
+        aclrtMalloc(reinterpret_cast<void **>(&buf->ws), std::max<size_t>(*devBytes, 1), ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMemcpy(buf->V, vBytes, Vh.data(), vBytes, ACL_MEMCPY_HOST_TO_DEVICE));
     TEST_CHECK(aclrtMemcpy(buf->tau, tauBytes, tauH.data(), tauH.size() * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
     return true;
@@ -320,8 +314,8 @@ void CheckHandleAndModes(aclsolverHandle_t handle, const Buffers &buf, size_t de
                             kBpLdv, kR32, kR32, kBpLdt, kR32, buf.ws, devBytes),
                  ACLSOLVER_STATUS_INVALID_VALUE, ok);
     ExpectStatus("storev 非 COLUMNWISE（ROWWISE）",
-                 CallXlarft(buf, handle, nullptr, kFwd, static_cast<aclsolverStorevMode_t>(1), kBpN, kBpK, kR32,
-                            kBpLdv, kR32, kR32, kBpLdt, kR32, buf.ws, devBytes),
+                 CallXlarft(buf, handle, nullptr, kFwd, static_cast<aclsolverStorevMode_t>(1), kBpN, kBpK, kR32, kBpLdv,
+                            kR32, kR32, kBpLdt, kR32, buf.ws, devBytes),
                  ACLSOLVER_STATUS_INVALID_VALUE, ok);
 }
 
@@ -329,17 +323,17 @@ void CheckHandleAndModes(aclsolverHandle_t handle, const Buffers &buf, size_t de
 void CheckShapeRanges(aclsolverHandle_t handle, const Buffers &buf, size_t devBytes, bool *ok)
 {
     ExpectStatus("n<0",
-                 CallXlarft(buf, handle, nullptr, kFwd, kColw, -1, kBpK, kR32, kBpLdv, kR32, kR32, kBpLdt, kR32,
-                            buf.ws, devBytes),
-                 ACLSOLVER_STATUS_INVALID_VALUE, ok);
-    ExpectStatus("k<0",
-                 CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, -1, kR32, kBpLdv, kR32, kR32, kBpLdt, kR32,
-                            buf.ws, devBytes),
-                 ACLSOLVER_STATUS_INVALID_VALUE, ok);
-    ExpectStatus("n<k",
-                 CallXlarft(buf, handle, nullptr, kFwd, kColw, 8, 16, kR32, kBpLdv, kR32, kR32, kBpLdt, kR32, buf.ws,
+                 CallXlarft(buf, handle, nullptr, kFwd, kColw, -1, kBpK, kR32, kBpLdv, kR32, kR32, kBpLdt, kR32, buf.ws,
                             devBytes),
                  ACLSOLVER_STATUS_INVALID_VALUE, ok);
+    ExpectStatus("k<0",
+                 CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, -1, kR32, kBpLdv, kR32, kR32, kBpLdt, kR32, buf.ws,
+                            devBytes),
+                 ACLSOLVER_STATUS_INVALID_VALUE, ok);
+    ExpectStatus(
+        "n<k",
+        CallXlarft(buf, handle, nullptr, kFwd, kColw, 8, 16, kR32, kBpLdv, kR32, kR32, kBpLdt, kR32, buf.ws, devBytes),
+        ACLSOLVER_STATUS_INVALID_VALUE, ok);
     ExpectStatus("ldv<n",
                  CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, kBpN - 1, kR32, kR32, kBpLdt, kR32,
                             buf.ws, devBytes),
@@ -371,14 +365,14 @@ void CheckNotSupported(aclsolverHandle_t handle, const Buffers &buf, size_t devB
                  CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, kBpLdv, kR32, kR32, kBpLdt, C32,
                             buf.ws, devBytes),
                  want, ok);
-    ExpectStatus("k>256 -> NOT_SUPPORTED",
-                 CallXlarft(buf, handle, nullptr, kFwd, kColw, 512, 257, kR32, 512, kR32, kR32, 257, kR32, buf.ws,
-                            devBytes),
-                 want, ok);
-    ExpectStatus("n>4096 -> NOT_SUPPORTED",
-                 CallXlarft(buf, handle, nullptr, kFwd, kColw, 4097, 16, kR32, 4097, kR32, kR32, kBpLdt, kR32,
-                            buf.ws, devBytes),
-                 want, ok);
+    ExpectStatus(
+        "k>256 -> NOT_SUPPORTED",
+        CallXlarft(buf, handle, nullptr, kFwd, kColw, 512, 257, kR32, 512, kR32, kR32, 257, kR32, buf.ws, devBytes),
+        want, ok);
+    ExpectStatus(
+        "n>4096 -> NOT_SUPPORTED",
+        CallXlarft(buf, handle, nullptr, kFwd, kColw, 4097, 16, kR32, 4097, kR32, kR32, kBpLdt, kR32, buf.ws, devBytes),
+        want, ok);
 }
 
 /// workspace 与三个数据指针的空指针/容量
@@ -398,8 +392,8 @@ void CheckWorkspaceAndPointers(aclsolverHandle_t handle, const Buffers &buf, siz
                  ACLSOLVER_STATUS_SUCCESS, ok);
     (void)aclrtSynchronizeStream(nullptr);
     ExpectStatus("V=nullptr",
-                 aclsolverXlarft(handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, nullptr, kBpLdv, kR32, buf.tau,
-                                 kR32, buf.T, kBpLdt, kR32, buf.ws, devBytes, nullptr, 0),
+                 aclsolverXlarft(handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, nullptr, kBpLdv, kR32, buf.tau, kR32,
+                                 buf.T, kBpLdt, kR32, buf.ws, devBytes, nullptr, 0),
                  ACLSOLVER_STATUS_INVALID_VALUE, ok);
     ExpectStatus("tau=nullptr",
                  aclsolverXlarft(handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, buf.V, kBpLdv, kR32, nullptr, kR32,
@@ -425,13 +419,37 @@ void CheckQueryNullptrs(aclsolverHandle_t handle, bool *ok)
                  ACLSOLVER_STATUS_INVALID_VALUE, ok);
 }
 
+/// 查询接口的超限入参：与执行入口同一对 n/k 上限，超限 NOT_SUPPORTED；
+/// 极大入参必须在尺寸推导前拒绝（ldy*k / k*k 有符号溢出 UB 防护）。
+void CheckBufferSizeLimits(aclsolverHandle_t handle, bool *ok)
+{
+    size_t devBytes = 0, hostBytes = 0;
+    const auto want = ACLSOLVER_STATUS_NOT_SUPPORTED;
+    ExpectStatus("bufferSize n>4096 -> NOT_SUPPORTED",
+                 aclsolverXlarft_bufferSize(handle, nullptr, kFwd, kColw, 4097, 16, kR32, nullptr, 4097, kR32, nullptr,
+                                            kR32, nullptr, kBpLdt, kR32, &devBytes, &hostBytes),
+                 want, ok);
+    ExpectStatus("bufferSize k>256 -> NOT_SUPPORTED",
+                 aclsolverXlarft_bufferSize(handle, nullptr, kFwd, kColw, 512, 257, kR32, nullptr, 512, kR32, nullptr,
+                                            kR32, nullptr, 257, kR32, &devBytes, &hostBytes),
+                 want, ok);
+    ExpectStatus("bufferSize n 极大（溢出防护）-> NOT_SUPPORTED",
+                 aclsolverXlarft_bufferSize(handle, nullptr, kFwd, kColw, (1LL << 58), 4096, kR32, nullptr, (1LL << 58),
+                                            kR32, nullptr, kR32, nullptr, 4096, kR32, &devBytes, &hostBytes),
+                 want, ok);
+    // 上限内的合法入参（边界值）必须仍成功，口径与现版本一致
+    ExpectStatus("bufferSize 合法边界 n=4096/k=256",
+                 aclsolverXlarft_bufferSize(handle, nullptr, kFwd, kColw, 4096, 256, kR32, nullptr, 4096, kR32, nullptr,
+                                            kR32, nullptr, 256, kR32, &devBytes, &hostBytes),
+                 ACLSOLVER_STATUS_SUCCESS, ok);
+}
+
 /// 参数校验：Xlarft 没有 devInfo，只看返回码
 bool RunBadParams(aclsolverHandle_t handle)
 {
     size_t devBytes = 0, hostBytes = 0;
-    if (aclsolverXlarft_bufferSize(handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, nullptr, kBpLdv, kR32, nullptr,
-                                   kR32, nullptr, kBpLdt, kR32, &devBytes, &hostBytes)
-        != ACLSOLVER_STATUS_SUCCESS)
+    if (aclsolverXlarft_bufferSize(handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, nullptr, kBpLdv, kR32, nullptr, kR32,
+                                   nullptr, kBpLdt, kR32, &devBytes, &hostBytes) != ACLSOLVER_STATUS_SUCCESS)
     {
         printf("  bufferSize 失败\n");
         return false;
@@ -443,8 +461,8 @@ bool RunBadParams(aclsolverHandle_t handle)
                            ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf.T), static_cast<size_t>(kBpLdt) * kBpK * sizeof(float),
                            ACL_MEM_MALLOC_HUGE_FIRST));
-    TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf.ws), std::max<size_t>(devBytes, 1),
-                           ACL_MEM_MALLOC_HUGE_FIRST));
+    TEST_CHECK(
+        aclrtMalloc(reinterpret_cast<void **>(&buf.ws), std::max<size_t>(devBytes, 1), ACL_MEM_MALLOC_HUGE_FIRST));
 
     bool ok = true;
     CheckHandleAndModes(handle, buf, devBytes, &ok);
@@ -452,6 +470,7 @@ bool RunBadParams(aclsolverHandle_t handle)
     CheckNotSupported(handle, buf, devBytes, &ok);
     CheckWorkspaceAndPointers(handle, buf, devBytes, &ok);
     CheckQueryNullptrs(handle, &ok);
+    CheckBufferSizeLimits(handle, &ok);
     buf.Free();
     return ok;
 }
@@ -470,9 +489,8 @@ bool RunEmpty(aclsolverHandle_t handle, int64_t n, int64_t k)
         return false;
     }
     const aclsolverStatus_t st =
-        aclsolverXlarft(handle, nullptr, F, ACLSOLVER_STOREV_COLUMNWISE, n, k, R32, nullptr,
-                        std::max<int64_t>(n, 1), R32, nullptr, R32, nullptr, std::max<int64_t>(k, 1), R32, nullptr, 0,
-                        nullptr, 0);
+        aclsolverXlarft(handle, nullptr, F, ACLSOLVER_STOREV_COLUMNWISE, n, k, R32, nullptr, std::max<int64_t>(n, 1),
+                        R32, nullptr, R32, nullptr, std::max<int64_t>(k, 1), R32, nullptr, 0, nullptr, 0);
     const bool ok = (st == ACLSOLVER_STATUS_SUCCESS) && (devBytes == 0) && (hostBytes == 0);
     printf("  空问题 n=%lld k=%lld: status=%d devBytes=%zu hostBytes=%zu  %s\n", (long long)n, (long long)k, (int)st,
            devBytes, hostBytes, ok ? "PASS" : "FAIL");
@@ -503,43 +521,42 @@ void RunPerfMode(aclsolverHandle_t handle, aclrtStream stream)
     }
 }
 
+/// 形状覆盖用例表（任务书 §3.5 入参生成规则）：n 覆盖 2 的幂与 2 的幂-1；
+/// ldv/ldt 再压 +8 / +32 两档 padding
+struct SweepShape
+{
+    int64_t n, k, ldvExtra, ldtExtra;
+};
+constexpr SweepShape kSweepShapes[] = {
+    {1, 1, 0, 0},        {2, 2, 0, 0},      {8, 4, 0, 0},        {16, 16, 0, 0},    {37, 11, 5, 3},
+    {64, 64, 0, 0},      {65, 33, 7, 7},    {100, 37, 5, 3},     {128, 128, 0, 0},  {256, 64, 0, 0},
+    {256, 256, 0, 0},    {257, 129, 7, 3},  {1024, 128, 0, 0},   {2048, 256, 0, 0}, {4096, 128, 0, 0},
+    {4096, 256, 0, 0},   {3, 3, 0, 0},      {7, 7, 0, 0},        {15, 15, 0, 0},    {31, 31, 0, 0},
+    {63, 63, 0, 0},      {127, 127, 0, 0},  {255, 255, 0, 0},    {511, 255, 0, 0},  {1023, 256, 0, 0},
+    {2047, 256, 0, 0},   {4095, 256, 0, 0}, {256, 64, 8, 8},     {256, 64, 32, 32}, {1024, 128, 8, 8},
+    {1024, 128, 32, 32}, {4096, 256, 8, 8}, {4096, 256, 32, 32},
+};
+
 /// 形状覆盖：每条形状 FORWARD / BACKWARD 各跑一遍，每遍内部再跑 2 次比 bit-wise
 void RunShapeSweep(aclsolverHandle_t handle, aclrtStream stream, int *pass, int *total)
 {
     printf("== 形状覆盖（FORWARD / BACKWARD 各一遍，每条跑 2 次比 bit-wise）==\n");
-    struct Shape
-    {
-        int64_t n, k, ldvExtra, ldtExtra;
-    };
-    const Shape shapes[] = {
-        {1, 1, 0, 0},      {2, 2, 0, 0},     {8, 4, 0, 0},      {16, 16, 0, 0},   {37, 11, 5, 3},
-        {64, 64, 0, 0},    {65, 33, 7, 7},   {100, 37, 5, 3},   {128, 128, 0, 0}, {256, 64, 0, 0},
-        {256, 256, 0, 0},  {257, 129, 7, 3}, {1024, 128, 0, 0}, {2048, 256, 0, 0}, {4096, 128, 0, 0},
-        {4096, 256, 0, 0},
-        // §3.5 入参生成规则：n 覆盖 2 的幂与 2 的幂-1；lda/ldt 再压 +8 / +32 两档 padding
-        {3, 3, 0, 0},      {7, 7, 0, 0},      {15, 15, 0, 0},   {31, 31, 0, 0},
-        {63, 63, 0, 0},    {127, 127, 0, 0},  {255, 255, 0, 0}, {511, 255, 0, 0},
-        {1023, 256, 0, 0}, {2047, 256, 0, 0}, {4095, 256, 0, 0},
-        {256, 64, 8, 8},   {256, 64, 32, 32}, {1024, 128, 8, 8}, {1024, 128, 32, 32},
-        {4096, 256, 8, 8}, {4096, 256, 32, 32},
-    };
     int idx = 0;
-    for (const auto &s : shapes)
+    for (const auto &s : kSweepShapes)
     {
         for (bool backward : {false, true})
         {
             ++idx;
             ++(*total);
-            *pass += RunShape(handle, stream, idx, backward, s.n, s.k, s.n + s.ldvExtra, s.k + s.ldtExtra, 2, true,
-                              nullptr)
-                         ? 1
-                         : 0;
+            *pass +=
+                RunShape(handle, stream, idx, backward, s.n, s.k, s.n + s.ldvExtra, s.k + s.ldtExtra, 2, true, nullptr)
+                    ? 1
+                    : 0;
         }
     }
 }
 
-
-} // namespace
+}  // namespace
 
 int main(int argc, char **argv)
 {

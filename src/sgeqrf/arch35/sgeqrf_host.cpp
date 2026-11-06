@@ -24,7 +24,6 @@
 
 // 五个 host 都要的那批头（标准库、acl、assert/gm_addr/align_up、platform）收在这里
 #include "../../utils/host_common.h"
-
 #include "../kernel/geqrf_launch.h"
 
 namespace
@@ -48,7 +47,6 @@ constexpr int64_t QR_WS_ALIGN = 128;
 constexpr int32_t QR_LDY_ALIGN = 64;
 // 面板内交换 T 行用的暂存区（kernel 侧下标上界约 2 KB，取 4096 个 float 留足余量）
 constexpr int64_t QR_PANEL_W_ELEMS = 4096;
-
 
 /// 本实现支持的最大行数（由上面的 UB 约束推出）
 inline int32_t MaxRowsSupported()
@@ -83,7 +81,8 @@ WsLayout PlanWorkspace(int32_t m, int32_t n)
     ws.ldy = static_cast<int32_t>(AlignUp64(m, QR_LDY_ALIGN));
 
     int64_t cur = 0;
-    auto take = [&cur](int64_t elems) {
+    auto take = [&cur](int64_t elems)
+    {
         const int64_t off = cur;
         cur += AlignUp64(elems, QR_WS_ALIGN);
         return off;
@@ -124,11 +123,11 @@ aclsolverStatus_t CheckShape(int32_t m, int32_t n, int32_t lda, int32_t *badIdx)
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
-} // namespace
+}  // namespace
 
 aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, int n, float *A, int lda, int *Lwork)
 {
-    (void)handle; // 尺寸查询与 handle/stream 无关，对齐 cuSolver 允许在未绑定 stream 时调用
+    (void)handle;  // 尺寸查询与 handle/stream 无关，对齐 cuSolver 允许在未绑定 stream 时调用
     // A 不参与尺寸推导（既不读内容也不读地址），因此允许传 nullptr：
     // 调用方常在分配 A 之前先查 workspace 尺寸，强制非空会让这种正常用法失败。
     (void)A;
@@ -141,7 +140,7 @@ aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, in
                   "aclsolverSgeqrf_bufferSize invalid param: 需满足 m >= 0、n >= 0、lda >= max(1, m)。", st);
     if (m == 0 || n == 0)
     {
-        *Lwork = 0; // 空问题不需要 workspace
+        *Lwork = 0;  // 空问题不需要 workspace
         return ACLSOLVER_STATUS_SUCCESS;
     }
     const WsLayout ws = PlanWorkspace(static_cast<int32_t>(m), static_cast<int32_t>(n));
@@ -213,5 +212,8 @@ aclsolverStatus_t aclsolverSgeqrf(aclsolverHandle_t handle, int m, int n, float 
                      reinterpret_cast<GM_ADDR>(Workspace), mi, ni, ldai, ws.ldy, QR_COLUMNS, QR_ALIGN_BD, ws.offY,
                      ws.offT, ws.offPanelW, ws.offW, reinterpret_cast<GM_ADDR>(devInfo));
 
-    return ACLSOLVER_STATUS_SUCCESS;
+    // Kernel launches are asynchronous; do not report success when enqueueing
+    // failed. Device execution errors are still observed by stream synchronization.
+    return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
+                                                                    : ACLSOLVER_STATUS_EXECUTION_FAILED;
 }

@@ -25,7 +25,6 @@
 
 // 五个 host 都要的那批头（标准库、acl、assert/gm_addr/align_up、platform）收在这里
 #include "../../utils/host_common.h"
-
 #include "../kernel/orgqr_launch.h"
 
 namespace
@@ -41,7 +40,6 @@ constexpr int32_t ORGQR_LDY_ALIGN = 64;
 // 分 K 的份数上限。必须 >= kernel 里的 KSPLIT_MAX；kernel 只用 capP 做 clamp，
 // 给小了只是少分几份（慢但正确），给大了只是多占 workspace。
 constexpr int32_t ORGQR_KSPLIT_MAX = 32;
-
 
 /// workspace 布局（单位：float 元素个数）。host 算偏移、kernel 只接收不重算。
 struct WsLayout
@@ -63,7 +61,8 @@ WsLayout PlanWorkspace(int32_t m, int32_t n, int32_t k)
     ws.nb = std::max<int32_t>(1, std::min(ORGQR_NB, std::max(k, 1)));
     ws.ldy = static_cast<int32_t>(AlignUp64(m, ORGQR_LDY_ALIGN));
     int64_t cur = 0;
-    auto take = [&cur](int64_t elems) {
+    auto take = [&cur](int64_t elems)
+    {
         const int64_t off = cur;
         cur += AlignUp64(elems, ORGQR_WS_ALIGN);
         return off;
@@ -113,12 +112,12 @@ aclsolverStatus_t CheckShape(int32_t m, int32_t n, int32_t k, int32_t lda, int32
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
-} // namespace
+}  // namespace
 
 aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, int n, int k, const float *A, int lda,
                                              const float *tau, int *lwork)
 {
-    (void)handle; // 尺寸查询与 handle/stream 无关
+    (void)handle;  // 尺寸查询与 handle/stream 无关
     // A / tau 不参与尺寸推导（既不读内容也不读地址），允许传 nullptr：
     // 调用方常在分配之前先查 workspace 尺寸，强制非空会让这种正常用法失败。
     (void)A;
@@ -126,11 +125,13 @@ aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, in
     SOLVER_ECHECK(lwork != nullptr, "aclsolverSorgqr_bufferSize invalid param 7: lwork is nullptr.",
                   ACLSOLVER_STATUS_INVALID_VALUE);
     int32_t badIdx = 0;
-    if (CheckShape(static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(k),
-                   static_cast<int32_t>(lda), &badIdx) != ACLSOLVER_STATUS_SUCCESS)
+    if (CheckShape(static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(k), static_cast<int32_t>(lda),
+                   &badIdx) != ACLSOLVER_STATUS_SUCCESS)
     {
-        SOLVER_ECHECK(false, "aclsolverSorgqr_bufferSize invalid param: 需满足 m >= 0、0 <= n <= m、0 <= k <= n、lda >= max(1, m)。",
-                      ACLSOLVER_STATUS_INVALID_VALUE);
+        SOLVER_ECHECK(
+            false,
+            "aclsolverSorgqr_bufferSize invalid param: 需满足 m >= 0、0 <= n <= m、0 <= k <= n、lda >= max(1, m)。",
+            ACLSOLVER_STATUS_INVALID_VALUE);
     }
     if (m == 0 || n == 0)
     {
@@ -160,7 +161,9 @@ aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k,
     if (CheckShape(mi, ni, ki, ldai, &badIdx) != ACLSOLVER_STATUS_SUCCESS)
     {
         (void)WriteInfoSync(devInfo, -badIdx);
-        SOLVER_ECHECK(false, "aclsolverSorgqr invalid param: 需满足 m >= 0、0 <= n <= m、0 <= k <= n、lda >= max(1, m)。", ACLSOLVER_STATUS_INVALID_VALUE);
+        SOLVER_ECHECK(false,
+                      "aclsolverSorgqr invalid param: 需满足 m >= 0、0 <= n <= m、0 <= k <= n、lda >= max(1, m)。",
+                      ACLSOLVER_STATUS_INVALID_VALUE);
     }
 
     // 空问题（m == 0 或 n == 0）按成功返回、不下发 kernel。
@@ -202,7 +205,11 @@ aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k,
 
     sorgqr_kernel_do(numBlocks, stream, reinterpret_cast<GM_ADDR>(A),
                      reinterpret_cast<GM_ADDR>(const_cast<float *>(tau)), reinterpret_cast<GM_ADDR>(work), mi, ni, ki,
-                     ldai, ws.ldy, ws.nb, ws.offY, ws.offT, ws.offG, ws.offW, ws.offP, ws.capP, reinterpret_cast<GM_ADDR>(devInfo));
+                     ldai, ws.ldy, ws.nb, ws.offY, ws.offT, ws.offG, ws.offW, ws.offP, ws.capP,
+                     reinterpret_cast<GM_ADDR>(devInfo));
 
-    return ACLSOLVER_STATUS_SUCCESS;
+    // Kernel launches are asynchronous; do not report success when enqueueing
+    // failed. Device execution errors are still observed by stream synchronization.
+    return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
+                                                                    : ACLSOLVER_STATUS_EXECUTION_FAILED;
 }

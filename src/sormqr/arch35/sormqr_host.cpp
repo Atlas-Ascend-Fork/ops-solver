@@ -27,7 +27,6 @@
 
 // 五个 host 都要的那批头（标准库、acl、assert/gm_addr/align_up、platform）收在这里
 #include "../../utils/host_common.h"
-
 #include "../kernel/ormqr_launch.h"
 
 namespace
@@ -43,7 +42,6 @@ constexpr int32_t ORMQR_LDY_ALIGN = 64;
 // 分 K 的份数上限。必须 >= kernel 里的 KSPLIT_MAX；kernel 只用 capP 做 clamp，
 // 给小了只是少分几份（慢但正确），给大了只是多占 workspace。
 constexpr int32_t ORMQR_KSPLIT_MAX = 32;
-
 
 /// workspace 布局（单位：float 元素个数）。host 算偏移、kernel 只接收不重算。
 struct WsLayout
@@ -61,10 +59,7 @@ struct WsLayout
 };
 
 /// nq = op(Q) 的阶数，也是 V 的行数（LEFT 时 m、RIGHT 时 n）
-inline int32_t Nq(bool isLeft, int32_t m, int32_t n)
-{
-    return isLeft ? m : n;
-}
+inline int32_t Nq(bool isLeft, int32_t m, int32_t n) { return isLeft ? m : n; }
 
 WsLayout PlanWorkspace(bool isLeft, int32_t m, int32_t n, int32_t k)
 {
@@ -74,7 +69,8 @@ WsLayout PlanWorkspace(bool isLeft, int32_t m, int32_t n, int32_t k)
     ws.nb = std::max<int32_t>(1, std::min(ORMQR_NB, std::max(k, 1)));
     ws.ldy = static_cast<int32_t>(AlignUp64(std::max(nq, 1), ORMQR_LDY_ALIGN));
     int64_t cur = 0;
-    auto take = [&cur](int64_t elems) {
+    auto take = [&cur](int64_t elems)
+    {
         const int64_t off = cur;
         cur += AlignUp64(elems, ORMQR_WS_ALIGN);
         return off;
@@ -145,13 +141,13 @@ aclsolverStatus_t CheckShape(aclsolverSideMode_t side, aclsolverOperation_t tran
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
-} // namespace
+}  // namespace
 
 aclsolverStatus_t aclsolverSormqr_bufferSize(aclsolverHandle_t handle, aclsolverSideMode_t side,
                                              aclsolverOperation_t trans, int m, int n, int k, const float *A, int lda,
                                              const float *tau, const float *C, int ldc, int *lwork)
 {
-    (void)handle; // 尺寸查询与 handle/stream 无关
+    (void)handle;  // 尺寸查询与 handle/stream 无关
     // A / tau / C 不参与尺寸推导（既不读内容也不读地址），允许传 nullptr：
     // 调用方常在分配之前先查 workspace 尺寸，强制非空会让这种正常用法失败。
     (void)A;
@@ -163,7 +159,9 @@ aclsolverStatus_t aclsolverSormqr_bufferSize(aclsolverHandle_t handle, aclsolver
     if (CheckShape(side, trans, static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(k),
                    static_cast<int32_t>(lda), static_cast<int32_t>(ldc), &badIdx) != ACLSOLVER_STATUS_SUCCESS)
     {
-        SOLVER_ECHECK(false, "aclsolverSormqr_bufferSize invalid param: 需满足 side/trans 为合法枚举、m >= 0、n >= 0、k >= 0、k <= nq、lda >= max(1, nq)、ldc >= max(1, m)。",
+        SOLVER_ECHECK(false,
+                      "aclsolverSormqr_bufferSize invalid param: 需满足 side/trans 为合法枚举、m >= 0、n >= 0、k >= "
+                      "0、k <= nq、lda >= max(1, nq)、ldc >= max(1, m)。",
                       ACLSOLVER_STATUS_INVALID_VALUE);
     }
     // k == 0 时 op(Q) = I，C 不变 ⇒ 不下发 kernel，也不需要 workspace
@@ -180,7 +178,8 @@ aclsolverStatus_t aclsolverSormqr_bufferSize(aclsolverHandle_t handle, aclsolver
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
-namespace {
+namespace
+{
 /// 取流与核数，然后把 kernel 下发出去。
 ///
 /// 成功路径上 devInfo 置 0 **交给 kernel 自己写**，不在 host 侧下 aclrtMemsetAsync：
@@ -203,16 +202,19 @@ aclsolverStatus_t SormqrLaunch(aclsolverHandle_t handle, bool isLeft, aclsolverO
     const uint32_t transFlag = (trans == ACLSOLVER_OP_N) ? 0u : 1u;
     sormqr_kernel_do(numBlocks, stream, reinterpret_cast<GM_ADDR>(const_cast<float *>(A)),
                      reinterpret_cast<GM_ADDR>(const_cast<float *>(tau)), reinterpret_cast<GM_ADDR>(C),
-                     reinterpret_cast<GM_ADDR>(work), reinterpret_cast<GM_ADDR>(devInfo), mi, ni, ki, ldai, ldci,
-                     ws.nb, ws.ldy, isLeft ? 0u : 1u,
-                     transFlag, ws.offY, ws.offT, ws.offG, ws.offW, ws.offW2, ws.offP, ws.capP);
+                     reinterpret_cast<GM_ADDR>(work), reinterpret_cast<GM_ADDR>(devInfo), mi, ni, ki, ldai, ldci, ws.nb,
+                     ws.ldy, isLeft ? 0u : 1u, transFlag, ws.offY, ws.offT, ws.offG, ws.offW, ws.offW2, ws.offP,
+                     ws.capP);
 
-    return ACLSOLVER_STATUS_SUCCESS;
+    // Kernel launches are asynchronous; do not report success when enqueueing
+    // failed. Device execution errors are still observed by stream synchronization.
+    return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
+                                                                    : ACLSOLVER_STATUS_EXECUTION_FAILED;
 }
 }  // namespace
 
-aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans,
-                                  int m, int n, int k, const float *A, int lda, const float *tau, float *C, int ldc,
+aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans, int m,
+                                  int n, int k, const float *A, int lda, const float *tau, float *C, int ldc,
                                   float *work, int lwork, int *devInfo)
 {
     SOLVER_ECHECK(devInfo != nullptr, "aclsolverSormqr invalid param 13: devInfo is nullptr.",
@@ -229,7 +231,10 @@ aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t 
     if (CheckShape(side, trans, mi, ni, ki, ldai, ldci, &badIdx) != ACLSOLVER_STATUS_SUCCESS)
     {
         (void)WriteInfoSync(devInfo, -badIdx);
-        SOLVER_ECHECK(false, "aclsolverSormqr invalid param: 需满足 side/trans 为合法枚举、m >= 0、n >= 0、k >= 0、k <= nq、lda >= max(1, nq)、ldc >= max(1, m)。", ACLSOLVER_STATUS_INVALID_VALUE);
+        SOLVER_ECHECK(false,
+                      "aclsolverSormqr invalid param: 需满足 side/trans 为合法枚举、m >= 0、n >= 0、k >= 0、k <= "
+                      "nq、lda >= max(1, nq)、ldc >= max(1, m)。",
+                      ACLSOLVER_STATUS_INVALID_VALUE);
     }
 
     const bool isLeft = (side == ACLSOLVER_SIDE_LEFT);
