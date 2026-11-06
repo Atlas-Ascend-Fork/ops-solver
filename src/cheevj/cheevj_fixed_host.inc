@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0.
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -308,6 +308,16 @@ aclError LaunchCompleteVector(const FixedMatrixSlices& matrix, const FixedPanelS
                            reflectorImag, bounds, eigenvalues, matrix.packedImag, matrix.updateReal, matrix.real,
                            commandWorkspace, matrix.imag, matrix.packedReal, deviceInfo, static_cast<int>(n), true,
                            stream);
+    // Kernel launches are asynchronous; a failed enqueue must surface instead of
+    // falling through to the success copy-out. Wait for the stages already
+    // enqueued before returning so the caller's cleanup can free buffers
+    // without racing the in-flight kernels.
+    const aclError launchError = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (launchError != ACL_SUCCESS)
+    {
+        (void)aclrtSynchronizeStream(stream);
+        return launchError;
+    }
     CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     return ACL_SUCCESS;
 }
@@ -395,6 +405,18 @@ aclError RunCompleteNoVector(const std::vector<Complex>& packedA, int64_t n, flo
                            panel.tauReal, panel.tauImag, panel.panelWorkspace, panel.barrierWorkspace, nullptr, nullptr,
                            bounds, eigenvalues, lowWorkspace, highWorkspace, nullptr, nullptr, nullptr, nullptr,
                            deviceInfo, static_cast<int>(n), false, stream);
+    // Kernel launches are asynchronous; a failed enqueue must surface instead of
+    // copying back garbage eigenvalues under the preset info=0 "success" flag.
+    // info 取非成功值（LAPACK 口径 info>0 表示未得到有效结果），调用方按返回码与
+    // info 均可感知链路未完成。先等在途阶段落定再释放，避免与内核竞态。
+    const aclError launchError = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (launchError != ACL_SUCCESS)
+    {
+        (void)aclrtSynchronizeStream(stream);
+        releaseFixedBuffers();
+        *info = 1;
+        return launchError;
+    }
     CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), releaseFixedBuffers());
 
     const aclError copyStatus = CopyFixedEigenvalues(deviceInfo, eigenvalues, sizes.vectorBytes, w, info);

@@ -1286,6 +1286,7 @@ aclError RunCompleteVector(std::vector<Complex>* packedA, int64_t n, float* w, i
                                                            eigenvalues, commandWorkspace, deviceInfo, n, stream);
         launchStatus != ACL_SUCCESS)
     {
+        *info = 1;
         releaseWorkspaces();
         return launchStatus;
     }
