@@ -45,6 +45,7 @@ git clone -b ${tag_version} https://gitcode.com/cann/ops-solver.git
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
+- [第三方组件许可声明](docs/THIRD_PARTY.md)：含随源码编入 `libops_solver.so` 的 PACO GEQRF（GPL-3.0-or-later 双许可）成分清单与分发义务边界
 - [所属SIG](https://gitcode.com/cann/community/tree/master/CANN/sigs/ops-linear-algebra)
 
 ## 🤝联系我们
