@@ -24,6 +24,7 @@
 
 #include "../utils/aicore_num.h"
 #include "../utils/assert.h"
+#include "../utils/free_reset.h"
 #include "../utils/potrf_gemm_work.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
@@ -190,21 +191,23 @@ struct SpotrfBuffers
     uint8_t *sync = nullptr;             // 硬件同步地址
 };
 
-// 释放所有已申请的 HBM / host 内存（原 cleanup lambda 提取；补充了原实现遗漏的 aDeviceWork 释放）
+// 释放所有已申请的 HBM / host 内存（原 cleanup lambda 提取；补充了原实现遗漏的 aDeviceWork 释放）。
+// 释放后立即置空（issue #186 同款口径）：多处失败路径共用该清理，
+// 幂等语义防止同一指针被二次 aclrtFree。
 static void ReleaseSpotrfBuffers(SpotrfBuffers &buf)
 {
-    if (buf.aDevice) aclrtFree(buf.aDevice);
-    if (buf.aDeviceWork) aclrtFree(buf.aDeviceWork);
-    if (buf.offsetDevice1) aclrtFree(buf.offsetDevice1);
-    if (buf.offsetDevice2) aclrtFree(buf.offsetDevice2);
-    if (buf.offsetDevice3) aclrtFree(buf.offsetDevice3);
-    if (buf.offsetHost1) aclrtFreeHost(buf.offsetHost1);
-    if (buf.offsetHost2) aclrtFreeHost(buf.offsetHost2);
-    if (buf.offsetHost3) aclrtFreeHost(buf.offsetHost3);
-    if (buf.offsetIdxHost) aclrtFreeHost(buf.offsetIdxHost);
-    if (buf.offsetIdxDevice) aclrtFree(buf.offsetIdxDevice);
-    if (buf.gatherbuf) aclrtFreeHost(buf.gatherbuf);
-    if (buf.gatherbufDevice) aclrtFree(buf.gatherbufDevice);
+    FreeAndReset(buf.aDevice, aclrtFree);
+    FreeAndReset(buf.aDeviceWork, aclrtFree);
+    FreeAndReset(buf.offsetDevice1, aclrtFree);
+    FreeAndReset(buf.offsetDevice2, aclrtFree);
+    FreeAndReset(buf.offsetDevice3, aclrtFree);
+    FreeAndReset(buf.offsetHost1, aclrtFreeHost);
+    FreeAndReset(buf.offsetHost2, aclrtFreeHost);
+    FreeAndReset(buf.offsetHost3, aclrtFreeHost);
+    FreeAndReset(buf.offsetIdxHost, aclrtFreeHost);
+    FreeAndReset(buf.offsetIdxDevice, aclrtFree);
+    FreeAndReset(buf.gatherbuf, aclrtFreeHost);
+    FreeAndReset(buf.gatherbufDevice, aclrtFree);
 }
 
 // A 矩阵上载：host → device，另申请等尺寸 kernel 工作区
@@ -277,14 +280,30 @@ static aclError AllocAndUploadGemmWork(SpotrfBuffers &buf, int k, size_t offsetS
     return ACL_SUCCESS;
 }
 
-// 下发 kernel，等待完成后把结果搬回 host
+// 下发 kernel，等待完成后把结果搬回 host。
+// 失败路径的释放语义（issue #350，对齐 cholesky_host 的 issue #325 口径）：
+//   - kernel 下发失败：先等已入队任务落定，落定后释放；
+//   - 流同步失败：kernel 可能仍在读写这些缓冲，立即释放构成 use-after-free，
+//     故意滞留（有界泄漏优于 UAF），不做释放；
+//   - 同步成功后的回拷失败：内核已落定，立即释放安全。
 static aclError LaunchSpotrf(SpotrfBuffers &buf, int m, int n, int blockM, int blockN, int lda, bool isTranse,
                              int blockNum, aclrtStream stream)
 {
     CHECK_ACLRT(aclrtGetHardwareSyncAddr((void **)&buf.sync), ReleaseSpotrfBuffers(buf));
     spotrf_kernel_do(buf.sync, m, n, blockM, blockN, lda, isTranse, buf.aDevice, buf.aDeviceWork, buf.gatherbufDevice,
                      buf.offsetDevice1, buf.offsetDevice2, buf.offsetDevice3, buf.offsetIdxDevice, blockNum, stream);
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseSpotrfBuffers(buf));
+    // Kernel launches are asynchronous; do not report success when enqueueing failed.
+    const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (enqueueStatus != ACL_SUCCESS)
+    {
+        // 同步等待在途任务落定后再释放；同步本身也失败时按下方口径滞留。
+        if (aclrtSynchronizeStream(stream) == ACL_SUCCESS)
+        {
+            ReleaseSpotrfBuffers(buf);
+        }
+        return enqueueStatus;
+    }
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     size_t aMatrixFileSize = lda * n * sizeof(float);
     CHECK_ACLRT(aclrtMemcpy(buf.aHost, aMatrixFileSize, buf.aDevice, aMatrixFileSize, ACL_MEMCPY_DEVICE_TO_HOST),
                 ReleaseSpotrfBuffers(buf));
@@ -340,9 +359,11 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
     CHECK_ACLRT(AllocAndUploadGather(buf, stream), ReleaseSpotrfBuffers(buf));
     CHECK_ACLRT(AllocAndUploadGemmWork(buf, k, offsetSize, static_cast<int>(numBlocks), stream),
                 ReleaseSpotrfBuffers(buf));
+    // LaunchSpotrf 自管失败路径的释放（含同步失败故意滞留的口径），
+    // 此处不再兜底释放，避免同步失败分支的滞留语义被调用方推翻（issue #350）。
     CHECK_ACLRT(LaunchSpotrf(buf, static_cast<int>(m), N, blockM, blockN, static_cast<int>(lda), isTranse,
                              static_cast<int>(numBlocks), stream),
-                ReleaseSpotrfBuffers(buf));
+                ((void)0));
 
     ReleaseSpotrfBuffers(buf);
     return ACL_SUCCESS;

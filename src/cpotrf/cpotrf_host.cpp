@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "../utils/assert.h"
+#include "../utils/free_reset.h"
 #include "../utils/gm_addr.h"
 #include "../utils/potrf_gemm_work.h"
 #include "acl/acl.h"
@@ -213,21 +214,23 @@ struct CpotrfBuffers
     uint8_t* sync = nullptr;
 };
 
-// 释放所有已申请的 HBM / host 内存；未申请的指针为空，可安全跳过
+// 释放所有已申请的 HBM / host 内存；未申请的指针为空，可安全跳过。
+// 释放后立即置空（issue #186 同款口径）：多处失败路径共用该清理，
+// 幂等语义防止同一指针被二次 aclrtFree。
 void ReleaseCpotrfBuffers(CpotrfBuffers& buf)
 {
-    if (buf.offsetDevice1) aclrtFree(buf.offsetDevice1);
-    if (buf.offsetDevice2) aclrtFree(buf.offsetDevice2);
-    if (buf.offsetDevice3) aclrtFree(buf.offsetDevice3);
-    if (buf.offsetIdxDevice) aclrtFree(buf.offsetIdxDevice);
-    if (buf.offsetHost1) aclrtFreeHost(buf.offsetHost1);
-    if (buf.offsetHost2) aclrtFreeHost(buf.offsetHost2);
-    if (buf.offsetHost3) aclrtFreeHost(buf.offsetHost3);
-    if (buf.offsetIdxHost) aclrtFreeHost(buf.offsetIdxHost);
-    if (buf.gatherDevice) aclrtFree(buf.gatherDevice);
-    if (buf.gatherHost) aclrtFreeHost(buf.gatherHost);
-    if (buf.aDevice) aclrtFree(buf.aDevice);
-    if (buf.aDeviceWork) aclrtFree(buf.aDeviceWork);
+    FreeAndReset(buf.offsetDevice1, aclrtFree);
+    FreeAndReset(buf.offsetDevice2, aclrtFree);
+    FreeAndReset(buf.offsetDevice3, aclrtFree);
+    FreeAndReset(buf.offsetIdxDevice, aclrtFree);
+    FreeAndReset(buf.offsetHost1, aclrtFreeHost);
+    FreeAndReset(buf.offsetHost2, aclrtFreeHost);
+    FreeAndReset(buf.offsetHost3, aclrtFreeHost);
+    FreeAndReset(buf.offsetIdxHost, aclrtFreeHost);
+    FreeAndReset(buf.gatherDevice, aclrtFree);
+    FreeAndReset(buf.gatherHost, aclrtFreeHost);
+    FreeAndReset(buf.aDevice, aclrtFree);
+    FreeAndReset(buf.aDeviceWork, aclrtFree);
 }
 
 // A 矩阵上载：HBM 侧按 2*N 个 float 行宽，host 侧按 2*lda 个 float 行宽
@@ -296,18 +299,34 @@ aclError AllocAndUploadGather(CpotrfBuffers& buf, size_t gatherSize, bool lower,
     return ACL_SUCCESS;
 }
 
-// 下发 kernel，等待完成后把结果按 lda 行宽搬回 host
+// 下发 kernel，等待完成后把结果按 lda 行宽搬回 host。
+// 失败路径的释放语义（issue #350，对齐 cholesky_host 的 issue #325 口径）：
+//   - kernel 下发失败：先等已入队任务落定，落定后释放；
+//   - 流同步失败：kernel 可能仍在读写这些缓冲，立即释放构成 use-after-free，
+//     故意滞留（有界泄漏优于 UAF），不做释放；
+//   - 同步成功后的回拷失败：内核已落定，立即释放安全。
 aclError LaunchCpotrf(CpotrfBuffers& buf, bool transpose, int64_t N, int64_t lda, uint32_t blockDim, aclrtStream stream)
 {
     CHECK_ACLRT(aclrtGetHardwareSyncAddr((void**)(&buf.sync)), ReleaseCpotrfBuffers(buf));
     cpotrf_kernel_do(buf.sync, transpose, static_cast<int>(N), static_cast<int>(N), buf.aDevice, buf.aDeviceWork,
                      buf.offsetDevice1, buf.offsetDevice2, buf.offsetDevice3, buf.offsetIdxDevice, buf.gatherDevice,
                      blockDim, stream);
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseCpotrfBuffers(buf));
+    // Kernel launches are asynchronous; do not report success when enqueueing failed.
+    const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (enqueueStatus != ACL_SUCCESS)
+    {
+        // 同步等待在途任务落定后再释放；同步本身也失败时按下方口径滞留。
+        if (aclrtSynchronizeStream(stream) == ACL_SUCCESS)
+        {
+            ReleaseCpotrfBuffers(buf);
+        }
+        return enqueueStatus;
+    }
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     CHECK_ACLRT(aclrtMemcpy2dAsync(buf.aHost, 2 * lda * sizeof(float), buf.aDevice, 2 * N * sizeof(float),
                                    2 * N * sizeof(float), N, ACL_MEMCPY_DEVICE_TO_HOST, stream),
                 ReleaseCpotrfBuffers(buf));
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseCpotrfBuffers(buf));
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     return ACL_SUCCESS;
 }
 
@@ -355,7 +374,9 @@ aclError aclsolverCpotrf(aclsolverHandle_t handle, const char uplo, const int64_
     CHECK_ACLRT(AllocAndUploadMatrix(buf, N, lda, aMatrixWorkSize, stream), ReleaseCpotrfBuffers(buf));
     CHECK_ACLRT(AllocAndUploadGemmWork(buf, k, offsetSize, numBlocks, stream), ReleaseCpotrfBuffers(buf));
     CHECK_ACLRT(AllocAndUploadGather(buf, gatherSize, uplo == 'L', N, stream), ReleaseCpotrfBuffers(buf));
-    CHECK_ACLRT(LaunchCpotrf(buf, uplo == 'L', N, lda, numBlocks, stream), ReleaseCpotrfBuffers(buf));
+    // LaunchCpotrf 自管失败路径的释放（含同步失败故意滞留的口径），
+    // 此处不再兜底释放，避免同步失败分支的滞留语义被调用方推翻（issue #350）。
+    CHECK_ACLRT(LaunchCpotrf(buf, uplo == 'L', N, lda, numBlocks, stream), ((void)0));
 
     ReleaseCpotrfBuffers(buf);
     return ACL_SUCCESS;
