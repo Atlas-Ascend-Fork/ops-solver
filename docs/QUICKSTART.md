@@ -70,10 +70,13 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 >
 > ```bash
 > python3 test/cmatinv_batched/data/gen_data.py 3 2
-> ./build/test/cmatinv_batched/cmatinv_batched_test
+> ./build/test/cmatinv_batched/cmatinv_batched_test 0 3 2
 > ```
 >
-> 数据生成脚本的参数依次为矩阵阶数和批量大小；调整它们时，需同步调整测试程序的 `batchSize` 和 `n` 参数。
+> 测试二进制的首参数是**设备号**（默认 0，见"常见问题排查"的设备检查清单）：
+> 参数依次为 `设备号、矩阵阶数 n、批量大小 batch`，后两个需与 `gen_data.py` 的
+> `矩阵阶数、批量大小` 保持一致。只传形状（如 `cmatinv_batched_test 4 8`）会把
+> 阶数当成设备号，导致打开设备失败或在错误设备上以错位参数运行。
 
 ## 二、算子开发
 
@@ -1619,10 +1622,12 @@ if __name__ == "__main__":
 
 int32_t main(int32_t argc, char* argv[])
 {
-    int deviceId, batchSize, n;
+    // 参数顺序与 test/cmatinv_batched/cmatinv_batched_test.cpp 实际解析一致：
+    // argv[1]=设备号（默认 0）、argv[2]=矩阵阶数 n（默认 3）、argv[3]=批量 batch（默认 2）
+    int deviceId, n, batch;
     deviceId = (argc > 1) ? std::atoi(argv[1]) : 0;
-    batchSize = (argc > 2) ? std::atoi(argv[2]) : 2;
-    n = (argc > 3) ? std::atoi(argv[3]) : 3;
+    n = (argc > 2) ? std::atoi(argv[2]) : 3;
+    batch = (argc > 3) ? std::atoi(argv[3]) : 2;
 
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(deviceId));
