@@ -201,7 +201,22 @@ install_gcc() {
             if grep -q "release 7" /etc/redhat-release; then
                 run_command sudo $PKG_MANAGER install -y centos-release-scl
                 run_command sudo $PKG_MANAGER install -y devtoolset-9-gcc devtoolset-9-gcc-c++
-                run_command source /opt/rh/devtoolset-9/enable
+                # enable 必须在当前 shell 生效：run_command 以命令替换子 shell 执行，
+                # 导出的 PATH/CC/CXX 随子 shell 退出而丢失（issue #356）。
+                # 对齐 macOS 分支的"当前 shell 直接生效"口径（issue #305），
+                # 并前置 PATH 保证复查时 command -v gcc 命中 devtoolset 版本。
+                # SCL enable 脚本可能引用未导出的 MANPATH/INFOPATH（无 ${VAR:-} 兜底），
+                # source 前临时关闭 nounset 并先判存在，避免 set -u 下脚本中断（!193 检视意见）。
+                if [[ -f /opt/rh/devtoolset-9/enable ]]; then
+                    set +u
+                    source /opt/rh/devtoolset-9/enable
+                    set -u
+                else
+                    echo "Warning: /opt/rh/devtoolset-9/enable not found, fallback to explicit toolchain paths."
+                fi
+                export CC=/opt/rh/devtoolset-9/root/usr/bin/gcc
+                export CXX=/opt/rh/devtoolset-9/root/usr/bin/g++
+                export PATH=/opt/rh/devtoolset-9/root/usr/bin:$PATH
             else
                 run_command sudo $PKG_MANAGER install -y gcc gcc-c++
             fi
@@ -302,12 +317,17 @@ install_pigz() {
             return
         fi
     fi
-    read -p "Install pigz? [Y/n] " -n 1 -r
-    echo
-    if [[ -n "$REPLY" && ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Skipping pigz installation"
-        PIGZ_SKIPPED=true
-        return
+    # 非交互 stdin（CI / 管道 / < /dev/null）下 read 遇 EOF 返回非零，会触发 errexit
+    # 静默终止整个安装（issue #357）：仅 tty 询问，非交互默认安装（pigz 体积小、
+    # 无破坏性，与同文件其余安装项的无条件口径一致）。
+    if [[ -t 0 ]]; then
+        read -p "Install pigz? [Y/n] " -n 1 -r
+        echo
+        if [[ -n "$REPLY" && ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Skipping pigz installation"
+            PIGZ_SKIPPED=true
+            return
+        fi
     fi
     echo "Installing pigz..."
     case "$OS" in
@@ -357,7 +377,9 @@ install_patch() {
     fi
     echo "Installing patch..."
     case "$OS" in
-        debian|rhel)
+        # euler 分支对齐同文件 install_pigz/install_dos2unix 的口径（issue #359）：
+        # openEuler/EulerOS 由 dnf 安装，缺分支时未预装 patch 的环境直接失败退出。
+        debian|rhel|euler)
             run_command sudo $PKG_MANAGER install -y patch
             ;;
         macos)
