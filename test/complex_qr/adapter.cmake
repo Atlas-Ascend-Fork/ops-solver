@@ -14,7 +14,12 @@ if("arch35" IN_LIST SOC_ARCH_DIRS AND NOT TARGET ${QR_ADAPTER_TARGET}_adapter)
     target_link_libraries(${QR_ADAPTER_TARGET}_adapter PRIVATE
         ${OPS_SOLVER} ${ASCEND_CANN_PACKAGE_PATH}/lib64/libascendcl.so)
     target_link_options(${QR_ADAPTER_TARGET}_adapter PRIVATE -Wl,--no-undefined)
-    install(TARGETS ${QR_ADAPTER_TARGET}_adapter LIBRARY DESTINATION lib)
+    # Standalone-only：in-tree 构建（build.sh --pkg）不得把测试 adapter 装进发布包；
+    # 测试运行只消费构建树内的 so，安装规则无消费方。若独立构建确需安装，
+    # 目录与主库 lib64 对齐（issue #355）。
+    if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        install(TARGETS ${QR_ADAPTER_TARGET}_adapter LIBRARY DESTINATION lib64)
+    endif()
 endif()
 
 if(NOT "arch35" IN_LIST SOC_ARCH_DIRS AND NOT TARGET ${QR_ADAPTER_TARGET}_arch_mismatch)

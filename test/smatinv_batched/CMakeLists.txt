@@ -32,7 +32,10 @@ target_compile_features(smatinv_batched_adapter PRIVATE cxx_std_17)
 target_include_directories(smatinv_batched_adapter PRIVATE "${OPS_SOLVER_SOURCE_DIR}/include" "${smatinv_batched_ACL_INCLUDE}")
 target_link_libraries(smatinv_batched_adapter PRIVATE ${OPS_SOLVER} "${smatinv_batched_ACL_LIBRARY}")
 set_target_properties(smatinv_batched_adapter PROPERTIES OUTPUT_NAME smatinvbatched_adapter INSTALL_RPATH "$ORIGIN")
-install(TARGETS smatinv_batched_adapter LIBRARY DESTINATION lib64)
+# Standalone-only：in-tree 构建（build.sh --pkg）不得把测试 adapter 装进发布包（issue #355）
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    install(TARGETS smatinv_batched_adapter LIBRARY DESTINATION lib64)
+endif()
 
 add_executable(smatinv_batched_test smatinv_batched_test.cpp)
 target_compile_features(smatinv_batched_test PRIVATE cxx_std_17)

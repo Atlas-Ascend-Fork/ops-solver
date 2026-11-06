@@ -32,7 +32,10 @@ target_compile_features(sgetri_adapter PRIVATE cxx_std_17)
 target_include_directories(sgetri_adapter PRIVATE "${OPS_SOLVER_SOURCE_DIR}/include" "${sgetri_ACL_INCLUDE}")
 target_link_libraries(sgetri_adapter PRIVATE ${OPS_SOLVER} "${sgetri_ACL_LIBRARY}")
 set_target_properties(sgetri_adapter PROPERTIES OUTPUT_NAME sgetri_adapter INSTALL_RPATH "$ORIGIN")
-install(TARGETS sgetri_adapter LIBRARY DESTINATION lib64)
+# Standalone-only：in-tree 构建（build.sh --pkg）不得把测试 adapter 装进发布包（issue #355）
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    install(TARGETS sgetri_adapter LIBRARY DESTINATION lib64)
+endif()
 
 add_executable(sgetri_test sgetri_test.cpp)
 target_compile_features(sgetri_test PRIVATE cxx_std_17)

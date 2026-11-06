@@ -32,7 +32,10 @@ target_compile_features(sgetrf_adapter PRIVATE cxx_std_17)
 target_include_directories(sgetrf_adapter PRIVATE "${OPS_SOLVER_SOURCE_DIR}/include" "${sgetrf_ACL_INCLUDE}")
 target_link_libraries(sgetrf_adapter PRIVATE ${OPS_SOLVER} "${sgetrf_ACL_LIBRARY}")
 set_target_properties(sgetrf_adapter PROPERTIES OUTPUT_NAME sgetrf_adapter INSTALL_RPATH "$ORIGIN")
-install(TARGETS sgetrf_adapter LIBRARY DESTINATION lib64)
+# Standalone-only：in-tree 构建（build.sh --pkg）不得把测试 adapter 装进发布包（issue #355）
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    install(TARGETS sgetrf_adapter LIBRARY DESTINATION lib64)
+endif()
 
 add_executable(sgetrf_test sgetrf_test.cpp)
 target_compile_features(sgetrf_test PRIVATE cxx_std_17)
