@@ -101,11 +101,11 @@ Solver CgetriBatched算子实现。
 
 
 - 算子约束：
-  - lda、lda_inv、info参数在当前版本实际未启用。
-  - lda与lda_inv当前必须等于n（矩阵按连续布局处理，batch内每个矩阵均为n*n连续存储），传入其它值将直接返回参数错误。
-  - 入参n大于等于32且小于等于256。
-  - 入参batchSize小于等于3000。
-  - 当n小于32时，请使用CmatinvBatched算子。
+  - 入参 n 的有效范围为 [0, 4096]，batchSize 的有效范围为 [0, 1000000]（docs/zh/cgetri_batched.md 与 src/cgetri_batched/cgetri_batched_host.cpp InvalidShape 现行口径）。
+  - lda >= max(1, n)、ldc >= max(1, n)，均支持合法 padding（不要求连续布局）。
+  - Aarray/PivotArray/Carray/infoArray 均为 Device 内存：外层指针数组与各矩阵都在 Device。
+  - infoArray 逐 batch 写入状态（非"未启用"）：0 表示成功，负值表示参数非法，正值表示该矩阵首个精确零主元位置。
+  - PivotArray 传 nullptr 表示所有矩阵均为无主元 LU。
 
 - 调用实现
     使用内核调用符<<<>>>调用核函数。

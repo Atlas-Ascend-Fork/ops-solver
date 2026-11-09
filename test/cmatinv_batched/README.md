@@ -102,10 +102,11 @@ Solver CmatinvBatched算子实现。
 
 
 - 算子约束：
-  - lda、lda_inv、info参数在当前版本实际未启用。
-  - lda与lda_inv当前必须等于n（矩阵按连续布局处理，batch内每个矩阵均为n*n连续存储），传入其它值将直接返回参数错误。
-  - 入参n小于等于256。
-  - 入参batchSize小于等于3000。
+  - 入参 n 的有效范围为 [0, 32]，batchSize 的有效范围为 [0, 10000000]（docs/zh/cmatinv_batched.md 与 src/cmatinv_batched/cmatinv_batched_host.cpp InvalidShape 现行口径）。
+  - lda >= max(1, n)、lda_inv >= max(1, n)，均支持合法 padding（不要求连续布局）。
+  - A/Ainv/info 均为 Device 内存：外层指针数组与各矩阵都在 Device。
+  - info 逐 batch 写入状态（非"未启用"）：0 表示成功，负值表示参数非法，正值表示该矩阵奇异。
+  - n > 32 不再转发 aclsolverCgetriBatched（现行实现仅支持 n <= 32）；更大规模请使用 aclsolverCgetriBatched 先经 aclsolverCgetrf 分解后求逆。
 
 - 调用实现
     使用内核调用符<<<>>>调用核函数。

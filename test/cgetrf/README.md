@@ -100,9 +100,10 @@ Solver Cgetrf算子实现。
 
 
 - 算子约束：
-  - m 的有效范围为 [1, 8192]（kernel 列暂存区容量上限，超出将返回参数错误）。
-  - n 的有效范围为 [1, 8192]（kernel 虚实分离/合并缓冲设计上限，超出将返回参数错误）。
-  - lda 当前必须等于 n（矩阵A按连续布局存储），传入其它值将直接返回参数错误。
+  - m 的有效范围为 [0, 4096]，n 的有效范围为 [0, 8192]（与 docs/zh/cgetrf.md 及 src/cgetrf/cgetrf_host.cpp InvalidShape 现行口径一致）；空问题 m=0 或 n=0 成功返回并写 devInfo=0。
+  - lda >= max(1, m)，支持合法 padding（leading-dimension 间隙保留，不要求连续布局）。
+  - A、Workspace、devIpiv、devInfo 均为 Device 内存；devIpiv 可为 nullptr（不选主元），非空时返回 min(m, n) 个 1-based 行交换索引。
+  - devInfo 为 0 表示成功，-i 表示除 handle 外第 i 个参数非法，正值表示首个精确零主元位置（1-based）。
 
 - 调用实现
     使用内核调用符<<<>>>调用核函数。

@@ -53,14 +53,21 @@ Solver Cgetri算子实现。
         <td align="center">A</td>
         <td align="center">[n, n]</td>
         <td align="center">COMPLEX64</td>
-        <td align="left">输入为待求逆的原始矩阵A（算子内部完成LU分解与求解，不消费Cgetrf的输出LU因子；请勿传入Cgetrf返回的packed LU，否则结果会被主元置换且不报错）</td>
+        <td align="left">输入为待求逆矩阵经 aclsolverCgetrf 分解后的 packed LU 因子（列主序）；本算子消费该因子与 devIpiv 完成求逆，返回时 A 原地覆写为逆矩阵（与 docs/zh/cgetri.md 一致：输入原始矩阵时应先调用 aclsolverCgetrf）</td>
+        <td align="center">ND</td>
+    </tr>
+    <tr>
+        <td align="center">devIpiv</td>
+        <td align="center">[n]</td>
+        <td align="center">INT32</td>
+        <td align="left">aclsolverCgetrf 输出的 1-based 行交换索引，Device 内存；nullptr 仅用于无主元 LU；非法取值（不在对应行范围内）时 devInfo 置 -4 并返回 ACLSOLVER_STATUS_INVALID_VALUE</td>
         <td align="center">ND</td>
     </tr>
     <tr>
         <td align="center">lda</td>
         <td align="center">[1]</td>
         <td align="center">INT64</td>
-        <td align="left">A同一列中相邻两行元素间的内存地址偏移量（leading dimension）（当前约束为N）</td>
+        <td align="left">A同一列中相邻两行元素间的内存地址偏移量（leading dimension），须满足 lda >= max(1, n)</td>
         <td align="center">\</td>
     </tr>
     <tr>
@@ -93,8 +100,9 @@ Solver Cgetri算子实现。
 
 
 - 算子约束：
-  - n 的有效范围为 [1, 8192]（kernel 列暂存区设计上限，超出将返回参数错误）。
-  - lda 当前必须等于 n（矩阵A按连续布局存储），传入其它值将直接返回参数错误。
+  - n 的有效范围为 [0, 4096]（docs/zh/cgetri.md 与 src/cgetri/cgetri_host.cpp InvalidShape 现行口径）。
+  - lda >= max(1, n)，支持合法 padding（不要求连续布局）。
+  - A、Workspace、devIpiv、devInfo 均为 Device 内存；输入须为 aclsolverCgetrf 输出的 LU 因子，devIpiv 为其 1-based 主元（nullptr 表示无主元 LU）。
 
 - 调用实现
     使用内核调用符<<<>>>调用核函数。
