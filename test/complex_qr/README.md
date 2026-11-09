@@ -14,6 +14,11 @@ and 64 OpenBLAS threads. Record the actual loaded BLAS libraries with
 `threadpoolctl.threadpool_info()`; package versions alone are insufficient.
 Source the selected CANN installation's `set_env.sh` first.
 
+The arch35 configure runs `find_package(LAPACK REQUIRED)`: a system LAPACK
+installation (e.g. `liblapack-dev` on Debian/Ubuntu, `lapack-devel` on
+RHEL/openEuler) is required, and `install_deps.sh` at the repository root
+installs it (issue #373).
+
 ```bash
 export OPENBLAS_NUM_THREADS=64
 cmake -S . -B build -DSOC_VERSION=ascend950 -DCMAKE_BUILD_TYPE:STRING= -DBUILD_TEST=ON -DTEST_NAMES=complex_qr

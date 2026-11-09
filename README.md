@@ -21,6 +21,8 @@ ops-solver 是基于昇腾NPU芯片的高级数值求解算子库，提供包括
 
 [环境部署](docs/zh/install/quick_install.md)是体验本项目能力的前提，请先完成NPU驱动、CANN包安装等，确保环境正常。
 
+host 侧构建依赖（Python/GCC/CMake/pigz/patch/LAPACK）可由仓库根目录的 `install_deps.sh` 一次装齐；其中 LAPACK 仅 `test/complex_qr`（Ascend 950）测试目标需要，缺失时该测试工程 configure 阶段的 `find_package(LAPACK REQUIRED)` 会直接失败（issue #373）。
+
 ## ⬇️源码下载
 
 环境准备好后，下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。

@@ -131,7 +131,18 @@ install_python() {
             if grep -q "release 7" /etc/redhat-release; then
                 run_command sudo $PKG_MANAGER install -y centos-release-scl
                 run_command sudo $PKG_MANAGER install -y rh-python38 rh-python38-python-devel
-            source /opt/rh/rh-python38/enable
+                # enable 必须在当前 shell 生效（对齐 install_gcc 分支的 #356/#305 口径）：
+                # SCL enable 脚本可能引用未导出的 MANPATH/INFOPATH，source 前临时关闭
+                # nounset 并先判存在，避免 set -e/-u 下脚本中断（issue #365）。
+                if [[ -f /opt/rh/rh-python38/enable ]]; then
+                    set +u
+                    source /opt/rh/rh-python38/enable
+                    set -u
+                else
+                    echo "Warning: /opt/rh/rh-python38/enable not found, fallback to explicit python paths."
+                fi
+                # 前置 PATH 保证复查时 command -v python3 命中 rh-python38 版本
+                export PATH=/opt/rh/rh-python38/root/usr/bin:$PATH
             else
                 run_command sudo $PKG_MANAGER install -y python3 python3-pip python3-devel
             fi
@@ -394,6 +405,42 @@ install_patch() {
     fi
 }
 
+install_lapack() {
+    echo -e "\n==== Checking LAPACK ===="
+    # 复数 QR/最小二乘的 complex_qr 测试目标在 Ascend 950 分支无条件
+    # find_package(LAPACK REQUIRED)（test/complex_qr/CMakeLists.txt），依赖缺失时
+    # 测试工程配置阶段直接失败且此前无任何安装/提示（issue #373）。库存在性无法用
+    # command -v 判断：Linux 走 ldconfig 缓存，macOS 走 brew 清单。
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        if ldconfig -p 2>/dev/null | grep -q "liblapack\.so"; then
+            echo "LAPACK has been installed"
+            return
+        fi
+    else
+        if brew list --formula 2>/dev/null | grep -qx "lapack"; then
+            echo "LAPACK has been installed"
+            return
+        fi
+    fi
+    echo "Installing LAPACK..."
+    case "$OS" in
+        debian)
+            run_command sudo $PKG_MANAGER install -y liblapack-dev
+            ;;
+        rhel|euler)
+            run_command sudo $PKG_MANAGER install -y lapack-devel
+            ;;
+        macos)
+            run_command brew install lapack
+            ;;
+    esac
+    if [[ "$(uname -s)" == "Linux" ]] && ! ldconfig -p 2>/dev/null | grep -q "liblapack\.so"; then
+        echo "LAPACK installation failed, install manually (required by test/complex_qr on Ascend 950)"
+        exit 1
+    fi
+    echo "LAPACK installed successfully"
+}
+
 main() {
     echo "===================================================="
     echo "Starting ops-solver dependency installation"
@@ -408,6 +455,7 @@ main() {
     install_pigz
     install_dos2unix
     install_patch
+    install_lapack
 
     echo -e "===================================================="
     if [[ "${PIGZ_SKIPPED:-false}" == "true" ]]; then
