@@ -10,6 +10,11 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cstring>
+#include <map>
+#include <vector>
+
 #include "cann_ops_solver.h"
 #include "complex_solver_launch.h"
 #include "log/log.h"
@@ -188,6 +193,52 @@ inline bool Overlap(const void* a, uint64_t aBytes, const void* b, uint64_t bByt
     return left <= right ? right - left < aBytes : left - right < bBytes;
 }
 
+// 附加校验视图：指针/字节足迹/归参序号（issue #371 跨缓冲重叠校验用，footprint 为 0
+// 表示该视图缺省，跳过比对）。
+struct ExtraView
+{
+    const void* data;
+    uint64_t bytes;
+    int argument;
+};
+
+// 跨缓冲重叠校验（issue #371，对齐实数 batched 家族 CheckIntervals 的全区间口径）：
+// 把 pivots/info 等附加视图与 A/C 指针数组指向的全部矩阵区间（按 lda*n / ldc*n 逻辑
+// 足迹，与 CheckMatrixMetadata 一致）两两比对，附加视图之间亦两两比对；重叠时 bad
+// 记为对应视图的归参序号。调用前附加视图必须已通过 DeviceSpan/PointerArgument 校验。
+inline aclsolverStatus_t CheckExtraViewOverlaps(const uint64_t* host, ComplexSolverShape shape, const ExtraView* extra,
+                                                size_t count, int& bad)
+{
+    const uint64_t matrixBytes[] = {static_cast<uint64_t>(shape.lda) * shape.n * sizeof(aclFloatComplex),
+                                    static_cast<uint64_t>(shape.ldc) * shape.n * sizeof(aclFloatComplex)};
+    for (size_t e = 0; e < count; ++e)
+    {
+        if (extra[e].bytes == 0) continue;
+        for (int output = 0; output < 2; ++output)
+        {
+            const uint64_t* array = host + static_cast<size_t>(output) * shape.batch;
+            for (int batch = 0; batch < shape.batch; ++batch)
+            {
+                const void* matrix = reinterpret_cast<const void*>(array[batch]);
+                if (Overlap(matrix, matrixBytes[output], extra[e].data, extra[e].bytes))
+                {
+                    bad = extra[e].argument;
+                    return ACLSOLVER_STATUS_INVALID_VALUE;
+                }
+            }
+        }
+        for (size_t f = e + 1; f < count; ++f)
+        {
+            if (extra[f].bytes != 0 && Overlap(extra[e].data, extra[e].bytes, extra[f].data, extra[f].bytes))
+            {
+                bad = extra[f].argument;
+                return ACLSOLVER_STATUS_INVALID_VALUE;
+            }
+        }
+    }
+    return ACLSOLVER_STATUS_SUCCESS;
+}
+
 struct MatrixRange
 {
     uintptr_t begin;
@@ -332,7 +383,8 @@ inline aclsolverStatus_t CheckMatrixMetadata(const uint64_t* host, ComplexSolver
 }
 
 inline aclsolverStatus_t ValidateMatrices(const void* a, const void* c, ComplexSolverShape shape, int inputArgument,
-                                          int outputArgument, int& bad, aclrtStream stream, const char* op)
+                                          int outputArgument, int& bad, aclrtStream stream, const char* op,
+                                          const ExtraView* extraViews = nullptr, size_t extraViewCount = 0)
 {
     uint64_t* host = nullptr;
     auto status = ReadPointerArrays(a, c, shape.batch, &host, stream, op);
@@ -340,6 +392,8 @@ inline aclsolverStatus_t ValidateMatrices(const void* a, const void* c, ComplexS
     {
         if (status == ACLSOLVER_STATUS_SUCCESS)
             status = CheckMatrixMetadata(host, shape, inputArgument, outputArgument, bad, op);
+        if (status == ACLSOLVER_STATUS_SUCCESS && extraViews != nullptr)
+            status = CheckExtraViewOverlaps(host, shape, extraViews, extraViewCount, bad);
     }
     catch (const std::bad_alloc&)
     {

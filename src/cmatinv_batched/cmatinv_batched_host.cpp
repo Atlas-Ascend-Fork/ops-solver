@@ -58,9 +58,17 @@ aclsolverStatus_t aclsolverCmatinvBatched(aclsolverHandle_t handle, int n, const
                                             static_cast<uint64_t>(batchSize) * sizeof(uint64_t), alignof(uint64_t));
     if (status != ACLSOLVER_STATUS_SUCCESS) return status;
     ComplexSolverShape shape{n, n, lda, ldc, batchSize};
-    status = ComplexSolver::ValidateMatrices(A, C, shape, 2, 4, bad, stream, OP_NAME);
+    // 跨缓冲重叠校验（issue #371，对齐实数 batched 家族全区间口径）：info 与 A/C 指针
+    // 数组指向的全部矩阵区间比对。归参为 info 自身时其区间不可信，不回写 info、直接
+    // 返回 INVALID_VALUE（实数族 j==3 同口径）。
+    const ComplexSolver::ExtraView extraViews[] = {
+        {info, static_cast<uint64_t>(batchSize) * sizeof(int), 6},
+    };
+    status = ComplexSolver::ValidateMatrices(A, C, shape, 2, 4, bad, stream, OP_NAME, extraViews, 1);
     if (status == ACLSOLVER_STATUS_INVALID_VALUE)
-        return ComplexSolver::Reject(OP_NAME, bad, info, batchSize, stream, blocks);
+    {
+        return bad == 6 ? status : ComplexSolver::Reject(OP_NAME, bad, info, batchSize, stream, blocks);
+    }
     if (status != ACLSOLVER_STATUS_SUCCESS) return status;
     ComplexSolverMatinv(shape, A, C, info, blocks, stream);
     return ComplexSolver::LaunchStatus(OP_NAME);

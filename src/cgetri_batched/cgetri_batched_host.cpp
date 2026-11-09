@@ -61,9 +61,18 @@ aclsolverStatus_t aclsolverCgetriBatched(aclsolverHandle_t handle, int n, const 
                                             static_cast<uint64_t>(n) * batchSize * sizeof(int), alignof(int));
     if (status != ACLSOLVER_STATUS_SUCCESS) return status;
     ComplexSolverShape shape{n, n, lda, ldc, batchSize};
-    status = ComplexSolver::ValidateMatrices(A, C, shape, 2, 5, bad, stream, OP_NAME);
+    // 跨缓冲重叠校验（issue #371，对齐实数 batched 家族全区间口径）：PivotArray/info
+    // 与 A/C 指针数组指向的全部矩阵区间两两比对，二者之间亦比对。归参为 info 自身时
+    // 其区间不可信，不回写 info、直接返回 INVALID_VALUE（实数族 j==3 同口径）。
+    const ComplexSolver::ExtraView extraViews[] = {
+        {PivotArray, PivotArray == nullptr ? 0 : static_cast<uint64_t>(n) * batchSize * sizeof(int), 4},
+        {info, static_cast<uint64_t>(batchSize) * sizeof(int), 7},
+    };
+    status = ComplexSolver::ValidateMatrices(A, C, shape, 2, 5, bad, stream, OP_NAME, extraViews, 2);
     if (status == ACLSOLVER_STATUS_INVALID_VALUE)
-        return ComplexSolver::Reject(OP_NAME, bad, info, batchSize, stream, blocks);
+    {
+        return bad == 7 ? status : ComplexSolver::Reject(OP_NAME, bad, info, batchSize, stream, blocks);
+    }
     if (status != ACLSOLVER_STATUS_SUCCESS) return status;
     ComplexSolverGetri(shape, A, PivotArray, C, info, true, blocks, stream);
     return ComplexSolver::CompleteGetri(PivotArray, info, batchSize, stream, OP_NAME);
