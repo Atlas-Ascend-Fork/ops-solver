@@ -1806,6 +1806,18 @@ aclError RunGenericDevice(std::vector<Complex>* packedA, Complex* a, int64_t lda
     uint8_t* sync = nullptr;
     CHEEVJ_CHECK_ACLRT(aclrtGetHardwareSyncAddr((void**)&sync), releaseDeviceBuffers());
     cheevj_kernel_do(sync, d_A, d_W, d_info, workSpace, tilingDevice, numBlocks, stream);
+    // Kernel launches are asynchronous; do not report success when enqueueing failed
+    // (issue #363，对齐 fixed 后端 #349 与 cpotrf #350 口径)。失败路径的释放语义：先等
+    // 在途任务落定再释放；同步本身也失败时滞留（有界泄漏优于 use-after-free）。
+    const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (enqueueStatus != ACL_SUCCESS)
+    {
+        if (aclrtSynchronizeStream(stream) == ACL_SUCCESS)
+        {
+            releaseDeviceBuffers();
+        }
+        return enqueueStatus;
+    }
     CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), releaseDeviceBuffers());
     CHEEVJ_CHECK_ACLRT(aclrtMemcpy(info, config.sizeInfo, d_info, config.sizeInfo, ACL_MEMCPY_DEVICE_TO_HOST),
                        releaseDeviceBuffers());
