@@ -90,8 +90,9 @@ def verify_result(A, invA, batchSize, N):
 
 if __name__ == "__main__":
     try:
-        batchSize = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-        n = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+        # 参数序与同目录 gen_data.py 及 cmatinv_batched_test 保持一致：(n, batchSize)
+        n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+        batchSize = int(sys.argv[2]) if len(sys.argv) > 2 else 2
 
         res = verify_result(
             "./test/cmatinv_batched/data/input/A_gm.bin",
