@@ -33,6 +33,7 @@
  */
 
 // 五个 host 都要的那批头（标准库、acl、assert/gm_addr/align_up、platform）收在这里
+#include "../../utils/complex_solver_host.h"
 #include "../../utils/host_common.h"
 #include "../kernel/trsm_launch.h"
 
@@ -269,11 +270,17 @@ aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nr
     GELS_PARAM_CHECK(dA != nullptr, 4, "aclsolverSSgels invalid param 4: dA is nullptr.");
     GELS_PARAM_CHECK(dB != nullptr, 6, "aclsolverSSgels invalid param 6: dB is nullptr.");
     GELS_PARAM_CHECK(dX != nullptr, 8, "aclsolverSSgels invalid param 8: dX is nullptr.");
-    // dX 必须是独立输出：与 dB 同址时 ormqr 会把用户的 B 写坏，而 §2.4.5 把 dB 列为"输入"
-    GELS_PARAM_CHECK(dX != dB, 8, "aclsolverSSgels invalid param 8: dX 不能与 dB 同址。");
-    // dX 也不能与 dA 同址：回代第 0 步先把 Q^T B 整块拷进 X，若同址就把 dA 里的 R 覆盖掉，
-    // 之后读到的"R"全是解，静默算错。dA 虽被文档化为"内容会被破坏"，但不等于可做输出缓冲。
-    GELS_PARAM_CHECK(dX != dA, 8, "aclsolverSSgels invalid param 8: dX 不能与 dA 同址。");
+    // dX 必须是独立输出（issue #372 把别名拒绝从指针等值升级为字节区间口径）：与 dB
+    // 交叠时 ormqr 会把用户的 B 写坏（§2.4.5 把 dB 列为"输入"）；与 dA 交叠时回代边读
+    // dA 中的 R 边写 dX，R 被解覆盖后静默算错（dA 虽被文档化为"内容会被破坏"，但不
+    // 等于可做输出缓冲）。区间按列主序逻辑足迹（列数×ld）推导，指针不同但部分重叠
+    // （如 dX = dA + k*ldda）同样拒绝，足迹之外的 padding 间隔不误拒；dinfo=-8 口径不变。
+    GELS_PARAM_CHECK(!ComplexSolver::Overlap(dX, static_cast<uint64_t>(ri) * ldx * sizeof(float), dB,
+                                             static_cast<uint64_t>(ri) * ldb * sizeof(float)),
+                     8, "aclsolverSSgels invalid param 8: dX 与 dB 缓冲区间重叠。");
+    GELS_PARAM_CHECK(!ComplexSolver::Overlap(dX, static_cast<uint64_t>(ri) * ldx * sizeof(float), dA,
+                                             static_cast<uint64_t>(ni) * lda * sizeof(float)),
+                     8, "aclsolverSSgels invalid param 8: dX 与 dA 缓冲区间重叠。");
     GELS_PARAM_CHECK(mi <= GELS_MAX_DIM && ni <= GELS_MAX_DIM, 1, "aclsolverSSgels: m / n 超过当前 kernel 上限 4096。");
 
     WsLayout ws;
