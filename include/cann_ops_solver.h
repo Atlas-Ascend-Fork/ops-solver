@@ -921,11 +921,20 @@ aclError aclsolverSpotrf(aclsolverHandle_t handle, const char uplo, const int64_
  * A uses column-major storage. W returns eigenvalues in ascending order. When jobz is
  * ACLSOLVER_EIG_MODE_VECTOR, A is overwritten by column-major eigenvectors.
  *
+ * A, W and info are HOST buffers: the call stages A to Device internally, runs the
+ * selected path (device kernels or the documented host fallback), synchronizes, and
+ * writes the eigenvalues to W, the eigenvectors back into A (vector mode) and the
+ * status to info before returning. This differs from the Ascend 950 C APIs above,
+ * which take Device buffers directly.
+ *
  * @param handle Solver handle created by aclsolverCreate.
- * @param jobz Selects eigenvalues only or eigenvalues and eigenvectors.
- * @param uplo Selects the lower or upper triangle of A as input.
- * @param n Non-negative order of the matrix. The practical size is constrained by
- *          available host and device memory.
+ * @param jobz ACLSOLVER_EIG_MODE_NOVECTOR or ACLSOLVER_EIG_MODE_VECTOR; the character
+ *             forms 'N' and 'V' cast to the enum are accepted as well.
+ * @param uplo ACLSOLVER_FILL_MODE_LOWER or ACLSOLVER_FILL_MODE_UPPER; the character
+ *             forms 'L' and 'U' cast to the enum are accepted as well.
+ * @param n Non-negative order of the matrix. n = 0 returns ACL_SUCCESS with info = 0
+ *          without accessing A or W. The practical size is constrained by available
+ *          host and device memory.
  * @param A Input Hermitian matrix in column-major storage. In vector mode, overwritten
  *          with the eigenvectors stored by column.
  * @param lda Leading dimension of A; must be at least max(1, n).
