@@ -42,9 +42,33 @@ aclsolverStatus_t ValidateBuffers(int n, int lda, aclFloatComplex* a, int* pivot
                                                      blocks, bytes[i], alignments[i]);
         if (status != ACLSOLVER_STATUS_SUCCESS) return status;
     }
-    if (ComplexSolver::Overlap(a, static_cast<uint64_t>(lda) * n * sizeof(*a), workspace,
-                               static_cast<uint64_t>(n) * n * sizeof(*workspace)))
-        return ComplexSolver::Reject(OP_NAME, 5, info, 1, stream, blocks);
+    // 四视图两两重叠校验（issue #370，对齐实数 LU 族 real_lu::CheckViewOverlaps 口径）：
+    // {A(2), pivots(4), workspace(5), devInfo(7)}；与 devInfo 重叠时其区间本身不可信，
+    // 不再回写 info、直接返回 INVALID_VALUE（实数族 j==3 同口径）。
+    const struct
+    {
+        const void* data;
+        uint64_t bytes;
+        int argument;
+    } views[] = {{a, static_cast<uint64_t>(lda) * n * sizeof(*a), 2},
+                 {pivots, pivots == nullptr ? 0 : static_cast<uint64_t>(n) * sizeof(int), 4},
+                 {workspace, static_cast<uint64_t>(n) * n * sizeof(*workspace), 5},
+                 {info, sizeof(int), 7}};
+    for (int i = 0; i < 4; ++i)
+    {
+        for (int j = i + 1; j < 4; ++j)
+        {
+            if (views[i].bytes != 0 && views[j].bytes != 0 &&
+                ComplexSolver::Overlap(views[i].data, views[i].bytes, views[j].data, views[j].bytes))
+            {
+                if (views[j].argument == 7)
+                {
+                    return ACLSOLVER_STATUS_INVALID_VALUE;
+                }
+                return ComplexSolver::Reject(OP_NAME, views[j].argument, info, 1, stream, blocks);
+            }
+        }
+    }
     return ACLSOLVER_STATUS_SUCCESS;
 }
 }  // namespace
