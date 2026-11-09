@@ -188,7 +188,13 @@ if [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
     CMAKE_OPTIONS+=("-DENABLE_PACKAGE=ON" "-DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}")
 fi
 
-cmake -S "${BASE_PATH}" -B "${BUILD_DIR}" "${CMAKE_OPTIONS[@]}"
+# 捕获 configure 输出：运行阶段需要据此识别"构建期已知跳过"的测试目录（issue #351）
+if ! CMAKE_CONFIGURE_OUTPUT=$(cmake -S "${BASE_PATH}" -B "${BUILD_DIR}" "${CMAKE_OPTIONS[@]}" 2>&1); then
+    printf '%s\n' "${CMAKE_CONFIGURE_OUTPUT}"
+    print_error "cmake configure failed"
+    exit 1
+fi
+printf '%s\n' "${CMAKE_CONFIGURE_OUTPUT}"
 cmake --build "${BUILD_DIR}" -j
 if [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
     cmake --build "${BUILD_DIR}" --target package
@@ -228,8 +234,16 @@ if [ "${RUN_TEST}" == "ON" ]; then
         echo "========== Running ${op}_test =========="
 
         if [ ! -f "${TEST_BIN}" ]; then
-            echo "[ERROR] Test binary not found: ${TEST_BIN}"
-            FAILED_OPS+=("${op}")
+            # 测试目录 CMakeLists 自带 SoC 门控（configure 期 message "... skipping on <soc>"
+            # 后 return()）时，二进制缺失属构建期已知跳过：计入 SKIPPED 而非 FAILED，与下方
+            # 数据脚本缺失的处理对称（issue #351）；其余缺失仍视为失败，不掩盖真实构建问题。
+            if grep -Eq "${op} tests require .* skipping on ${soc_lower}" <<< "${CMAKE_CONFIGURE_OUTPUT}"; then
+                echo "[INFO] ${op}: 当前 SOC 不满足该测试的构建条件（见 configure WARNING），跳过运行"
+                SKIPPED_OPS+=("${op}")
+            else
+                echo "[ERROR] Test binary not found: ${TEST_BIN}"
+                FAILED_OPS+=("${op}")
+            fi
             continue
         fi
 
