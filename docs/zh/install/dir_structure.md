@@ -41,18 +41,27 @@
 │   └── util
 ├── test                                                # 算子级测试（BUILD_TEST=ON 且配置 TEST_NAMES 时参与构建）
 │   ├── CMakeLists.txt                                  # 按 TEST_NAMES 批量 add_subdirectory
+│   ├── common、utils                                   # 样例共享的测试基建（fixture_runner、验证与运行时工具等）
 │   └── ${op_name}
 │       ├── CMakeLists.txt
 │       ├── ${test_entry}.cpp                           # 可执行测试源文件
 │       ├── data                                        # 可选，生成/校验数据脚本
 │       └── README.md                                   # 可选，本算子测试说明
+├── tests                                               # Host 侧回归测试（tests/host，pytest 驱动；部分用例挂接 pre-commit 门禁，依赖见 requirements.txt）
+├── examples                                            # 预留示例目录
 ├── CMakeLists.txt                                      # 工程入口：ops_solver 库、安装规则、可选测试与打包
 ├── CONTRIBUTING.md                                     # 贡献指南
+├── COPYING-PACO                                        # PACO 部分代码的 GPL 许可证文本
 ├── LICENSE                                             # 开源许可证
+├── LICENSE-PACO                                        # PACO 部分代码的许可证声明
+├── OAT.xml                                             # 开源审计工具（OAT）扫描策略
 ├── README.md                                           # 项目总览
 ├── SECURITY.md                                         # 安全声明
+├── _typos.toml                                         # pre-commit 拼写检查配置
 ├── build.sh                                            # 编译脚本（可选）
+├── install_deps.sh                                     # 环境依赖安装脚本
+├── requirements.txt                                    # Python 侧测试依赖清单
 └── ...
 ```
 
-当前 `src/` 下已提供的算子示例子目录包括：`cgetrf`、`cgetri`、`cgetri_batched`、`cheevj`、`cmatinv_batched`、`sgetrf`、`sgetri`（随版本迭代可能增减，以仓库实际目录为准）。
+当前 `src/` 下共 28 个子目录：27 个算子能力目录——`ccgels`、`cgeqrf`、`cgetrf`、`cgetri`、`cgetri_batched`、`cgetrs`、`cheevj`、`cholesky`、`cmatinv_batched`、`cpotrf`、`cpotrf_batched`、`cpotri`、`cpotrs`、`cpotrs_batched`、`cungqr`、`cunmqr`、`sgels`、`sgeqrf`、`sgetrf`、`sgetri`、`sgetri_batched`、`sgetrs`、`smatinv_batched`、`sorgqr`、`sormqr`、`spotrf`、`xlarft`，另有公共实现目录 `utils`（随版本迭代可能增减，以仓库实际目录为准）。
