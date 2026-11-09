@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../../utils/aclsolver_handle_internal.h"
+#include "../../utils/complex_solver_host.h"
 #include "cann_ops_solver.h"
 #include "cholesky_internal.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -239,6 +240,20 @@ aclsolverStatus_t Compute(aclsolverHandle_t handle, int u, int n, float *a, int 
         Factor(batch, w ? Align(w) : nullptr, info, h->stream);
     return LaunchStatus();
 }
+// infoArray 按 count 全量写（info[0..count)）的 batched 入口在下发前校验设备范围，防止
+// 分配小于 count*sizeof(int) 时的设备越界写（issue #367，对齐 complex batched 家族的
+// DeviceSpan 口径）。校验失败不发 kernel、不回写 info，返回待上抛状态；count<=0 直接通过。
+aclsolverStatus_t CheckInfoSpan(const int *info, int count, const char *op, int argument)
+{
+    if (count <= 0)
+    {
+        return ACLSOLVER_STATUS_SUCCESS;
+    }
+    return ComplexSolver::DeviceSpan(info, static_cast<uint64_t>(count) * sizeof(int), alignof(int), op, argument);
+}
+// batched 入口校验失败时 Error() 的 info 回写条数：count>0 按批量全量、count<0 视为
+// 首条、0 不回写。提取为独立函数保持入口圈复杂度在阈值内（!201 codecheck 整改）。
+int BatchedErrorCount(int count) { return count > 0 ? count : count < 0 ? 1 : 0; }
 }  // namespace
 }  // namespace Cholesky
 
@@ -274,7 +289,10 @@ extern "C"
         int error = MatrixError(u, n, a, ld, n > 0 && count > 0);
         if (!error && count > 0 && !info) error = 5;
         if (!error && count < 0) error = 6;
-        if (error) return Error(h, info, error, count > 0 ? count : count < 0 ? 1 : 0);
+        if (error) return Error(h, info, error, BatchedErrorCount(count));
+        // infoArray 设备范围校验（issue #367），见 CheckInfoSpan 说明。
+        auto span = CheckInfoSpan(info, count, "aclsolverSpotrfBatched", 5);
+        if (span != ACLSOLVER_STATUS_SUCCESS) return span;
         if (!n || !count)
         {
             if (count) SetInfo(info, 0, count, h->stream);
@@ -355,9 +373,18 @@ extern "C"
                                                       : 0;
         if (error) return Error(h, info, error);
         if (used)
+        {
+            // infoArray 在 used 路径按 count 全量写（SetSolveInfo / Solve），补设备范围
+            // 校验防止越界写（issue #367）；空矩阵路径只写 info[0]，维持现状不校验。
+            auto span = ComplexSolver::DeviceSpan(info, static_cast<uint64_t>(count) * sizeof(int), alignof(int),
+                                                  "aclsolverSpotrsBatched", 8);
+            if (span != ACLSOLVER_STATUS_SUCCESS) return span;
             SetSolveInfo(info, a, b, count, h->stream);
+        }
         else
+        {
             SetInfo(info, 0, 1, h->stream);
+        }
         if (used) Solve({nullptr, a, n, lda, int(u), 0, count}, {nullptr, b, n, ldb, 0, 0, count}, 1, info, h->stream);
         return LaunchStatus();
     }
