@@ -21,6 +21,7 @@
 #include <iterator>
 #include <vector>
 
+#include "../utils/aicore_num.h"
 #include "../utils/assert.h"
 #include "../utils/getrs_defs.h"
 #include "../utils/pivot_check.h"
@@ -40,7 +41,7 @@ static_assert(sizeof(aclFloatComplex) == sizeof(std::complex<float>) &&
 
 #define GM_ADDR uint8_t *
 
-bool GenerateTiling(uint8_t *gatherBuf)
+void GenerateTiling(uint8_t *gatherBuf)
 {
     auto buf = reinterpret_cast<uint32_t *>(gatherBuf);
     int idx = 0;
@@ -49,7 +50,6 @@ bool GenerateTiling(uint8_t *gatherBuf)
         buf[idx++] = i * sizeof(float);
         buf[idx++] = (i + GATHER_SEG_LEN) * sizeof(float);
     }
-    return true;
 }
 
 namespace
@@ -175,12 +175,10 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
         SOLVER_ECHECK(streamRet == ACL_SUCCESS, "aclsolverCgetrs failed to get stream from handle.", streamRet);
     }
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-    uint32_t numBlocks = 0;
-    if (ascendcPlatform != nullptr)
-    {
-        numBlocks = ascendcPlatform->GetCoreNumAic();
-    }
+    // 核数防护对齐 cgeqrf/cpotrf 家族口径（issue #362）：平台实例获取失败与核数为 0
+    // 都以 0 返回，统一在下方 SOLVER_ECHECK 拦截，避免 blockDim=0 直接下发 kernel。
+    uint32_t numBlocks = GetAiCoreNumOrZero();
+    SOLVER_ECHECK(numBlocks > 0, "No available AIcore found on current device.", ACL_ERROR_RT_FEATURE_NOT_SUPPORT);
 
     int N = n, NRHS = nrhs, blockDim = numBlocks, blockM = BLOCK_M;
     int resizedN = (N + CACHE_LINE_SIZE_FP32 - 1) / CACHE_LINE_SIZE_FP32 * CACHE_LINE_SIZE_FP32;
@@ -193,11 +191,8 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     buf.bMatrixHost = reinterpret_cast<uint8_t *>(B);
     CHECK_ACLRT(AllocAndUploadCgetrs(buf, N, NRHS, lda, ldb, resizedN, strideN, strideNRHS), ReleaseCgetrsBuffers(buf));
 
-    if (!GenerateTiling(buf.gatherHost))
-    {
-        ReleaseCgetrsBuffers(buf);
-        return ACL_ERROR_INTERNAL_ERROR;
-    }
+    // GenerateTiling 无失败分支（issue #364），调用处恒假的错误分支已随签名改为 void 一并清理
+    GenerateTiling(buf.gatherHost);
     size_t gatherSize = GATHER_SEG_LEN * 2 * sizeof(uint32_t);
     CHECK_ACLRT(aclrtMemcpy(buf.gatherDevice, gatherSize, buf.gatherHost, gatherSize, ACL_MEMCPY_HOST_TO_DEVICE),
                 ReleaseCgetrsBuffers(buf));
@@ -205,6 +200,18 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     cgetrs_kernel_do(N, NRHS, trans, lda, ldb, blockM, buf.aMatrixDevice, buf.aMatrixDeviceWork, buf.wDevice,
                      buf.pDevice, buf.bMatrixDevice, buf.bMatrixDeviceWork, buf.gatherDevice, blockDim, stream);
 
+    // Kernel launches are asynchronous; do not report success when enqueueing failed (issue #361)。
+    // 失败路径的释放语义对齐 cpotrf_host.cpp（issue #350 口径）：先等在途任务落定再释放，
+    // 同步本身也失败时滞留（有界泄漏优于 use-after-free）。
+    const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (enqueueStatus != ACL_SUCCESS)
+    {
+        if (aclrtSynchronizeStream(stream) == ACL_SUCCESS)
+        {
+            ReleaseCgetrsBuffers(buf);
+        }
+        return enqueueStatus;
+    }
     CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseCgetrsBuffers(buf));
 
     size_t bMatrixFileSize = N * ldb * sizeof(float) * 2;

@@ -21,6 +21,7 @@
 #include <iterator>
 #include <vector>
 
+#include "../utils/aicore_num.h"
 #include "../utils/assert.h"
 #include "../utils/getrs_defs.h"
 #include "../utils/pivot_check.h"
@@ -105,6 +106,18 @@ static aclError LaunchSgetrs(SgetrsBuffers &buf, int n, int nrhs, uint64_t trans
 {
     sgetrs_kernel_do(n, nrhs, trans, lda, ldb, blockM, buf.aDevice, buf.aDeviceWork, buf.wDevice, buf.pDevice,
                      buf.bDevice, buf.bDeviceWork, blockNum, stream);
+    // Kernel launches are asynchronous; do not report success when enqueueing failed (issue #361)。
+    // 失败路径的释放语义对齐 cpotrf_host.cpp（issue #350 口径）：先等在途任务落定再释放，
+    // 同步本身也失败时滞留（有界泄漏优于 use-after-free）。
+    const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+    if (enqueueStatus != ACL_SUCCESS)
+    {
+        if (aclrtSynchronizeStream(stream) == ACL_SUCCESS)
+        {
+            ReleaseSgetrsBuffers(buf);
+        }
+        return enqueueStatus;
+    }
     CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseSgetrsBuffers(buf));
     size_t bSize = n * ldb * sizeof(float);
     CHECK_ACLRT(aclrtMemcpy(buf.bHost, bSize, buf.bDevice, bSize, ACL_MEMCPY_DEVICE_TO_HOST),
@@ -144,12 +157,10 @@ aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
         SOLVER_ECHECK(streamRet == ACL_SUCCESS, "aclsolverSgetrs failed to get stream from handle.", streamRet);
     }
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-    uint32_t numBlocks = 0;
-    if (ascendcPlatform != nullptr)
-    {
-        numBlocks = ascendcPlatform->GetCoreNumAic();
-    }
+    // 核数防护对齐 cgeqrf/cpotrf 家族口径（issue #362）：平台实例获取失败与核数为 0
+    // 都以 0 返回，统一在下方 SOLVER_ECHECK 拦截，避免 blockDim=0 直接下发 kernel。
+    uint32_t numBlocks = GetAiCoreNumOrZero();
+    SOLVER_ECHECK(numBlocks > 0, "No available AIcore found on current device.", ACL_ERROR_RT_FEATURE_NOT_SUPPORT);
 
     int N = static_cast<int>(n);
     int NRHS = static_cast<int>(nrhs);
