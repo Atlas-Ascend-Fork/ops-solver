@@ -9,6 +9,7 @@
  */
 
 #include "../../utils/cholesky/cholesky.h"
+#include "../../utils/complex_solver_host.h"
 
 extern "C" aclsolverStatus_t aclsolverCpotrs(aclsolverHandle_t handle, aclsolverFillMode_t uplo, int n, int nrhs,
                                              const aclsolverFloatComplex* a, int lda, aclsolverFloatComplex* b, int ldb,
@@ -33,5 +34,7 @@ extern "C" aclsolverStatus_t aclsolverCpotrs(aclsolverHandle_t handle, aclsolver
         return status;
     }
     Cholesky::Solve(stream, Cholesky::IsUpper(uplo), n, nrhs, a, nullptr, lda, b, nullptr, ldb, 1, work);
-    return ACLSOLVER_STATUS_SUCCESS;
+    // Kernel launches are asynchronous; do not report success when enqueueing failed
+    // (issue #366，对齐实数 Cholesky LaunchStatus 与 getrs/QR 族口径)。
+    return ComplexSolver::LaunchStatus("aclsolverCpotrs");
 }

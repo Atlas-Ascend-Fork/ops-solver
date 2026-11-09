@@ -9,6 +9,7 @@
  */
 
 #include "../../utils/cholesky/cholesky.h"
+#include "../../utils/complex_solver_host.h"
 
 namespace Cholesky
 {
@@ -49,7 +50,9 @@ aclsolverStatus_t RunInPlace(aclsolverHandle_t handle, aclsolverFillMode_t uplo,
     {
         Factor(stream, IsUpper(uplo), n, a, nullptr, lda, info, 1, work);
     }
-    return ACLSOLVER_STATUS_SUCCESS;
+    // Kernel launches are asynchronous; do not report success when enqueueing failed
+    // (issue #366，对齐实数 Cholesky LaunchStatus 与 getrs/QR 族口径)。
+    return ComplexSolver::LaunchStatus(inverse ? "aclsolverCpotri" : "aclsolverCpotrf");
 }
 }  // namespace Cholesky
 

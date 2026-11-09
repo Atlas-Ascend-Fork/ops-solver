@@ -1610,6 +1610,12 @@ aclsolverStatus_t Finish(aclsolverHandle_t handle, int* info, int argument)
         return ReportError(ACLSOLVER_STATUS_ARCH_MISMATCH, "Cholesky requires available Ascend950 AIV/AIC and UB");
     }
     InfoKernel<<<1, nullptr, stream>>>(info, -argument);
+    // Kernel launches are asynchronous; do not report success when enqueueing failed
+    // (issue #366)：info 预写失败时接口不得按已写入 info 的口径返回。
+    if (aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) != ACL_SUCCESS)
+    {
+        return ReportError(ACLSOLVER_STATUS_EXECUTION_FAILED, "Cholesky info kernel enqueue failed");
+    }
     return argument ? ReportError(ACLSOLVER_STATUS_INVALID_VALUE, "invalid Cholesky argument; inspect device info")
                     : ACLSOLVER_STATUS_SUCCESS;
 }
