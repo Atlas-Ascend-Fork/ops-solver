@@ -1755,7 +1755,7 @@ Solver库和CmatinvBatched测试项目的编译步骤如下（`--ops`不裁剪�
 2. 在项目根目录下执行编译命令：
 
 ```bash
-    bash build.sh --ops=cmatinv_batched
+    bash build.sh --soc=ascend950 --ops=cmatinv_batched
 ```
 
 3. 编译成功后，会在输出目录生成相应的库文件和可执行文件

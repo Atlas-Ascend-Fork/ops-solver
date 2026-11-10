@@ -86,15 +86,15 @@ for arg in "$@"; do
         *)
             echo "Unknown option: $arg"
             echo "Usage:"
-            echo "  bash build.sh                                      # 只编译库"
-            echo "  bash build.sh --ops=cmatinv_batched                # 编译库及指定算子测试"
-            echo "  bash build.sh --ops=op1,op2                        # 编译库及多个算子测试（逗号分隔）"
-            echo "  bash build.sh --run                                # 编译并运行全部 test"
-            echo "  --soc=<芯片版本>                                    # 目标芯片；未指定时默认 ascend910b，与实际机型不符会编出错误目标包"
-            echo "  bash build.sh --ops=cmatinv_batched --run          # 编译并运行指定算子测试"
-            echo "  bash build.sh --pkg                                # 编译并打包 run 包"
-            echo "  bash build.sh --pkg --soc=ascend950                # 打包指定 SOC 的 run 包"
-            echo "  --ops 仅筛选测试项目；库和 run 包仍包含当前 SOC 的全部算子源码。"
+            echo "  bash build.sh --soc=<芯片版本>                              # 只编译库（<芯片版本> 替换为实际机型，如 ascend910b / ascend910_93 / ascend950）"
+            echo "  bash build.sh --soc=<芯片版本> --ops=cmatinv_batched        # 编译库及指定算子测试"
+            echo "  bash build.sh --soc=<芯片版本> --ops=op1,op2                # 编译库及多个算子测试（逗号分隔）"
+            echo "  bash build.sh --soc=<芯片版本> --run                        # 编译并运行全部 test"
+            echo "  --soc=<芯片版本>                                            # 目标芯片（ascend910b / ascend910_93 / ascend950 / ascend310p）；未指定时默认 ascend910b，与实际机型不符会编出错误目标包"
+            echo "  bash build.sh --soc=<芯片版本> --ops=cmatinv_batched --run  # 编译并运行指定算子测试"
+            echo "  bash build.sh --soc=<芯片版本> --pkg                        # 编译并打包 run 包"
+            echo "  bash build.sh --pkg --soc=ascend950                         # 打包指定 SOC 的 run 包（示例）"
+            echo "  --ops 仅筛选测试项目；库和 run 包仍包含当前 SOC 的全部算子源码；示例中的 --soc 必须按实际机型替换，否则默认按 ascend910b 编译。"
             exit 1
             ;;
     esac
@@ -137,7 +137,7 @@ cd "${BASE_PATH}"
 # 默认 SOC_VERSION，ASCEND_CANN_PACKAGE_PATH 使用环境变量
 if [ -z "${SOC_VERSION}" ]; then
     SOC_VERSION="ascend910b"
-    echo "[INFO] --soc 未指定，默认使用 ${SOC_VERSION}；可用 'npu-smi info' 查看芯片型号，取值说明见 docs/QUICKSTART.md"
+    echo "[WARNING] --soc 未指定，将按默认 ${SOC_VERSION} 编译；Atlas A3（910C）请显式指定 --soc=ascend910_93，Atlas A2（910B）用 ascend910b，950 用 ascend950；可用 'npu-smi info' 确认芯片型号，取值说明见 docs/QUICKSTART.md"
 fi
 
 # 校验 SOC 是否在支持列表中（前缀匹配）

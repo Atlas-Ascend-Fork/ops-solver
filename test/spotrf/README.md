@@ -116,7 +116,7 @@ Solver Spotrf算子实现。
 
 - 样例执行
   ```bash
-  bash build.sh --ops=spotrf --run # --ops=<算子名> --run可选参数，执行测试样例
+  bash build.sh --soc=ascend910b --ops=spotrf --run # 请按实际机型替换 --soc：Atlas A2 用 ascend910b，Atlas A3 用 ascend910_93；--run 可选，用于执行测试样例
   ```
   如需手动测试其他方阵大小或上三角模式，生成与验证时应指定相同大小，并让验证模式与程序的 `uplo` 参数一致。例如：
   ```bash

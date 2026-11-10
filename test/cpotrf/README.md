@@ -163,7 +163,7 @@ Solver Cpotrf算子实现。
 - 样例执行
 
   ```bash
-  bash build.sh --ops=cpotrf --run # --ops=<算子名> --run为可选参数，用于执行测试样例
+  bash build.sh --soc=ascend910b --ops=cpotrf --run # 请按实际机型替换 --soc：Atlas A2 用 ascend910b，Atlas A3 用 ascend910_93；--run 为可选参数，用于执行测试样例
   ```
 
   执行结果如下，说明精度对比成功。

@@ -152,7 +152,7 @@ Solver Sgetrs算子实现。
 
 - 样例执行
   ```bash
-  bash build.sh --ops=sgetrs --run # --ops=<算子名> --run可选参数，执行测试样例
+  bash build.sh --soc=ascend910b --ops=sgetrs --run # 请按实际机型替换 --soc：Atlas A2 用 ascend910b，Atlas A3 用 ascend910_93；--run 可选，用于执行测试样例
   ```
   执行结果如下，说明精度对比成功。
   ```bash
