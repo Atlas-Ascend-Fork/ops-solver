@@ -131,7 +131,7 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 | Ascend 950 系列（型号如 Ascend950PR_/Ascend950DT_） | `ascend950` |
 | Atlas 200I/500 A2 推理产品（Ascend 310P） | `ascend310p` |
 
-> **说明**：初代 Ascend 910A（Ascend910A/PremiumA/ProA 等）不在当前支持列表中；完整支持列表见 `build.sh` 中 `SUPPORT_COMPUTE_UNIT_SHORT`。
+> **说明**：初代 Ascend 910A（Ascend910A/PremiumA/ProA 等）不在当前支持列表中；完整支持列表见 `build.sh` 中 `SUPPORT_COMPUTE_UNIT_SHORT`。若 `npu-smi info` 显示的型号不在上表覆盖范围内，可在 [CANN 官网下载中心](https://www.hiascend.com/cann/download) 的产品列表中确认产品系列，再对照 `build.sh` 的支持前缀选择 `--soc` 取值。
 
 ### 3. 打开 CANN 日志
 
