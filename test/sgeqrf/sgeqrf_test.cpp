@@ -384,6 +384,11 @@ void CheckArgPositions(aclsolverHandle_t handle, aclrtStream stream, const Buffe
                aclsolverSgeqrf(handle, kBpM, kBpN, A, kBpLda, TAU, nullptr, Lwork, INFO), bad, -6, ok);
     ExpectInfo(stream, buf.info, "Lwork 太小 -> info=-7",
                aclsolverSgeqrf(handle, kBpM, kBpN, A, kBpLda, TAU, WS, Lwork - 1, INFO), bad, -7, ok);
+    // issue #386：m 超 kernel 上限的形状须按 NOT_SUPPORTED 拒绝（info=-1），
+    // 且在 PlanWorkspace 之前早退（极端大 m 下 ldy 的 int32 截断回绕会产生垃圾布局）
+    ExpectInfo(stream, buf.info, "m 超上限 (INT32_MAX) -> info=-1",
+               aclsolverSgeqrf(handle, 2147483647, 1, A, 2147483647, TAU, WS, Lwork, INFO),
+               ACLSOLVER_STATUS_NOT_SUPPORTED, -1, ok);
     // lda > m 必须被接受（任务书明文禁止要求 lda == m）
     ExpectInfo(stream, buf.info, "lda>m 合法",
                aclsolverSgeqrf(handle, kBpM, kBpN, A, kBpLda + 7, TAU, WS, Lwork, INFO),
@@ -399,6 +404,11 @@ void CheckBufferSizeArgs(aclsolverHandle_t handle, bool *ok)
                  aclsolverSgeqrf_bufferSize(handle, kBpM, kBpN, nullptr, kBpLda, nullptr), bad, ok);
     ExpectStatus("bufferSize lda<m", aclsolverSgeqrf_bufferSize(handle, kBpM, kBpN, nullptr, kBpM - 1, &Lw), bad,
                  ok);
+    // issue #386：极端大 m（接近 INT32_MAX）的 bufferSize 查询不得返回 SUCCESS 加垃圾值，
+    // 须与执行入口同口径返回 NOT_SUPPORTED
+    ExpectStatus("bufferSize m 超上限 (INT32_MAX)",
+                 aclsolverSgeqrf_bufferSize(handle, 2147483647, 1, nullptr, 2147483647, &Lw),
+                 ACLSOLVER_STATUS_NOT_SUPPORTED, ok);
 }
 
 /// 参数校验：须返回 INVALID_VALUE，且 devInfo 写入 -i（i 不计 handle）

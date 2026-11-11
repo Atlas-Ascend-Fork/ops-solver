@@ -78,6 +78,7 @@ WsLayout PlanWorkspace(int32_t m, int32_t n)
 {
     WsLayout ws;
     ws.panelWidth = PanelWidth(m, n);
+    // 两个入口都在调用本函数前把 m 按 MaxRowsSupported 拦截（issue #386），对齐结果必在 int32 值域内
     ws.ldy = static_cast<int32_t>(AlignUp64(m, QR_LDY_ALIGN));
 
     int64_t cur = 0;
@@ -143,6 +144,15 @@ aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, in
         *Lwork = 0;  // 空问题不需要 workspace
         return ACLSOLVER_STATUS_SUCCESS;
     }
+    // 与执行入口同口径：m 超 kernel 上限的形状在 PlanWorkspace 之前就早退。
+    // PlanWorkspace 的 ldy 推导以 m 为上界，极端形状下 int32 截断回绕会产生垃圾布局，
+    // 正负抵消后 total 落回正常区间、绕过下方 total 闸门（issue #386）。
+    if (m > MaxRowsSupported())
+    {
+        SOLVER_ECHECK(false,
+                      "aclsolverSgeqrf_bufferSize: m 超过当前 kernel 支持的行数上限（见本文件 MaxRowsSupported）。",
+                      ACLSOLVER_STATUS_NOT_SUPPORTED);
+    }
     const WsLayout ws = PlanWorkspace(static_cast<int32_t>(m), static_cast<int32_t>(n));
     SOLVER_ECHECK(ws.total <= INT32_MAX, "aclsolverSgeqrf_bufferSize: workspace 元素数超出 int32 范围。",
                   ACLSOLVER_STATUS_INVALID_VALUE);
@@ -181,20 +191,21 @@ aclsolverStatus_t aclsolverSgeqrf(aclsolverHandle_t handle, int m, int n, float 
     QR_PARAM_CHECK(A != nullptr, 3, "aclsolverSgeqrf invalid param 3: A is nullptr.");
     QR_PARAM_CHECK(TAU != nullptr, 5, "aclsolverSgeqrf invalid param 5: TAU is nullptr.");
 
-    const WsLayout ws = PlanWorkspace(mi, ni);
-    QR_PARAM_CHECK(ws.total <= INT32_MAX, 7, "aclsolverSgeqrf: workspace 元素数超出 int32 范围。");
-    QR_PARAM_CHECK(Workspace != nullptr, 6, "aclsolverSgeqrf invalid param 6: Workspace is nullptr.");
-    QR_PARAM_CHECK(static_cast<int64_t>(Lwork) >= ws.total, 7,
-                   "aclsolverSgeqrf invalid param 7: Lwork 小于 _bufferSize 返回的尺寸。");
-
     // 面板分解要求每核的 columns 条列整列驻留 UB，故 m 有上限；超限明确报不支持，不做静默截断。
     // （全部验收用例 m <= 4096；columns=2 时本实现支持到 8192）
+    // m 超 kernel 上限的形状在 PlanWorkspace 之前就早退（与 bufferSize 同口径，issue #386）。
     if (mi > MaxRowsSupported())
     {
         (void)WriteInfoSync(devInfo, -1);
         SOLVER_ECHECK(false, "aclsolverSgeqrf: m 超过当前 kernel 支持的行数上限（见本文件 MaxRowsSupported）。",
                       ACLSOLVER_STATUS_NOT_SUPPORTED);
     }
+
+    const WsLayout ws = PlanWorkspace(mi, ni);
+    QR_PARAM_CHECK(ws.total <= INT32_MAX, 7, "aclsolverSgeqrf: workspace 元素数超出 int32 范围。");
+    QR_PARAM_CHECK(Workspace != nullptr, 6, "aclsolverSgeqrf invalid param 6: Workspace is nullptr.");
+    QR_PARAM_CHECK(static_cast<int64_t>(Lwork) >= ws.total, 7,
+                   "aclsolverSgeqrf invalid param 7: Lwork 小于 _bufferSize 返回的尺寸。");
 
     aclrtStream stream = nullptr;
     const aclsolverStatus_t stRt = aclsolverGetStream(handle, &stream);
