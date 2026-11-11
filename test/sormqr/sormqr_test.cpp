@@ -619,6 +619,16 @@ void CheckModeAndShapeArgs(const MBadFixture &fx, bool *ok)
                aclsolverSormqr(fx.handle, ACLSOLVER_SIDE_RIGHT, kOpN, kBpM, kBpN, kBpN + 1, fx.A, kBpLda, fx.tau,
                                fx.C, kBpLdc, fx.WS, fx.lwork, fx.INFO),
                bad, -5, ok);
+    // issue #385：nq 超 kernel 上限的形状须按 NOT_SUPPORTED 拒绝（LEFT 时 nq = m -> info=-3；
+    // RIGHT 时 nq = n -> info=-4）
+    ExpectInfo(fx.stream, fx.devInfo, "nq 超上限 (LEFT, m=INT32_MAX) -> info=-3",
+               aclsolverSormqr(fx.handle, kLeft, kOpN, 2147483647, 1, 1, fx.A, 2147483647, fx.tau, fx.C, 2147483647,
+                               fx.WS, fx.lwork, fx.INFO),
+               ACLSOLVER_STATUS_NOT_SUPPORTED, -3, ok);
+    ExpectInfo(fx.stream, fx.devInfo, "nq 超上限 (RIGHT, n=INT32_MAX) -> info=-4",
+               aclsolverSormqr(fx.handle, ACLSOLVER_SIDE_RIGHT, kOpN, 1, 2147483647, 1, fx.A, 2147483647, fx.tau,
+                               fx.C, kBpLdc, fx.WS, fx.lwork, fx.INFO),
+               ACLSOLVER_STATUS_NOT_SUPPORTED, -4, ok);
 }
 
 /// 指针、ld 与 workspace：A / lda / tau / C / ldc / work / lwork，末尾压一条合法调用
@@ -672,6 +682,12 @@ void CheckBufferSizeArgs(aclsolverHandle_t handle, bool *ok)
                  aclsolverSormqr_bufferSize(handle, kLeft, kOpN, kBpM, kBpN, kBpK, nullptr, kBpM - 1, nullptr,
                                             nullptr, kBpLdc, &lw),
                  bad, ok);
+    // issue #385：极端大 nq（m 接近 INT32_MAX）的 bufferSize 查询不得返回 SUCCESS 加垃圾值，
+    // 须与执行入口同口径返回 NOT_SUPPORTED（修复前 ldy 的 int32 截断回绕会绕过 total 闸门）
+    ExpectStatus("bufferSize nq 超上限 (LEFT, m=INT32_MAX)",
+                 aclsolverSormqr_bufferSize(handle, kLeft, kOpN, 2147483647, 1, 1, nullptr, 2147483647, nullptr,
+                                            nullptr, 2147483647, &lw),
+                 ACLSOLVER_STATUS_NOT_SUPPORTED, ok);
 }
 
 /// 参数校验：13 个参数的 -i 语义（不计 handle）

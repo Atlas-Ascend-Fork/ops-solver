@@ -67,6 +67,7 @@ WsLayout PlanWorkspace(bool isLeft, int32_t m, int32_t n, int32_t k)
     const int32_t nq = Nq(isLeft, m, n);
     const int32_t mx = std::max(std::max(m, n), 1);
     ws.nb = std::max<int32_t>(1, std::min(ORMQR_NB, std::max(k, 1)));
+    // 两个入口都在调用本函数前把 nq 按 ORMQR_MAX_ROWS 拦截（issue #385），对齐结果必在 int32 值域内
     ws.ldy = static_cast<int32_t>(AlignUp64(std::max(nq, 1), ORMQR_LDY_ALIGN));
     int64_t cur = 0;
     auto take = [&cur](int64_t elems)
@@ -87,7 +88,9 @@ WsLayout PlanWorkspace(bool isLeft, int32_t m, int32_t n, int32_t k)
     // （G = V^T V 用的 nb*nb*S 更小）。
     // 实测过把容量抬到 8*nb*mx（S 上限 3→8）：4096³ 只值 -2%、2048³ 反而 +1.5%，
     // 多分的份被归约流量吃回去了 ⇒ 保持这个紧的容量。
-    ws.capP = static_cast<int64_t>(ws.nb) * (ORMQR_KSPLIT_MAX * 256 + mx);
+    // ORMQR_KSPLIT_MAX 必须先提升为 int64 再加 mx：mx 合法但接近 INT32_MAX 时纯
+    // int32 加法会溢出（UB），capP 随之为负（issue #385）。
+    ws.capP = static_cast<int64_t>(ws.nb) * (static_cast<int64_t>(ORMQR_KSPLIT_MAX) * 256 + mx);
     ws.offP = take(ws.capP);
     ws.total = cur;
     return ws;
@@ -169,6 +172,17 @@ aclsolverStatus_t aclsolverSormqr_bufferSize(aclsolverHandle_t handle, aclsolver
     {
         *lwork = 0;
         return ACLSOLVER_STATUS_SUCCESS;
+    }
+    // 与执行入口同口径：nq 超 kernel 上限的形状在 PlanWorkspace 之前就早退。
+    // PlanWorkspace 的 ldy/capP 推导以 nq/mx 为上界，极端形状下 int32 截断/溢出会产生
+    // 垃圾布局，正负抵消后 total 落回正常区间、绕过下方 total 闸门（issue #385）。
+    const int32_t nq = Nq(side == ACLSOLVER_SIDE_LEFT, static_cast<int32_t>(m), static_cast<int32_t>(n));
+    if (nq > ORMQR_MAX_ROWS)
+    {
+        SOLVER_ECHECK(false,
+                      "aclsolverSormqr_bufferSize: nq（LEFT 时为 m、RIGHT 时为 n）超过当前 kernel 支持的上限 "
+                      "ORMQR_MAX_ROWS。",
+                      ACLSOLVER_STATUS_NOT_SUPPORTED);
     }
     const WsLayout ws = PlanWorkspace(side == ACLSOLVER_SIDE_LEFT, static_cast<int32_t>(m), static_cast<int32_t>(n),
                                       static_cast<int32_t>(k));
@@ -252,12 +266,7 @@ aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t 
     ORMQR_PARAM_CHECK(tau != nullptr, 8, "aclsolverSormqr invalid param 8: tau is nullptr while k > 0.");
     ORMQR_PARAM_CHECK(C != nullptr, 9, "aclsolverSormqr invalid param 9: C is nullptr.");
 
-    const WsLayout ws = PlanWorkspace(isLeft, mi, ni, ki);
-    ORMQR_PARAM_CHECK(ws.total <= INT32_MAX, 12, "aclsolverSormqr: workspace 元素数超出 int32 范围。");
-    ORMQR_PARAM_CHECK(work != nullptr, 11, "aclsolverSormqr invalid param 11: work is nullptr.");
-    ORMQR_PARAM_CHECK(static_cast<int64_t>(lwork) >= ws.total, 12,
-                      "aclsolverSormqr invalid param 12: lwork 小于 _bufferSize 返回的尺寸。");
-
+    // nq 超 kernel 上限的形状在 PlanWorkspace 之前就早退（与 bufferSize 同口径，issue #385）
     const int32_t nq = Nq(isLeft, mi, ni);
     if (nq > ORMQR_MAX_ROWS)
     {
@@ -266,6 +275,12 @@ aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t 
                       "aclsolverSormqr: nq（LEFT 时为 m、RIGHT 时为 n）超过当前 kernel 支持的上限 ORMQR_MAX_ROWS。",
                       ACLSOLVER_STATUS_NOT_SUPPORTED);
     }
+
+    const WsLayout ws = PlanWorkspace(isLeft, mi, ni, ki);
+    ORMQR_PARAM_CHECK(ws.total <= INT32_MAX, 12, "aclsolverSormqr: workspace 元素数超出 int32 范围。");
+    ORMQR_PARAM_CHECK(work != nullptr, 11, "aclsolverSormqr invalid param 11: work is nullptr.");
+    ORMQR_PARAM_CHECK(static_cast<int64_t>(lwork) >= ws.total, 12,
+                      "aclsolverSormqr invalid param 12: lwork 小于 _bufferSize 返回的尺寸。");
 
     return SormqrLaunch(handle, isLeft, trans, mi, ni, ki, ldai, ldci, A, tau, C, work, devInfo, ws);
 }
