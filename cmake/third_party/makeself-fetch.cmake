@@ -28,10 +28,15 @@ if (NOT EXISTS "${MAKESELF_PATH}/makeself-header.sh" OR NOT EXISTS "${MAKESELF_P
         SOURCE_DIR "${MAKESELF_PATH}"  # 直接解压到此目录
     )
     FetchContent_MakeAvailable(${MAKESELF_NAME})
+    # 两条 chmod 合并为一条命令：execute_process 的 RESULT_VARIABLE/ERROR_VARIABLE
+    # 只反映最后一条 COMMAND 的结果，串联写法下第一条（makeself.sh）失败会被静默丢弃
+    # （issue #388）；结果必须显式检查，否则 chmod 失败被吞掉，推迟到打包阶段才间接暴露。
     execute_process(
-        COMMAND chmod 700 "${MAKESELF_PATH}/makeself.sh"
-        COMMAND chmod 700 "${MAKESELF_PATH}/makeself-header.sh"
+        COMMAND chmod 700 "${MAKESELF_PATH}/makeself.sh" "${MAKESELF_PATH}/makeself-header.sh"
         RESULT_VARIABLE CHMOD_RESULT
         ERROR_VARIABLE CHMOD_ERROR
     )
+    if(NOT CHMOD_RESULT EQUAL 0)
+        message(FATAL_ERROR "chmod makeself scripts failed: ${CHMOD_ERROR}")
+    endif()
 endif()
