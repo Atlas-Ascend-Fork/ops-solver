@@ -61,38 +61,43 @@ class SolveTrsmUpper
 
         elementsPerBlock = 32 / sizeof(T);
 
-        __aicore__ inline void CopyInPanel(uint64_t matABlockOffset, uint64_t matLBlockOffset,
-                                           LocalTensor<T> & triangularLocal, LocalTensor<T> & matALocal)
-        {
-            LocalTensor<T> triangularLocal = triangularQueue.AllocTensor<T>();
-            LocalTensor<T> matALocal = matAQueue.AllocTensor<T>();
-
-            DataCopyParams copyParamsMatL{static_cast<uint16_t>(blockM),
-                                          static_cast<uint16_t>(blockM / elementsPerBlock),
-                                          static_cast<uint16_t>((resizedM - blockM) / elementsPerBlock), 0};
-            DataCopy(triangularLocal, lGlobal[matLBlockOffset], copyParamsMatL);
-
-            DataCopyParams copyParamsMatA{static_cast<uint16_t>(blockM),
-                                          static_cast<uint16_t>(blockN / elementsPerBlock),
-                                          static_cast<uint16_t>((n - blockN) / elementsPerBlock), 0};
-            DataCopy(matALocal, aGlobal[matABlockOffset], copyParamsMatA);
-
-            triangularQueue.EnQue(triangularLocal);
-            matAQueue.EnQue(matALocal);
-            triangularLocal = triangularQueue.DeQue<T>();
-            matALocal = matAQueue.DeQue<T>();
-            LocalTensor<T> tmpLocal = calcBuf.Get<T>();
-        }
-
         pipe->InitBuffer(triangularQueue, 1, blockM * blockM * sizeof(T));
         pipe->InitBuffer(matAQueue, 1, blockM * blockN * sizeof(T));
         pipe->InitBuffer(calcBuf, blockM * elementsPerBlock * sizeof(T));
     }
+
+    // 装载一对 (三角矩阵块, 矩阵块) 并把出队后的句柄写回引用形参。
+    // cddfaf8 重构时本函数曾被嵌套定义在 Init 内、且函数体用同名局部变量遮蔽引用形参，
+    // 导致 sgetrs_kernel.cpp.o 在三个 SoC 上编译失败（issue #389）；现恢复为类成员。
+    __aicore__ inline void CopyInPanel(uint64_t matABlockOffset, uint64_t matLBlockOffset,
+                                       LocalTensor<T> &triangularLocal, LocalTensor<T> &matALocal)
+    {
+        triangularLocal = triangularQueue.AllocTensor<T>();
+        matALocal = matAQueue.AllocTensor<T>();
+
+        DataCopyParams copyParamsMatL{static_cast<uint16_t>(blockM),
+                                      static_cast<uint16_t>(blockM / elementsPerBlock),
+                                      static_cast<uint16_t>((resizedM - blockM) / elementsPerBlock), 0};
+        DataCopy(triangularLocal, lGlobal[matLBlockOffset], copyParamsMatL);
+
+        DataCopyParams copyParamsMatA{static_cast<uint16_t>(blockM),
+                                      static_cast<uint16_t>(blockN / elementsPerBlock),
+                                      static_cast<uint16_t>((n - blockN) / elementsPerBlock), 0};
+        DataCopy(matALocal, aGlobal[matABlockOffset], copyParamsMatA);
+
+        triangularQueue.EnQue(triangularLocal);
+        matAQueue.EnQue(matALocal);
+        triangularLocal = triangularQueue.DeQue<T>();
+        matALocal = matAQueue.DeQue<T>();
+    }
+
     __aicore__ inline void Process(int offsetM, int mask)
     {
         uint64_t matABlockOffset = offsetM * n;
         uint64_t matLBlockOffset = offsetM * resizedM + offsetM;
 
+        LocalTensor<T> triangularLocal;
+        LocalTensor<T> matALocal;
         CopyInPanel(matABlockOffset, matLBlockOffset, triangularLocal, matALocal);
         LocalTensor<T> tmpLocal = calcBuf.Get<T>();
 

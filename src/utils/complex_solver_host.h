@@ -11,14 +11,19 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <vector>
 
 #include "cann_ops_solver.h"
 #include "complex_solver_launch.h"
-#include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
+
+// !119 引入的 #include "log/log.h"（ops-nn 框架内部头）在本仓与 CANN 公共 SDK 中均不存在，
+// 导致所有包含本头的编译单元构建失败（issue #389）。此处以仓内既有错误输出口径
+// （utils/assert.h 同款：[ERROR] 前缀 + stderr）提供等价宏，调用点与输出语义保持不变。
+#define OP_LOGE(op, fmt, ...) fprintf(stderr, "[ERROR] %s: " fmt "\n", op, ##__VA_ARGS__)
 
 namespace ComplexSolver
 {

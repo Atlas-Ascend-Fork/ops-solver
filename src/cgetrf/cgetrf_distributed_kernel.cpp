@@ -18,6 +18,10 @@
 #include "../utils/complex_solver_launch.h"
 
 using namespace AscendC;
+// DistributedPanel 面板执行器仅由 3510（Ascend950）的 SIMT VF 路径使用，其方法引用
+// 上方 3510 守卫内的 VF 声明；非 3510 架构编译时因标识符不存在而失败（issue #389），
+// 与文件内其他内核的守卫口径对齐。
+#if __NPU_ARCH__ == 3510
 namespace DistributedPanel
 {
 __aicore__ inline void ComplexRecipSafe(float dr, float di, float& invR, float& invI)
@@ -519,16 +523,21 @@ class State
 };
 
 }  // namespace DistributedPanel
+#endif
 
 extern "C" __global__ __aicore__ __schedmode__(1) void complex_factor_distributed_panel(
     GM_ADDR workspace, GM_ADDR pivots, GM_ADDR info, int m, int n, int ld, int columns, int begin, int width,
     int rowsPerCore, int doPivot)
 {
+    // 任务类型属性必须无条件保留：__schedmode__ 内核在非 3510 架构上若函数体全空，
+    // 链接器无法自动推导 kernel 类型（issue #389）。
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#if __NPU_ARCH__ == 3510
     __ubuf__ float memory[200704 / sizeof(float)];
     DistributedPanel::State state;
     state.Init(workspace, pivots, info, m, ld, begin, width, rowsPerCore, memory);
     state.Run();
+#endif
 }
 
 #if __NPU_ARCH__ == 3510

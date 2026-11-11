@@ -11,12 +11,16 @@
 #pragma once
 
 #include "cann_ops_solver_common.h"
+
+// simt_api 头仅在 dav-3510（Ascend950）下可编译，CANN 9.3.0 在 dav-c220/dav-m200 上
+// 直接报错（attribute not supported / long2 unknown，issue #389）；与文件主体的
+// 3510 守卫对齐，非 3510 架构不再触碰。
+#if __NPU_ARCH__ == 3510
 #include "simt_api/asc_simt.h"
 #include "simt_api/device_sync_functions.h"
 #include "simt_api/device_warp_functions.h"
 #include "simt_api/math_functions.h"
 
-#if __NPU_ARCH__ == 3510
 namespace ComplexSolverKernel
 {
 constexpr uint32_t THREADS = 256;
