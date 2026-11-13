@@ -29,7 +29,7 @@ aclsolverStatus_t aclsolverCgetriBatched(
 | 参数 | 位置与方向 | 说明 |
 | --- | --- | --- |
 | `handle` | Host，输入 | 已创建的 solver handle，使用其设置的 stream |
-| `n` | Host，输入 | `0 ≤ n ≤ 4096` |
+| `n` | Host，输入 | `0 ≤ n ≤ 4096`；超限时返回 `ACLSOLVER_STATUS_INVALID_VALUE` |
 | `Aarray` | Device，输入 | 长度为 `batchSize` 的 Device 指针数组，每项指向列主序 LU 矩阵 |
 | `lda` | Host，输入 | `lda ≥ max(1, n)`；每个输入矩阵至少 `lda * n` 个复数元素 |
 | `PivotArray` | Device，输入 | 连续的 `n * batchSize` 个 `int`，第 `b` 组从 `PivotArray[b * n]` 开始；`nullptr` 表示所有矩阵均为无主元 LU |

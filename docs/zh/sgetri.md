@@ -84,7 +84,7 @@
     <tr>
         <td align="center">n</td>
         <td align="center">输入</td>
-        <td align="left">方阵的行数和列数，0≤n≤4096</td>
+        <td align="left">方阵的行数和列数，0≤n≤4096；n 超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE，执行入口置 devInfo=-1</td>
     </tr>
     <tr>
         <td align="center">A</td>

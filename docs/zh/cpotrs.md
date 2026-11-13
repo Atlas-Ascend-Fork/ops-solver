@@ -31,7 +31,7 @@ aclsolverStatus_t aclsolverCpotrs(aclsolverHandle_t handle, aclsolverFillMode_t 
 | --- | --- | --- |
 | handle | 输入 / host | 由 aclsolverCreate 创建；使用其绑定的调用方 stream。 |
 | uplo | 输入 / host | ACLSOLVER_FILL_MODE_LOWER 或 ACLSOLVER_FILL_MODE_UPPER。 |
-| n | 输入 / host | int，矩阵阶数，0≤n≤4096。 |
+| n | 输入 / host | int，矩阵阶数，0≤n≤4096；超限返回 `ACLSOLVER_STATUS_INVALID_VALUE`。 |
 | nrhs | 输入 / host | int，0≤nrhs≤128；n=0 或 nrhs=0 为空问题。 |
 | A | 输入 / device | 列主序 aclsolverFloatComplex 矩阵，元素由 FP32 real、imag 组成；求解时保持全部字节不变。 |
 | lda | 输入 / host | int，A 的相邻两列起点间距，以复数元素计，至少为 max(1,n)；填充区保持不变。 |

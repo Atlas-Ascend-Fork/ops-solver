@@ -35,7 +35,7 @@ aclsolverStatus_t aclsolverCgetri(
 | 参数 | 位置与方向 | 说明 |
 | --- | --- | --- |
 | `handle` | Host，输入 | 已创建的 solver handle，使用其设置的 stream |
-| `n` | Host，输入 | `0 ≤ n ≤ 4096` |
+| `n` | Host，输入 | `0 ≤ n ≤ 4096`；超限时两个入口均返回 `ACLSOLVER_STATUS_INVALID_VALUE`（执行入口另写 `devInfo` 置 -1，查询入口不写状态缓冲） |
 | `A` | Device，输入/输出 | 输入为列主序 packed LU，输出为逆矩阵；至少 `lda * n` 个复数元素 |
 | `lda` | Host，输入 | `lda ≥ max(1, n)`，支持列尾 padding |
 | `devIpiv` | Device，输入 | `n` 个 1-based 行交换索引；`nullptr` 仅用于无主元 LU |

@@ -52,7 +52,7 @@ aclsolverStatus_t aclsolverSpotrf(
 |:---|:---:|:---|
 | `handle` | 输入 | 由 `aclsolverCreate` 创建并通过 `aclsolverSetStream` 关联计算流的句柄 |
 | `uplo` | 输入 | `ACLSOLVER_FILL_MODE_LOWER` 或 `ACLSOLVER_FILL_MODE_UPPER` |
-| `n` | 输入 | 矩阵阶数，`0 <= n <= 4096` |
+| `n` | 输入 | 矩阵阶数，`0 <= n <= 4096`；超限返回 `ACLSOLVER_STATUS_INVALID_VALUE` |
 | `A` | 输入/输出 | Device FLOAT32，列主序；`A[i+j*lda]` 为第 i 行、第 j 列，存储至少 `lda*n` 个元素；查询接口不修改 A |
 | `lda` | 输入 | 相邻两列起始地址之间的 float 元素数，`lda >= max(1,n)` |
 | `Lwork`（查询） | 输出 | Host `int*`，返回所需 float 元素个数 |

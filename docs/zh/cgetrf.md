@@ -37,7 +37,7 @@ aclsolverStatus_t aclsolverCgetrf(
 | 参数 | 位置与方向 | 说明 |
 | --- | --- | --- |
 | `handle` | Host，输入 | 已创建的 solver handle，使用其设置的 stream |
-| `m`、`n` | Host，输入 | `0 ≤ m ≤ 4096`，`0 ≤ n ≤ 8192` |
+| `m`、`n` | Host，输入 | `0 ≤ m ≤ 4096`，`0 ≤ n ≤ 8192`；超限时两个入口均返回 `ACLSOLVER_STATUS_INVALID_VALUE`（执行入口另写 `devInfo` 置 -1/-2，查询入口不写状态缓冲） |
 | `A` | Device，输入/输出 | 列主序矩阵，分配至少 `lda * n` 个复数元素 |
 | `lda` | Host，输入 | `lda ≥ max(1, m)`，支持列尾 padding |
 | `Lwork` | Host，查询输出 | 工作空间的复数元素数；分配字节数为 `Lwork * sizeof(aclFloatComplex)` |

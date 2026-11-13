@@ -36,7 +36,7 @@ aclsolverStatus_t aclsolverSpotrs(
 |:---|:---:|:---|
 | `handle` | 输入 | 由 `aclsolverCreate` 创建并关联计算流的句柄 |
 | `uplo` | 输入 | 指定 A 中 L 或 U 所在三角，须与分解时一致 |
-| `n` | 输入 | 矩阵阶数，`0 <= n <= 4096` |
+| `n` | 输入 | 矩阵阶数，`0 <= n <= 4096`；超限返回 `ACLSOLVER_STATUS_INVALID_VALUE` |
 | `nrhs` | 输入 | 右端项列数，`0 <= nrhs <= 128` |
 | `A` | 输入 | Device FLOAT32 因子，列主序 `A[i+j*lda]`，至少 `lda*n` 个元素 |
 | `lda` | 输入 | 因子的列跨度（float 元素数），`lda >= max(1,n)` |

@@ -80,12 +80,12 @@
     <tr>
         <td align="center">m</td>
         <td align="center">输入</td>
-        <td align="left">A 的行数，需满足 m >= n >= 0 且 m <= 4096</td>
+        <td align="left">A 的行数，需满足 m >= n >= 0 且 m <= 4096；超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE</td>
     </tr>
     <tr>
         <td align="center">n</td>
         <td align="center">输入</td>
-        <td align="left">A 的列数，需满足 n >= 0 且 n <= 4096</td>
+        <td align="left">A 的列数，需满足 n >= 0 且 n <= 4096；超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE</td>
     </tr>
     <tr>
         <td align="center">nrhs</td>

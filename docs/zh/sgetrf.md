@@ -82,7 +82,7 @@
     <tr>
         <td align="center">m</td>
         <td align="center">输入</td>
-        <td align="left">矩阵A的行数，0≤m≤8192；本任务数值验收覆盖m≤4096</td>
+        <td align="left">矩阵A的行数，0≤m≤8192（m 或 n 超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE）；本任务数值验收覆盖m≤4096</td>
     </tr>
     <tr>
         <td align="center">n</td>
