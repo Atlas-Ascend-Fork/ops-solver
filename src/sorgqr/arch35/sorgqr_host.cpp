@@ -138,6 +138,14 @@ aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, in
         *lwork = 0;
         return ACLSOLVER_STATUS_SUCCESS;
     }
+    // 与执行入口同口径：m 超 kernel 上限（ORGQR_MAX_ROWS，UB 单列整列驻留容量）的形状在
+    // PlanWorkspace 之前早退（issue #386 同款）。PlanWorkspace 的 ldy 推导以 m 为上界，
+    // 极端形状下 int32 截断回绕会产生垃圾布局，且调用方按查询成功分配后执行时才被拒。
+    if (m > ORGQR_MAX_ROWS)
+    {
+        SOLVER_ECHECK(false, "aclsolverSorgqr_bufferSize: m 超过当前 kernel 支持的行数上限 ORGQR_MAX_ROWS。",
+                      ACLSOLVER_STATUS_NOT_SUPPORTED);
+    }
     const WsLayout ws = PlanWorkspace(static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(k));
     SOLVER_ECHECK(ws.total <= INT32_MAX, "aclsolverSorgqr_bufferSize: workspace 元素数超出 int32 范围。",
                   ACLSOLVER_STATUS_INVALID_VALUE);
