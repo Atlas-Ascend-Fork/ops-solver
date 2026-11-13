@@ -101,7 +101,7 @@
     <tr>
         <td align="center">k</td>
         <td align="center">输入</td>
-        <td align="left">反射子个数，需满足 0 <= k <= nq，其中 nq = m（LEFT）或 n（RIGHT）；nq <= 4096</td>
+        <td align="left">反射子个数，需满足 0 <= k <= nq，其中 nq = m（LEFT）或 n（RIGHT）；nq 超过当前 kernel 上限 4096 时两个入口均返回 ACLSOLVER_STATUS_NOT_SUPPORTED（主入口另写 devInfo = -3/-4）</td>
     </tr>
     <tr>
         <td align="center">A</td>
