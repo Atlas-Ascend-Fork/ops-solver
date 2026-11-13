@@ -86,7 +86,10 @@ extern "C"
      * query A may be null. Null pivots select factorization/solve without pivoting.
      * getrf returns packed LU and 1-based row pivots. getri consumes those factors
      * and pivots, then overwrites A with its inverse. Batched APIs use Device arrays
-     * of Device pointers and independent output matrices. matinv accepts n<=32.
+     * of Device pointers and independent output matrices. getrf enforces m<=8192,
+     * getri and getriBatched enforce n<=4096, and matinv accepts n<=32; shapes
+     * beyond these limits return INVALID_VALUE in both entries (the queries
+     * write no status buffer; the execute entries additionally write devInfo=-1).
      * info is 0 on success, -i for an illegal argument excluding handle, or the
      * first positive zero U diagonal. Errors in an unusable info buffer cannot
      * be written to that buffer. Device metadata/value checks require caller-stream
@@ -354,9 +357,12 @@ extern "C"
     /**
      * @brief Query complex least-squares workspace in bytes; no device data is read.
      * @param handle Non-null solver handle.
-     * @param m Row count, m >= n.
-     * @param n Non-negative column count.
-     * @param nrhs Non-negative number of right-hand sides.
+     * @param m Row count, m >= n; both entries enforce m,n <= 4096.
+     * @param n Non-negative column count, n <= 4096.
+     * @param nrhs Non-negative right-hand side count, nrhs <= 128; exceeding the
+     *             range (when m, n, nrhs are all non-zero) makes this query return
+     *             INVALID_VALUE (the query writes no status buffer; the execute
+     *             entry writes dinfo=-1 for m/n, -3 for nrhs).
      * @param dA Device column-major coefficient matrix.
      * @param ldda Coefficient stride, at least max(1,m).
      * @param dB Device column-major right-hand sides.
@@ -374,9 +380,14 @@ extern "C"
     /**
      * @brief Solve a square or overdetermined complex least-squares problem using QR.
      * @param handle Solver handle; synchronization follows aclsolverCgeqrf.
-     * @param m Row count, m >= n; underdetermined problems are rejected even if m=0.
-     * @param n Non-negative column count.
-     * @param nrhs Non-negative right-hand-side count; n=0 or nrhs=0 is empty.
+     * @param m Row count, m >= n with m, n <= 4096; underdetermined problems are
+     *          rejected even if m=0, and exceeding the range (with n, nrhs non-zero)
+     *          returns INVALID_VALUE with dinfo=-1.
+     * @param n Non-negative column count, n <= 4096; exceeding (with m, nrhs
+     *          non-zero) returns INVALID_VALUE with dinfo=-1.
+     * @param nrhs Non-negative right-hand-side count, nrhs <= 128; n=0 or nrhs=0
+     *             is empty, and nrhs > 128 (with m, n non-zero) returns
+     *             INVALID_VALUE with dinfo=-3.
      * @param dA Device coefficient matrix, overwritten with packed QR factors.
      * @param ldda Coefficient stride, at least max(1,m).
      * @param dB Read-only device right-hand sides.
@@ -781,8 +792,9 @@ extern "C"
      * query the size before allocating them.
      *
      * @param handle Solver handle created by aclsolverCreate; must not be nullptr.
-     * @param m Number of rows of A; must satisfy m >= n >= 0.
-     * @param n Number of columns of A; must be non-negative.
+     * @param m Number of rows of A; must satisfy m >= n >= 0, with m, n <= 4096
+     *          (GELS_MAX_DIM; both entries enforce it, exceeding returns INVALID_VALUE).
+     * @param n Number of columns of A; must be non-negative, n <= 4096.
      * @param nrhs Number of right-hand sides; must be non-negative.
      * @param dA Coefficient matrix. Not read by this query.
      * @param ldda Leading dimension of dA; must be at least max(1, m).
@@ -857,31 +869,38 @@ extern "C"
 {
 #endif
 
-    /** Query workspace in aclFloatComplex elements. A is a column-major Device matrix. */
+    /** Query workspace in aclFloatComplex elements. A is a column-major Device matrix.
+     *  m<=4096 and n<=8192; exceeding makes this query return INVALID_VALUE (the
+     *  query writes no status buffer; the execute entry writes devInfo=-1/-2). */
     aclsolverStatus_t aclsolverCgetrf_bufferSize(aclsolverHandle_t handle, int m, int n, aclFloatComplex* A, int lda,
                                                  int* Lwork);
 
     /** In-place LU with deterministic partial pivoting. Null devIpiv selects no pivoting.
      * A, Workspace, devIpiv and devInfo are Device pointers; lda >= max(1, m).
      * devInfo is 0, the first zero diagonal (1-based), or a negative argument index excluding handle.
-     */
+      m<=4096 and n<=8192;
+     * exceeding returns INVALID_VALUE with devInfo=-1 (m) / -2 (n). */
     aclsolverStatus_t aclsolverCgetrf(aclsolverHandle_t handle, int m, int n, aclFloatComplex* A, int lda,
                                       aclFloatComplex* Workspace, int* devIpiv, int* devInfo);
 
-    /** Query inverse workspace in aclFloatComplex elements. */
+    /** Query inverse workspace in aclFloatComplex elements. n<=4096; exceeding
+     *  makes this query return INVALID_VALUE (the query writes no status buffer;
+     *  the execute entry writes devInfo=-1). */
     aclsolverStatus_t aclsolverCgetri_bufferSize(aclsolverHandle_t handle, int n, aclFloatComplex* A, int lda,
                                                  int* Lwork);
 
     /** In-place inverse from column-major LU and 1-based pivots; null pivots denote no pivoting.
      * All buffers are Device pointers. Workspace must not overlap A.
-     */
+      n<=4096, exceeding returns INVALID_VALUE
+     * with devInfo=-1. */
     aclsolverStatus_t aclsolverCgetri(aclsolverHandle_t handle, int n, aclFloatComplex* A, int lda, int* devIpiv,
                                       aclFloatComplex* Workspace, int Lwork, int* devInfo);
 
     /** Out-of-place inverse from LU. Aarray and Carray are Device arrays of Device pointers.
      * PivotArray contains n * batchSize pivots, or is null for no pivoting.
      * Input and output matrices must not overlap; output matrices must be mutually disjoint.
-     */
+      n<=4096, exceeding returns INVALID_VALUE
+     * with devInfo=-1 per batch. */
     aclsolverStatus_t aclsolverCgetriBatched(aclsolverHandle_t handle, int n, const aclFloatComplex* const Aarray[],
                                              int lda, const int* PivotArray, aclFloatComplex* const Carray[], int ldc,
                                              int* infoArray, int batchSize);
