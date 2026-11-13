@@ -720,7 +720,9 @@ extern "C"
      * @param workspaceInBytesOnDevice Output device workspace size in bytes. 0 when n or k is 0.
      * @param workspaceInBytesOnHost Output host workspace size in bytes. Always 0.
      * @return ACLSOLVER_STATUS_SUCCESS on success, ACLSOLVER_STATUS_INVALID_VALUE on an invalid
-     *         argument, ACLSOLVER_STATUS_NOT_SUPPORTED when the data types are not all FLOAT32.
+     *         argument, ACLSOLVER_STATUS_NOT_SUPPORTED when the data types are not all FLOAT32
+     *         or when n > 4096 / k > 256 (same kernel limits as aclsolverXlarft, enforced here
+     *         before the workspace size derivation to keep both entries consistent).
      */
     aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolverParams_t params,
                                                  aclsolverDirectMode_t direct, aclsolverStorevMode_t storev, int64_t n,

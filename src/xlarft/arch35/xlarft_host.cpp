@@ -138,8 +138,10 @@ aclsolverStatus_t aclsolverXlarft_bufferSize(aclsolverHandle_t handle, aclsolver
     }
     // 与执行入口同一对上限：超限的入参在尺寸推导（int64 乘法）之前拒绝，
     // 避免 ldy*k / k*k*KSPLIT_MAX 的有符号溢出 UB 误导 workspace 分配。
-    SOLVER_ECHECK(n <= XLARFT_MAX_N, "aclsolverXlarft: n 超过当前 kernel 上限 4096。", ACLSOLVER_STATUS_NOT_SUPPORTED);
-    SOLVER_ECHECK(k <= XLARFT_MAX_K, "aclsolverXlarft: k 超过当前 kernel 上限 256。", ACLSOLVER_STATUS_NOT_SUPPORTED);
+    SOLVER_ECHECK(n <= XLARFT_MAX_N, "aclsolverXlarft_bufferSize: n 超过当前 kernel 上限 4096。",
+                  ACLSOLVER_STATUS_NOT_SUPPORTED);
+    SOLVER_ECHECK(k <= XLARFT_MAX_K, "aclsolverXlarft_bufferSize: k 超过当前 kernel 上限 256。",
+                  ACLSOLVER_STATUS_NOT_SUPPORTED);
     const WsLayout ws = PlanWorkspace(n, k);
     *workspaceInBytesOnDevice = static_cast<size_t>(ws.total) * sizeof(float);
     return ACLSOLVER_STATUS_SUCCESS;
