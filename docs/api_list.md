@@ -71,6 +71,30 @@
   </tr>
   <tr>
     <td>solver</td>
+    <td><a href="./zh/cungqr.md">cungqr</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>复数矩阵显式正交因子生成，由 Cgeqrf 产生的前 k 个 Householder 反射器构造 m × n 酉矩阵 Q，原地覆盖 A；要求 m >= n >= k >= 0，k=0 时输出单位矩阵前 n 列。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/cunmqr.md">cunmqr</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>复数矩阵酉变换乘法，使用 Cgeqrf 返回的 Householder 反射器对矩阵 C 施加 Q 或 Q^H 变换（左乘/右乘、是否转置共四种组合），原地覆盖 C。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
+    <td><a href="./zh/ccgels.md">ccgels</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>复数最小二乘求解，以 COMPLEX64 主精度分解并求解 min ||A X - B||_F（m >= n），X 写入独立输出缓冲区，B 保持不变。</td>
+  </tr>
+  <tr>
+    <td>solver</td>
     <td><a href="./zh/sgetri.md">sgetri</a></td>
     <td>✓</td>
     <td>✓</td>
