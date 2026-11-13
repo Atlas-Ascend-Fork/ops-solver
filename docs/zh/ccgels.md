@@ -54,7 +54,7 @@ aclsolverStatus_t aclsolverCCgels(
 ## 约束与状态
 
 - 类型为 `aclsolverFloatComplex` / COMPLEX64；仅列主序，不支持广播。
-- 任务范围为 `1 <= n <= m <= 4096`、`1 <= nrhs <= 128`，并处理空问题。
+- 任务范围为 `1 <= n <= m <= 4096`、`1 <= nrhs <= 128`，并处理空问题。范围拒绝仅作用于 `m`、`n`、`nrhs` **均非零**的有效问题：此时超出该范围（`m`/`n` > 4096 或 `nrhs` > 128）并非未定义行为，执行与 `bufferSize` 查询两个入口共用同一校验并确定性地返回 `ACLSOLVER_STATUS_INVALID_VALUE`（`m`/`n` 超限写 `dinfo = -1`，`nrhs` 超限写 `dinfo = -3`，编号不计 handle）。任一维度为 0 的空问题不受本范围约束，按下方空问题条目短路成功返回（检视响应：与 `m=8192,n=0` 等组合的实际行为对齐，避免与空问题条目互斥）。
 - `m<n` 不支持并返回 `ACLSOLVER_STATUS_INVALID_VALUE`。A 应满足满列秩求解条件。
 - 若 QR 后存在精确零对角，按已评审设计返回首个位置 `dinfo=j>0`，不执行回代且 X 保持不变。
   Host 状态仍表示调用是否成功下发；同步后必须读取 dinfo。此检查不按容差推断数值秩，
