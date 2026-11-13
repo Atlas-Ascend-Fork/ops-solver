@@ -173,6 +173,14 @@ aclsolverStatus_t aclsolverSSgels_bufferSize(aclsolverHandle_t handle, int m, in
         *lwork_bytes = 0;
         return ACLSOLVER_STATUS_SUCCESS;
     }
+    // 与执行入口同口径：m/n 超过 GELS_MAX_DIM(4096) 的形状在 PlanWorkspace 之前早退
+    // （执行入口见 GELS_PARAM_CHECK(mi <= GELS_MAX_DIM && ni <= GELS_MAX_DIM, 1, ...)，
+    // 返回 INVALID_VALUE + dinfo=-1）。复数版 ccgels 的查询入口经 policy.check 共享
+    // 同一范围校验（issue #369 口径）；实数版本入口此前缺同款检查，调用方按查询成功
+    // 分配后执行时才被拒（sorgqr issue #392 / sgeqrf #386 同族模式）。
+    SOLVER_ECHECK(m <= GELS_MAX_DIM && n <= GELS_MAX_DIM,
+                  "aclsolverSSgels_bufferSize: m / n 超过当前 kernel 上限 4096。",
+                  ACLSOLVER_STATUS_INVALID_VALUE);
     WsLayout ws;
     const aclsolverStatus_t st =
         PlanWorkspace(handle, static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(nrhs),
