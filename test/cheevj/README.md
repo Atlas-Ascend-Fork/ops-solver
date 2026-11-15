@@ -51,6 +51,15 @@ LD_LIBRARY_PATH=build:${LD_LIBRARY_PATH} ./build/test/cheevj/cheevj_test 0 128 V
 python3 test/cheevj/data/verify_result.py 128 V L random_hermitian
 ```
 
+verify_result.py 的判定容差（与脚本内常量逐一对应，调整口径时同步更新本表）：
+
+| 常量 | 值 | 判定对象 |
+|---|---|---|
+| `EIGEN_RTOL` / `EIGEN_ATOL` | 5e-3 | 特征值 vs golden（`np.allclose`，equal_nan=False） |
+| `SORT_ATOL` | 1e-5 | 输出特征值升序（相邻允许回退量） |
+| `RESIDUAL_TOL` | 1e-2 | `\|\|A@V − V·diag(W)\|\|_F / max(\|\|A\|\|_F, 1)` |
+| `ORTHOGONAL_TOL` | 1e-2 | 特征向量正交性误差 |
+
 ## Symbol and loader checks
 
 ```bash
