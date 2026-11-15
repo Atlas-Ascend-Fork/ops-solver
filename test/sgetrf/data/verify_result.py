@@ -61,11 +61,16 @@ def main():
         print("Non-finite input or LU output cannot pass accuracy verification.")
         return False
 
-    # 根据 pivot 数组进行行交换
+    # 根据 pivot 数组进行行交换；内容校验对齐同族 cgetrf 的 ValueError 形态
+    # （issue #459）：此前裸 assert 在 python -O 下静默跳过且无上下文。
     for j in range(n):
         for i in range(t):
-            assert w[i] >= i + 1 and w[i] <= m
-            p = w[i] - 1  # convert 1-based to 0-based
+            pivot = int(w[i])
+            if not (i + 1 <= pivot <= m):
+                raise ValueError(
+                    f"invalid pivot at index {i}: {pivot}, expected [{i + 1}, {m}]"
+                )
+            p = pivot - 1  # convert 1-based to 0-based
             a[[i, p], j] = a[[p, i], j]
 
     # 计算 expected 结果
