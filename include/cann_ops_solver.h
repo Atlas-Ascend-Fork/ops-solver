@@ -396,9 +396,12 @@ extern "C"
      * @param lddx Solution stride, at least max(1,n).
      * @param dWorkspace Device scratch from the matching query; no input/output overlap.
      * @param lwork_bytes Available scratch in bytes.
-     * @param niter Host output iteration count, zero for this direct solver.
+     * @param niter Host output iteration count, zero for this direct solver. Must not be
+     *              null (null returns INVALID_VALUE with dinfo = -12, the 12th argument
+     *              excluding handle).
      * @param dinfo Writable device status: zero, negative argument index excluding handle,
      *              or positive one-based zero-pivot position during back substitution.
+     *              Must not be null (null returns INVALID_VALUE without writing any output).
      * @return SUCCESS (including numerical failure reported in dinfo), INVALID_VALUE,
      *         HANDLE_IS_NULLPTR, a handle/stream error, or ARCH_MISMATCH on non-950 builds.
      */
