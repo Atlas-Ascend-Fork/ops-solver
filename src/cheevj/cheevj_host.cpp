@@ -1808,7 +1808,8 @@ aclError RunGenericDevice(std::vector<Complex>* packedA, Complex* a, int64_t lda
     cheevj_kernel_do(sync, d_A, d_W, d_info, workSpace, tilingDevice, numBlocks, stream);
     // Kernel launches are asynchronous; do not report success when enqueueing failed
     // (issue #363，对齐 fixed 后端 #349 与 cpotrf #350 口径)。失败路径的释放语义：先等
-    // 在途任务落定再释放；同步本身也失败时滞留（有界泄漏优于 use-after-free）。
+    // 在途任务落定再释放；同步本身也失败时滞留（有界泄漏优于 use-after-free）——
+    // 下方同步失败分支同样不释放（issue #444）：kernel 未确认落定时释放构成 UAF。
     const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
     if (enqueueStatus != ACL_SUCCESS)
     {
@@ -1818,7 +1819,9 @@ aclError RunGenericDevice(std::vector<Complex>* packedA, Complex* a, int64_t lda
         }
         return enqueueStatus;
     }
-    CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), releaseDeviceBuffers());
+    // 同步失败时 kernel 未确认落定，滞留防 UAF（issue #444）；成功后的 D2H 回拷
+    // 失败时 kernel 已落定，释放安全。
+    CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     CHEEVJ_CHECK_ACLRT(aclrtMemcpy(info, config.sizeInfo, d_info, config.sizeInfo, ACL_MEMCPY_DEVICE_TO_HOST),
                        releaseDeviceBuffers());
     if (*info == 0)

@@ -405,19 +405,24 @@ aclError RunCompleteNoVector(const std::vector<Complex>& packedA, int64_t n, flo
                            panel.tauReal, panel.tauImag, panel.panelWorkspace, panel.barrierWorkspace, nullptr, nullptr,
                            bounds, eigenvalues, lowWorkspace, highWorkspace, nullptr, nullptr, nullptr, nullptr,
                            deviceInfo, static_cast<int>(n), false, stream);
-    // Kernel launches are asynchronous; a failed enqueue must surface instead of
-    // copying back garbage eigenvalues under the preset info=0 "success" flag.
-    // info 取非成功值（LAPACK 口径 info>0 表示未得到有效结果），调用方按返回码与
-    // info 均可感知链路未完成。先等在途阶段落定再释放，避免与内核竞态。
-    const aclError launchError = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
-    if (launchError != ACL_SUCCESS)
-    {
-        (void)aclrtSynchronizeStream(stream);
-        releaseFixedBuffers();
-        *info = 1;
-        return launchError;
-    }
-    CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), releaseFixedBuffers());
+     // Kernel launches are asynchronous; a failed enqueue must surface instead of
+     // copying back garbage eigenvalues under the preset info=0 "success" flag.
+     // info 取非成功值（LAPACK 口径 info>0 表示未得到有效结果），调用方按返回码与
+     // info 均可感知链路未完成。先等在途阶段落定再释放，避免与内核竞态；同步本身
+     // 失败时滞留（有界泄漏优于 use-after-free，issue #444，对齐 cpotrf #350 口径）。
+     const aclError launchError = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
+     if (launchError != ACL_SUCCESS)
+     {
+         if (aclrtSynchronizeStream(stream) == ACL_SUCCESS)
+         {
+             releaseFixedBuffers();
+         }
+         *info = 1;
+         return launchError;
+     }
+     // 同步失败时多阶段 kernel 未确认落定，滞留防 UAF（issue #444）；成功后的
+     // CopyFixedEigenvalues 失败时 kernel 已落定，释放安全。
+     CHEEVJ_CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
 
     const aclError copyStatus = CopyFixedEigenvalues(deviceInfo, eigenvalues, sizes.vectorBytes, w, info);
     if (copyStatus != ACL_SUCCESS)
