@@ -11,12 +11,16 @@ import numpy as np
 from scipy.linalg.lapack import cungqr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common" / "complex_qr"))
-from test_support import require
-
-from independent import matrix, run
 
 
-def test_operator(rt):
+# 命名避开 pytest 收集（issue #470）：本文件是 run_package.sh 以
+# --library/--device 调用的 CLI 脚本，test_* 前缀会被 pytest 误收集报
+# fixture 'rt' not found。test_support/independent 依赖上方 sys.path 铺垫，
+# 在函数内局部导入以保持模块级 import 区完整（G.FMT.05）。
+def check_operator(rt):
+    from independent import matrix
+    from test_support import require
+
     rng = np.random.default_rng(950)
     for m, n in [(1, 1), (7, 3), (3, 7), (65, 33), (257, 131)]:
         a = matrix(rng, m, n)
@@ -36,4 +40,6 @@ def test_operator(rt):
 
 
 if __name__ == "__main__":
-    run(test_operator)
+    from independent import run
+
+    run(check_operator)
