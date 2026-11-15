@@ -848,8 +848,9 @@ extern "C"
      * @param dWorkspace Device workspace of at least lwork_bytes bytes.
      * @param lwork_bytes Workspace size in bytes, as returned by aclsolverSSgels_bufferSize.
      * @param niter Host output: number of refinement iterations performed. Always 0 here.
+     *              Must not be null (null writes dinfo = -12 and returns INVALID_VALUE).
      * @param dinfo Device int32 output: 0 on success, -i when the i-th argument is invalid
-     *              (the handle is not counted).
+     *              (the handle is not counted). Must not be null (null returns INVALID_VALUE).
      * @return ACLSOLVER_STATUS_SUCCESS when the work is submitted, otherwise a status code.
      */
     aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nrhs, float* dA, int ldda, float* dB,

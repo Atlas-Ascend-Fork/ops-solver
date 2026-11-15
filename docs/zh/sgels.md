@@ -140,7 +140,7 @@
     <tr>
         <td align="center">niter</td>
         <td align="center">输出</td>
-        <td align="left">host 侧 int32：精化迭代次数。本实现为直接 QR 解、<strong>恒为 0</strong></td>
+        <td align="left">host 侧 int32：精化迭代次数。本实现为直接 QR 解、<strong>恒为 0</strong>；<strong>不可为 nullptr</strong>（为空写 dinfo = -12 并返回 ACLSOLVER_STATUS_INVALID_VALUE）</td>
     </tr>
     <tr>
         <td align="center">dinfo</td>
