@@ -14,8 +14,25 @@ import logging
 import sys
 from pathlib import Path
 import numpy as np
-import torch
-from runner import Solver, require
+import pytest
+
+# 本文件由 test/cholesky/run_tests.sh 在 NPU 设备环境运行；顶层 import torch
+# 在无 NPU 环境（标准开发容器/CI 纯 Host 阶段）会令 pytest 对整个 test/ 的
+# 收集中断（Interrupted: 1 error during collection，其余测试全不执行）。
+# torch 的 device 后端自动加载机制（TORCH_DEVICE_BACKEND_AUTOLOAD）在缺
+# libhccl 的环境抛 RuntimeError 而非 ImportError，故显式放宽捕获（issue #469）。
+# runner 自身 import torch，故其符号（Solver/require）在使用处局部导入，
+# 避免模块级 import 顺序与 torch 守卫的循环约束（G.FMT.05）。
+try:
+    torch = pytest.importorskip(
+        "torch", reason="runtime fault tests require a torch_npu device environment"
+    )
+except RuntimeError:
+    pytest.skip(
+        "torch device backend autoload failed; "
+        "runtime fault tests require a torch_npu device environment",
+        allow_module_level=True,
+    )
 
 
 def buffers(n):
@@ -32,6 +49,8 @@ def solve(solver, n, a, b, info):
 
 
 def check_growth(library, hooks, kind):
+    from runner import Solver, require
+
     solver = Solver(library)
     try:
         small_a, small_b = buffers(129)
@@ -64,6 +83,8 @@ def check_growth(library, hooks, kind):
 
 
 def check_launch(library, hooks, pooled):
+    from runner import Solver, require
+
     solver = Solver(library)
     try:
         n = 129 if pooled else 8
