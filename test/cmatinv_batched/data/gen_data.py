@@ -17,7 +17,13 @@ np.random.seed(42)
 
 # 从命令行读取矩阵维度 n 和 batchSize
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if n <= 0:
+    raise ValueError(f"n 必须是正整数, got {n}")
 batchSize = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if batchSize <= 0:
+    raise ValueError(f"batchSize 必须是正整数, got {batchSize}")
 
 # 生成批量随机复数矩阵 (complex64)
 a_real = np.random.randn(batchSize, n, n).astype(np.float32)

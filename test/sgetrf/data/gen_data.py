@@ -17,7 +17,13 @@ np.random.seed(149)
 
 # 从命令行读取矩阵维度 m 和 n
 m = int(sys.argv[1]) if len(sys.argv) > 1 else 32
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if m <= 0:
+    raise ValueError(f"m 必须是正整数, got {m}")
 n = int(sys.argv[2]) if len(sys.argv) > 2 else 32
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if n <= 0:
+    raise ValueError(f"n 必须是正整数, got {n}")
 
 # 生成随机实数矩阵 (float32)
 a = np.random.randint(1, 11, size=(m, n)).astype(np.float32)

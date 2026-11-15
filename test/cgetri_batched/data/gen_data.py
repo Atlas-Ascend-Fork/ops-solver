@@ -16,7 +16,13 @@ import numpy as np
 np.random.seed(42)
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 48
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if n <= 0:
+    raise ValueError(f"n 必须是正整数, got {n}")
 batchSize = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if batchSize <= 0:
+    raise ValueError(f"batchSize 必须是正整数, got {batchSize}")
 
 a_real = np.random.randn(batchSize, n, n).astype(np.float32)
 a_imag = np.random.randn(batchSize, n, n).astype(np.float32)

@@ -21,7 +21,13 @@ np.random.seed(149)
 
 # 从命令行读取矩阵维度 n 和右侧向量数量 nrhs
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 32
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if n <= 0:
+    raise ValueError(f"n 必须是正整数, got {n}")
 nrhs = int(sys.argv[2]) if len(sys.argv) > 2 else 32
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if nrhs <= 0:
+    raise ValueError(f"nrhs 必须是正整数, got {nrhs}")
 
 # 创建输出目录
 os.makedirs("./test/cgetrs/data/input", exist_ok=True)

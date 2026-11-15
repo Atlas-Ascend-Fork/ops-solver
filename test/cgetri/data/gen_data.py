@@ -17,6 +17,9 @@ np.random.seed(42)
 
 # 从命令行读取矩阵维度 n
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 32 # 使用方式: python script.py <n>
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if n <= 0:
+    raise ValueError(f"n 必须是正整数, got {n}")
 
 # 生成随机复数矩阵 (complex64)
 a_real = np.random.randn(n, n).astype(np.float32)  # 实部

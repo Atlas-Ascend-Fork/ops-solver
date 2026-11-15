@@ -25,7 +25,13 @@ def generate_data(m: int, n: int) -> np.ndarray:
 def main():
     # 支持命令行参数
     m = int(sys.argv[1]) if len(sys.argv) > 1 else 32
+    # 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+    if m <= 0:
+        raise ValueError(f"m 必须是正整数, got {m}")
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 32
+    # 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+    if n <= 0:
+        raise ValueError(f"n 必须是正整数, got {n}")
 
     # 生成数据
     a = generate_data(m, n)
