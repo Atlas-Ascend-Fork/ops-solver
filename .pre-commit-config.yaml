@@ -79,7 +79,7 @@ repos:
         language: python
         additional_dependencies: [numpy, scipy, pytest]
         pass_filenames: false
-        files: ^test/cgeqrf/data/verify_result\.py$|^tests/host/test_nonfinite_accuracy_verdict\.py$
+        files: ^test/(cgeqrf|sgetrf|cgetrf|sgetri|cgetri_batched|cmatinv_batched)/data/verify_result\.py$|^tests/host/test_nonfinite_accuracy_verdict\.py$
       - id: cheevj-host-block-tests
         name: Cheevj Host numeric block tests
         entry: python -m pytest -q tests/host/test_cheevj_2x2_vector_host.py
