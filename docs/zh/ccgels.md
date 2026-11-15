@@ -48,8 +48,8 @@ aclsolverStatus_t aclsolverCCgels(
 | dwork | Device 参数 | bufferSize 为接口兼容保留的参数，可传 NULL，不读取或写入 |
 | dWorkspace | Device 工作区 | 按查询结果使用 `aclrtMalloc` 分配，不与 A、B、X 重叠 |
 | lwork_bytes | Host | 查询时为 size_t 输出指针；计算时为字节数，不是复数元素个数 |
-| niter | Host 输出 | 可写 int 指针，当前直接求解算法返回 0 |
-| dinfo | Device 输出 | 可写 INT32；0 成功，`-i` 为参数非法，编号不计 handle；正值 j 表示分解后的 R(j,j) 精确为零（1-based） |
+| niter | Host 输出 | 可写 int 指针，当前直接求解算法返回 0；不可为 nullptr（为空写 `dinfo = -12` 并返回 `ACLSOLVER_STATUS_INVALID_VALUE`，niter 为第 12 个非 handle 参数） |
+| dinfo | Device 输出 | 可写 INT32；0 成功，`-i` 为参数非法，编号不计 handle；正值 j 表示分解后的 R(j,j) 精确为零（1-based）。不可为 nullptr（为空返回 `ACLSOLVER_STATUS_INVALID_VALUE`，不写任何输出） |
 
 ## 约束与状态
 
