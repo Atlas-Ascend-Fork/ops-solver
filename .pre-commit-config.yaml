@@ -87,6 +87,13 @@ repos:
         additional_dependencies: [pytest]
         pass_filenames: false
         files: ^src/cheevj/cheevj_host\.cpp$|^tests/host/test_cheevj_2x2_vector_host\.py$
+      - id: cheevj-basis-verdict-tests
+        name: Cheevj basis verdict Host tests
+        entry: python -m pytest -q tests/host/test_cheevj_basis_verdict.py
+        language: python
+        additional_dependencies: [numpy, pytest]
+        pass_filenames: false
+        files: ^test/cheevj/data/verify_result\.py$|^tests/host/test_cheevj_basis_verdict\.py$
       - id: complex-qr-require-tests
         name: Complex QR shared require() diagnostics tests
         entry: python -m pytest -q tests/host/test_require_diagnostic_location.py
