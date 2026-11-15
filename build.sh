@@ -188,12 +188,16 @@ if [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
     CMAKE_OPTIONS+=("-DENABLE_PACKAGE=ON" "-DCANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}")
 fi
 
-# 捕获 configure 输出：运行阶段需要据此识别"构建期已知跳过"的测试目录（issue #351）
-if ! CMAKE_CONFIGURE_OUTPUT=$(cmake -S "${BASE_PATH}" -B "${BUILD_DIR}" "${CMAKE_OPTIONS[@]}" 2>&1); then
+# 捕获 configure 输出：运行阶段需要据此识别"构建期已知跳过"的测试目录（issue #351）。
+# 失败时透传 cmake 原始退出码（issue #445，恢复 #214 的退出码传播契约）：
+# || { ... } 形态不触发 errexit，$? 为 cmake 退出码；此前 if ! + exit 1 会把
+# configure 失败硬编码为 1，test_cmake_failure_still_stops_driver[-S] 因此回归。
+CMAKE_CONFIGURE_OUTPUT=$(cmake -S "${BASE_PATH}" -B "${BUILD_DIR}" "${CMAKE_OPTIONS[@]}" 2>&1) || {
+    configure_status=$?
     printf '%s\n' "${CMAKE_CONFIGURE_OUTPUT}"
     print_error "cmake configure failed"
-    exit 1
-fi
+    exit "${configure_status}"
+}
 printf '%s\n' "${CMAKE_CONFIGURE_OUTPUT}"
 cmake --build "${BUILD_DIR}" -j
 if [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
