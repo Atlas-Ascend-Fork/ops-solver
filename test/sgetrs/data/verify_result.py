@@ -69,8 +69,16 @@ def main():
     # 读取数据
     LU = np.fromfile("./test/sgetrs/data/input/A_gm.bin", dtype=np.float32).reshape(n, n)
     B = np.fromfile("./test/sgetrs/data/input/B_gm.bin", dtype=np.float32).reshape(n, nrhs)
-    # W_gm.bin 为 1-based 主元契约（issue #344 对齐后），还原 0-based 供本脚本交换使用
-    piv = np.fromfile("./test/sgetrs/data/input/W_gm.bin", dtype=np.int32).reshape(n) - 1
+    # W_gm.bin 为 1-based 主元契约（issue #344 对齐后），还原 0-based 供本脚本交换使用；
+    # 内容校验对齐同族 cgetrf verify 形态（issue #460）：越界值此前抛裸 IndexError，
+    # 0 值经 -1 后为合法负索引静默回绕交换末行、以错误基准误判。
+    raw_piv = np.fromfile("./test/sgetrs/data/input/W_gm.bin", dtype=np.int32).reshape(n)
+    for i, pivot in enumerate(raw_piv):
+        if not (i + 1 <= pivot <= n):
+            raise ValueError(
+                f"invalid pivot at index {i}: {pivot}, expected [{i + 1}, {n}]"
+            )
+    piv = raw_piv - 1
     X = np.fromfile("./test/sgetrs/data/output/X_gm.bin", dtype=np.float32).reshape(n, nrhs)
 
     if not all(np.isfinite(array).all() for array in (LU, B, X)):
@@ -121,7 +129,7 @@ if __name__ == "__main__":
             logging.info("[Failed] Case accuracy verification failed.")
             sys.exit(1)
         else:
-            logging.info("[Success] Case accuracy is verification passed.")
+            logging.info("[Success] Case accuracy verification passed.")
             sys.exit(0)
     except Exception as e:
         logging.info(e)
