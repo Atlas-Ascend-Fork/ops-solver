@@ -13,12 +13,12 @@ import sys
 import unittest
 from pathlib import Path
 
-
-class PythonCompatibilityTest(unittest.TestCase):
-    def test_import_and_operator_names(self):
-        # Numeric dependencies are isolated so this test can run on a minimal
-        # interpreter and catch errors that occur while importing the module.
-        code = """
+# 子进程校验代码（python -c 载体）：用最小 numpy/scipy stub 隔离数值依赖，
+# 使本测试可在最小解释器上捕获 fixtures 链的 import 期错误。提取为模块级
+# 常量以控制测试方法的 nbnc 行数（issue #452 的 CodeCheck 超大函数整改）。
+# stub 需提供 nan/inf 标量：#352 起 fixtures 模块级使用 np.nan/np.inf
+# （INVALID_DIAGONAL_VALUES），缺失时子进程 import 期即 AttributeError。
+CHECK_CODE = """
 import runpy, sys, types
 numpy = types.ModuleType('numpy')
 numpy.ndarray = type('ndarray', (), {})
@@ -26,6 +26,8 @@ numpy.asarray = lambda value: value
 numpy.all = lambda value: value
 numpy.array_equal = lambda left, right: True
 numpy.uint32 = object
+numpy.nan = float('nan')
+numpy.inf = float('inf')
 scipy = types.ModuleType('scipy')
 linalg = types.ModuleType('scipy.linalg')
 linalg.lapack = types.ModuleType('scipy.linalg.lapack')
@@ -51,13 +53,17 @@ main.__globals__['read'] = lambda *args: FakeMatrix()
 main.__globals__['paired'] = lambda *args: {'ratio': 0.0, 'ratio_cpu': 0.0}
 assert main() == 0
 """
+
+
+class PythonCompatibilityTest(unittest.TestCase):
+    def test_import_and_operator_names(self):
         fixture_path = Path(__file__).with_name("fixtures.py")
         cholesky_path = Path(__file__).resolve().parents[2] / "cholesky"
         result = subprocess.run(
             [
                 sys.executable,
                 "-c",
-                code,
+                CHECK_CODE,
                 str(fixture_path),
                 str(cholesky_path / "lapack_residual.py"),
                 str(cholesky_path / "data" / "verify_result.py"),

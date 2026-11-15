@@ -122,6 +122,34 @@ repos:
         additional_dependencies: [pytest]
         pass_filenames: false
         files: ^build\.sh$|^tests/host/test_build_path_arguments\.py$
+      - id: cholesky-fixtures-compat-tests
+        name: Cholesky fixtures Python compatibility tests
+        entry: python -m pytest -q test/utils/cholesky/test_python_compat.py
+        language: python
+        additional_dependencies: [pytest]
+        pass_filenames: false
+        files: ^test/utils/cholesky/(fixtures|lapack_residual)\.py$|^test/utils/cholesky/test_python_compat\.py$|^test/cholesky/data/verify_result\.py$
+      - id: cholesky-lapack-residual-tests
+        name: Cholesky LAPACK residual Host tests
+        entry: python -m pytest -q test/cholesky/test_lapack_residual.py
+        language: python
+        additional_dependencies: [numpy, scipy, pytest]
+        pass_filenames: false
+        files: ^test/cholesky/(lapack_residual|conftest)\.py$|^test/cholesky/test_lapack_residual\.py$
+      - id: cholesky-data-verifier-tests
+        name: Cholesky data verifier behavior Host tests
+        entry: python -m pytest -q test/cholesky/test_data_verify.py
+        language: python
+        additional_dependencies: [numpy, scipy, pytest]
+        pass_filenames: false
+        files: ^test/cholesky/data/verify_result\.py$|^test/cholesky/test_data_verify\.py$
+      - id: cpack-run-registration-tests
+        name: CPack run registration Host tests
+        entry: bash -c 'd="${SOLVER_MAKESELF_CACHE:-/tmp/ops-solver-makeself}"; mkdir -p "$d"; if [ ! -f "$d/makeself.sh" ]; then curl -sL "https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz" | tar xz -C "$d" --strip-components=1; fi; SOLVER_MAKESELF_PATH="$d" python -m pytest -q tests/host/test_cpack_run_registration.py'
+        language: python
+        additional_dependencies: [cmake, pytest]
+        pass_filenames: false
+        files: ^cmake/(makeself|package)\.cmake$|^scripts/package/install\.sh$|^tests/host/test_cpack_run_registration\.py$
       - id: spotrf-data-chain-tests
         name: Spotrf data chain Host tests
         entry: python -m pytest -q test/spotrf/data/test_verify_result.py
