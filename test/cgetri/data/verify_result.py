@@ -28,14 +28,13 @@ def format_mismatch(index, expected, actual):
 
 
 if __name__ == "__main__":
-    data_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(data_dir, "input", "A_gm.bin")
-    output_path = os.path.join(data_dir, "output", "A_gm.bin")
-
+    # 数据定位对齐全仓契约：按 cwd 相对路径（其余 17 个 verify_result.py 同款），
+    # 此前按 __file__ 定位是全仓唯一特例，host 测试被迫为 cgetri 单拷整套模块
+    # （issue #448）。sys.path 的 utils 推导保留 __file__（模块导入，非数据定位）。
     sys.exit(
         run_verification(
-            input_path,
-            output_path,
+            "./test/cgetri/data/input/A_gm.bin",
+            "./test/cgetri/data/output/A_gm.bin",
             DTYPE_COMPLEX64,
             format_mismatch,
         )

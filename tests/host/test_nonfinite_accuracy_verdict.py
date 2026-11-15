@@ -9,7 +9,6 @@
 
 import os
 import runpy
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -93,15 +92,8 @@ def run_comparison(operator, n, batch, directory):
         else [str(n)]
     )
     script = ROOT / "test" / operator / "data/verify_result.py"
-    if operator == "cgetri":
-        # The current CLI locates its data beside __file__; copy full production modules.
-        script = directory / "test" / operator / "data/verify_result.py"
-        shutil.copyfile(ROOT / "test" / operator / "data/verify_result.py", script)
-        utilities = directory / "test/utils"
-        utilities.mkdir(exist_ok=True)
-        shutil.copyfile(
-            ROOT / "test/utils/verify_utils.py", utilities / "verify_utils.py"
-        )
+    # cgetri 的数据定位已对齐全仓 cwd 相对路径契约（issue #448），不再需要
+    # 按 __file__ 特例拷贝整套模块到临时目录。
     command = [sys.executable, str(script), *arguments]
     return subprocess.run(
         command,
