@@ -194,14 +194,17 @@ aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_
 
     cgeqrf_kernel_do(sync, M, N, M, padM, aDevice, aPadDevice, tauDevice, workDevice, gatherDevice, eyeDevice, blockDim,
                      stream);
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), cleanup());
+    // 同步失败时 kernel 未确认落定，滞留防 use-after-free（issue #443，对齐 #350 的
+    // cpotrf/spotrf 口径：有界泄漏优于 UAF）；成功路径末尾的 cleanup() 不变。
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
 
     CHECK_ACLRT(aclrtMemcpy2dAsync(aHost, lda * sizeof(complex64), aDevice, M * sizeof(complex64),
                                    M * sizeof(complex64), N, ACL_MEMCPY_DEVICE_TO_HOST, stream),
                 cleanup());
     CHECK_ACLRT(aclrtMemcpy(tauHost, tauSize, tauDevice, tauSize, ACL_MEMCPY_DEVICE_TO_HOST), cleanup());
 
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), cleanup());
+    // 第二次同步失败时 D2H 拷贝可能在飞，滞留防 UAF（issue #443）。
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     cleanup();
     return ACL_SUCCESS;
 }
