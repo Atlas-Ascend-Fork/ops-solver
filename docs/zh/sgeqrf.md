@@ -130,6 +130,22 @@
 - 调用实现
     使用内核调用符<<<>>>调用核函数。
 
+## 返回值
+
+两个入口均返回 `aclsolverStatus_t`：
+
+| 返回值 | 触发条件 |
+|---|---|
+| `ACLSOLVER_STATUS_SUCCESS` | 查询返回 Lwork 或分解已提交；不代表异步数值一定成功（devInfo 须同步后读取） |
+| `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | 仅主入口：handle 为 nullptr（:169） |
+| `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（`devInfo` 为 nullptr、`CheckShape`/`GELS` 形状不满足等；主入口另写 `devInfo = -i`，handle 不计入编号） |
+| `ACLSOLVER_STATUS_NOT_SUPPORTED` | m 超过当前 kernel 支持的行数上限（见 m 参数行，两入口同口径；主入口该分支先写 `devInfo = -1` 再返回，:199） |
+| `ACLSOLVER_STATUS_INTERNAL_ERROR` | 仅主入口：取平台信息失败（:217）或 AIC 核数为 0（:220） |
+| `ACLSOLVER_STATUS_MAPPING_ERROR` | 仅主入口：空问题路径写 `devInfo = 0` 失败（:187） |
+| `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误（:228 `aclrtPeekAtLastError`，该路径不写 devInfo） |
+
+`_bufferSize` 显式 `(void)handle`（尺寸查询与 handle/stream 无关，:131），handle 为空仍可查询成功；其无 devInfo 参数，参数错误仅以返回码表达。
+
 ## 调用示例
 - 完整代码示例：[aclsolverSgeqrf示例](../../test/sgeqrf/sgeqrf_test.cpp)
 - 核心调用步骤：
