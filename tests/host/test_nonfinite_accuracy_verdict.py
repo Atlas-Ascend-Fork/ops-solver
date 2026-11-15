@@ -84,10 +84,12 @@ def write_inputs(operator, a, output, directory):
 
 
 def run_comparison(operator, n, batch, directory):
+    # 参数序与 #377 修正后的 verify 脚本对齐：(n, batchSize)——此前按 (batch, n)
+    # 传参使两个 batched 算子的 18 个用例因 reshape 崩溃全红（issue #447）。
     arguments = (
         [str(n), str(n)]
         if operator.endswith("getrf")
-        else [str(batch), str(n)]
+        else [str(n), str(batch)]
         if operator.endswith("batched")
         else [str(n)]
     )
