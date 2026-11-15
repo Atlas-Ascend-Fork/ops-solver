@@ -23,9 +23,14 @@ ERROR_TOL = 1e-4
 
 def load_complex_matrix(filepath, n):
     """从二进制文件加载复数矩阵 (实虚 float32 交错)"""
+    # 大小不符即损坏（追加脏字节/截断），对齐 #202 read_binary_strict 口径直接
+    # 失败（issue #465）：此前仅 warning，超量文件随后触发误导性的「数据量不足」。
     expected_size = n * n * 2 * 4  # 两个 float32 每个 4 字节
-    if os.path.getsize(filepath) != expected_size:
-        logging.warning(f"警告: 文件 {filepath} 大小不符预期 (预期 {expected_size} 字节)")
+    actual_size = os.path.getsize(filepath)
+    if actual_size != expected_size:
+        raise ValueError(
+            f"corrupted binary file {filepath}: size {actual_size}, expected {expected_size}"
+        )
     data = np.fromfile(filepath, dtype=np.float32)
     if data.size != n * n * 2:
         raise ValueError(f"文件 {filepath} 数据量不足: 需要 {n*n*2} 个 float32，实际 {data.size}")
@@ -120,7 +125,7 @@ if __name__ == "__main__":
             logging.info("[Failed] Case accuracy verification failed.")
             sys.exit(1)
         else:
-            logging.info("[Success] Case accuracy is verification passed.")
+            logging.info("[Success] Case accuracy verification passed.")
             sys.exit(0)
     except Exception as e:
         logging.info(e)
