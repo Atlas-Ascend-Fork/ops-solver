@@ -122,6 +122,13 @@ repos:
         additional_dependencies: [pytest]
         pass_filenames: false
         files: ^build\.sh$|^tests/host/test_build_path_arguments\.py$
+      - id: spotrf-data-chain-tests
+        name: Spotrf data chain Host tests
+        entry: python -m pytest -q test/spotrf/data/test_verify_result.py
+        language: python
+        additional_dependencies: [numpy, pytest]
+        pass_filenames: false
+        files: ^test/spotrf/data/(gen_data|verify_result|test_verify_result)\.py$
 
   # OAT 合规性检查 (Open Source Audit Tool) — 远程 Python hook
   - repo: https://gitcode.com/HiAgent/compliance
