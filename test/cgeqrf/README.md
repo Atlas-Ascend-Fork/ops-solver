@@ -176,7 +176,7 @@ Solver Cgeqrf算子实现。
   执行结果如下，说明精度对比成功。
 
   ```text
-  [Success] Case accuracy is verification passed.
+  [Success] Case accuracy verification passed.
   ```
 
 ## Independent regression
