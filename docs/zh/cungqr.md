@@ -45,7 +45,7 @@ aclsolverStatus_t aclsolverCungqr(
 | tau | Device 输入 | 长度至少 k；k=0 时允许为空，计算不修改 tau |
 | work | Device 工作区 | 使用 `aclrtMalloc` 按 bufferSize 结果分配，不与 A 或 tau 重叠 |
 | lwork | Host | 查询时为输出指针；计算时为复数元素个数，非字节数 |
-| devInfo | Device 输出 | 一个 INT32；成功 0，参数非法为 `-i`，不计 handle |
+| devInfo | Device 输出 | 一个 INT32；成功 0，参数非法为 `-i`，不计 handle。不可为 nullptr（为空返回 `ACLSOLVER_STATUS_INVALID_VALUE`，不写任何输出；devInfo 为第 9 个非 handle 参数） |
 
 ## 约束与状态
 

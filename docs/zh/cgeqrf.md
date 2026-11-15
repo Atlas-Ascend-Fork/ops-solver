@@ -213,7 +213,7 @@ aclsolverStatus_t aclsolverCgeqrf(
 | TAU | Device 输出 | 长度至少 `min(m,n)`，不得与 A、workspace 重叠 |
 | Workspace | Device 工作区 | 按本次 bufferSize 查询结果分配，使用 `aclrtMalloc` |
 | Lwork | Host | 查询时为输出指针；计算时为工作区的复数元素个数，单位为 8 字节 |
-| devInfo | Device 输出 | 一个 INT32；成功为 0，参数非法为 `-i`，参数编号不计 handle |
+| devInfo | Device 输出 | 一个 INT32；成功为 0，参数非法为 `-i`，参数编号不计 handle。不可为 nullptr（为空返回 `ACLSOLVER_STATUS_INVALID_VALUE`，不写任何输出；devInfo 为第 8 个非 handle 参数） |
 
 ## 约束与状态
 
