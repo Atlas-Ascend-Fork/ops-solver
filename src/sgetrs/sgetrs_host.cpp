@@ -108,7 +108,8 @@ static aclError LaunchSgetrs(SgetrsBuffers &buf, int n, int nrhs, uint64_t trans
                      buf.bDevice, buf.bDeviceWork, blockNum, stream);
     // Kernel launches are asynchronous; do not report success when enqueueing failed (issue #361)。
     // 失败路径的释放语义对齐 cpotrf_host.cpp（issue #350 口径）：先等在途任务落定再释放，
-    // 同步本身也失败时滞留（有界泄漏优于 use-after-free）。
+    // 同步本身也失败时滞留（有界泄漏优于 use-after-free）——kernel 可能仍在读写缓冲，
+    // 此时释放构成 use-after-free，故下方同步失败分支不做释放（issue #442）。
     const aclError enqueueStatus = aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL);
     if (enqueueStatus != ACL_SUCCESS)
     {
@@ -118,7 +119,9 @@ static aclError LaunchSgetrs(SgetrsBuffers &buf, int n, int nrhs, uint64_t trans
         }
         return enqueueStatus;
     }
-    CHECK_ACLRT(aclrtSynchronizeStream(stream), ReleaseSgetrsBuffers(buf));
+    // 同步失败时 kernel 未确认落定，滞留防 UAF（issue #442，对齐 cpotrf/spotrf 口径）；
+    // 成功后的 D2H 回拷失败时 kernel 已落定，释放安全。
+    CHECK_ACLRT(aclrtSynchronizeStream(stream), ((void)0));
     size_t bSize = n * ldb * sizeof(float);
     CHECK_ACLRT(aclrtMemcpy(buf.bHost, bSize, buf.bDevice, bSize, ACL_MEMCPY_DEVICE_TO_HOST),
                 ReleaseSgetrsBuffers(buf));
