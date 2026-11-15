@@ -94,6 +94,13 @@ repos:
         additional_dependencies: [pytest]
         pass_filenames: false
         files: ^test/common/complex_qr/.*\.py$|^tests/host/test_require_diagnostic_location\.py$
+      - id: install-deps-cmake-repository-tests
+        name: install_deps.sh CMake repository setup tests
+        entry: python -m pytest -q tests/host/test_cmake_repository_setup.py
+        language: python
+        additional_dependencies: [pytest]
+        pass_filenames: false
+        files: ^install_deps\.sh$|^tests/host/test_cmake_repository_setup\.py$
 
   # OAT 合规性检查 (Open Source Audit Tool) — 远程 Python hook
   - repo: https://gitcode.com/HiAgent/compliance
