@@ -114,7 +114,7 @@
     <tr>
         <td align="center">devInfo</td>
         <td align="center">输出</td>
-        <td align="left">Device INT32，长度为1；成功为0，正值k表示首个U(k,k)=0；参数错误在可安全写回时填-i，编号不计handle</td>
+        <td align="left">Device INT32，长度为1；成功为0，正值k表示首个U(k,k)=0；参数错误在可安全写回时填-i，编号不计handle。不可为 nullptr（为空返回 ACLSOLVER_STATUS_INVALID_VALUE，CheckSingle 的 AlignedFits 拒绝，real_lu_common.h:64）</td>
     </tr>
     <tr>
         <td align="center">Lwork</td>

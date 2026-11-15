@@ -97,7 +97,7 @@
     <tr>
         <td align="center">info</td>
         <td align="center">输出</td>
-        <td align="left">Device INT32数组，长度为batchSize；每个矩阵独立报告0、正奇异索引或负参数索引，编号不计handle</td>
+        <td align="left">Device INT32数组，长度为batchSize；每个矩阵独立报告0、正奇异索引或负参数索引，编号不计handle。batchSize>0 时不可为 nullptr（为空返回 ACLSOLVER_STATUS_INVALID_VALUE，BatchedArgument 的 Device(info) 检查拒绝，real_lu_common.h:30）</td>
     </tr>
     <tr>
         <td align="center">batchSize</td>
