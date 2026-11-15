@@ -101,6 +101,13 @@ repos:
         additional_dependencies: [pytest]
         pass_filenames: false
         files: ^install_deps\.sh$|^tests/host/test_cmake_repository_setup\.py$
+      - id: uninstall-deletion-tests
+        name: install.sh uninstall deletion Host tests
+        entry: python -m pytest -q tests/host/test_uninstall_deletion_status.py
+        language: python
+        additional_dependencies: [pytest]
+        pass_filenames: false
+        files: ^scripts/package/install\.sh$|^tests/host/test_uninstall_deletion_status\.py$
 
   # OAT 合规性检查 (Open Source Audit Tool) — 远程 Python hook
   - repo: https://gitcode.com/HiAgent/compliance
