@@ -461,16 +461,13 @@ def main():
     qr_compact = load_binary(R_PATH, (m, n), fortran_order=True)
     tau = np.fromfile(TAU_PATH, dtype=DTYPE)
 
+    # tau 文件长度与 min(m,n) 不符即数据链完整性缺陷（kernel 少写/未写/截断），
+    # 对齐 #202 read_binary_strict 口径直接失败（issue #464）：此前警告后零填充
+    # 继续判定，tau 全缺失在 A=I 场景实测侥幸 [Success]。
     if tau.size != k:
-        logging.info(f"警告: tau 文件长度 {tau.size} 与 min(m,n)={k} 不符，将截断/填充")
-        if tau.size < k:
-            tau = np.pad(
-                tau,
-                (0, k - tau.size),
-                constant_values=0.0 + 0.0j,
-            )
-        else:
-            tau = tau[:k]
+        raise ValueError(
+            f"corrupted tau file: expected {k} elements, got {tau.size}"
+        )
 
     logging.info("原始矩阵与算子输出已读入")
 
@@ -494,7 +491,7 @@ if __name__ == "__main__":
             logging.info("[Failed] Case accuracy verification failed.")
             sys.exit(1)
         else:
-            logging.info("[Success] Case accuracy is verification passed.")
+            logging.info("[Success] Case accuracy verification passed.")
             sys.exit(0)
     except Exception as e:
         logging.info(e)
