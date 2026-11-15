@@ -34,6 +34,40 @@ RESIDUAL_TOL = 1e-2
 ORTHOGONAL_TOL = 1e-2
 FULL_ORTHOGONAL_LIMIT = 1024
 ORTHOGONAL_PROBES = 16
+
+# 与 gen_data.py 的 MATRIX_KIND_ALIASES 保持同构（issue #458）：verify 侧此前
+# 只认 5 个规范名、任何其它字符串（含别名 wide_spectrum/dense_circulant 与误传的
+# seed 数字）静默落入默认 A@V 分支。别名归一化 + 未知值显式拒绝后，别名与规范名
+# 命中同一路径，契约两端对齐（表值与 gen_data.py 逐项一致，漂移由该注释锚定）。
+MATRIX_KIND_ALIASES = {
+    "random_hermitian": "random_hermitian",
+    "random": "random_hermitian",
+    "circulant": "circulant",
+    "dense_circulant": "circulant",
+    "sparse_2x2": "sparse_2x2",
+    "sparse_block": "sparse_2x2",
+    "diagonal": "diagonal",
+    "identity": "identity",
+    "repeated": "repeated",
+    "repeated_eigenvalues": "repeated",
+    "clustered": "clustered",
+    "near_degenerate": "clustered",
+    "near-degenerate": "clustered",
+    "clustered_near_degenerate": "clustered",
+    "tiny": "tiny",
+    "tiny_edge": "tiny",
+    "cross_scale": "cross_scale",
+    "wide_spectrum": "cross_scale",
+}
+
+
+def normalize_kind(value):
+    kind = (value or "random_hermitian").strip().lower()
+    if kind not in MATRIX_KIND_ALIASES:
+        raise ValueError(
+            f"matrix kind must be one of {sorted(set(MATRIX_KIND_ALIASES.values()))}, got {value}"
+        )
+    return MATRIX_KIND_ALIASES[kind]
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
@@ -215,9 +249,7 @@ if __name__ == "__main__":
         n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
         jobz = normalize_jobz(sys.argv[2] if len(sys.argv) > 2 else "V")
         uplo = normalize_uplo(sys.argv[3] if len(sys.argv) > 3 else "L")
-        matrix_kind = (
-            sys.argv[4].strip().lower() if len(sys.argv) > 4 else "random_hermitian"
-        )
+        matrix_kind = normalize_kind(sys.argv[4] if len(sys.argv) > 4 else "random_hermitian")
         if n <= 0:
             raise ValueError("n must be greater than 0")
 
