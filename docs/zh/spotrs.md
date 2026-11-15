@@ -42,7 +42,7 @@ aclsolverStatus_t aclsolverSpotrs(
 | `lda` | 输入 | 因子的列跨度（float 元素数），`lda >= max(1,n)` |
 | `B` | 输入/输出 | Device FLOAT32，列主序 `[n,nrhs]`，至少 `ldb*nrhs` 个元素；返回 X |
 | `ldb` | 输入 | B 的列跨度（float 元素数），`ldb >= max(1,n)` |
-| `devInfo` | 输出 | Device `int*`，一个状态值；同步流后读取 |
+| `devInfo` | 输出 | Device `int*`，一个状态值；同步流后读取。<strong>不可为 nullptr</strong>（为空返回 `ACLSOLVER_STATUS_INVALID_VALUE`，devInfo 为第 8 个非 handle 参数） |
 
 ## 返回值
 

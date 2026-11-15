@@ -58,7 +58,7 @@ aclsolverStatus_t aclsolverSpotrf(
 | `Lwork`（查询） | 输出 | Host `int*`，返回所需 float 元素个数 |
 | `Workspace` | 输入 | Device FLOAT32 临时缓冲区，至少 `Lwork` 个元素 |
 | `Lwork`（计算） | 输入 | 实际提供的 workspace 元素个数，不能按字节传入 |
-| `devInfo` | 输出 | Device `int*`，一个状态值；同步流后读取 |
+| `devInfo` | 输出 | Device `int*`，一个状态值；同步流后读取。<strong>不可为 nullptr</strong>（为空返回 `ACLSOLVER_STATUS_INVALID_VALUE`，devInfo 为第 7 个非 handle 参数） |
 
 ### 返回值
 
