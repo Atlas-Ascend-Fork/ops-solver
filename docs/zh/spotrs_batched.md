@@ -42,7 +42,7 @@ aclsolverStatus_t aclsolverSpotrsBatched(
 | `lda` | 输入 | 因子列跨度（float 元素数），`lda >= max(1,n)` |
 | `Barray` | 输入/输出 | Device 指针数组，每个槽位指向至少 `ldb` 个 float 的 Device 缓冲区；前 n 个元素从 RHS 覆盖为解 |
 | `ldb` | 输入 | RHS 列跨度（float 元素数），`ldb >= max(1,n)` |
-| `info` | 输出 | Device `int*`，一个标量；与 SpotrfBatched 的逐矩阵 infoArray 不同 |
+| `info` | 输出 | Device `int*`，一个标量；与 SpotrfBatched 的逐矩阵 infoArray 不同。不可为 nullptr（为空返回 `ACLSOLVER_STATUS_INVALID_VALUE`，info 为第 8 个非 handle 参数）；空问题（`n=0` 或 `batchSize=0`）仍须提供可写 info |
 | `batchSize` | 输入 | 非负 `int`，可执行规模受实际内存资源约束 |
 
 ## 返回值
