@@ -55,6 +55,19 @@ aclsolverStatus_t aclsolverCgetrf(
 - 数值结果和 Device `info` 应在调用方 stream 同步后读取。返回成功不代表矩阵非奇异。
 - 旧 Host 接口的迁移步骤见[复数求解器接口迁移](complex_solver_migration.md)。
 
+## 返回值
+
+两个入口均返回 `aclsolverStatus_t`：
+
+| 返回值 | 触发条件 |
+|---|---|
+| `ACLSOLVER_STATUS_SUCCESS` | 查询返回 Lwork 或分解已提交；不代表矩阵非奇异（stream 同步后读取 devInfo） |
+| `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | handle 为 nullptr（complex_solver_host.h 的 Context 统一判定） |
+| `ACLSOLVER_STATUS_ARCH_MISMATCH` | 非 Ascend950 SoC（aclrtGetSocName 检查，同 Context） |
+| `ACLSOLVER_STATUS_INTERNAL_ERROR` | 平台 AIV 核数查询失败（核数为 0），或 Device 指针属性/区间查询失败（`DevicePointer` 的 `aclrtPointerGetAttributes`/`aclrtGetDevice` 失败，complex_solver_host.h:77/:84；`DeviceSpan` 的 `aclrtMemGetAddressRange` 失败，:105） |
+| `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（InvalidShape/查询 Lwork 为空等；执行入口另写 `devInfo = -i`，查询入口不写状态缓冲） |
+| `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误（:81 LaunchStatus；`_bufferSize` 只走 Context 与 Reject，不下发 kernel） |
+
 ## 调用步骤
 
 1. 分配 Device 矩阵、主元和 `devInfo`，将 Host 输入转换为列主序并复制到 Device。
