@@ -80,6 +80,20 @@ repos:
         additional_dependencies: [numpy, scipy, pytest]
         pass_filenames: false
         files: ^test/cgeqrf/data/verify_result\.py$|^tests/host/test_nonfinite_accuracy_verdict\.py$
+      - id: cheevj-host-block-tests
+        name: Cheevj Host numeric block tests
+        entry: python -m pytest -q tests/host/test_cheevj_2x2_vector_host.py
+        language: python
+        additional_dependencies: [pytest]
+        pass_filenames: false
+        files: ^src/cheevj/cheevj_host\.cpp$|^tests/host/test_cheevj_2x2_vector_host\.py$
+      - id: complex-qr-require-tests
+        name: Complex QR shared require() diagnostics tests
+        entry: python -m pytest -q tests/host/test_require_diagnostic_location.py
+        language: python
+        additional_dependencies: [pytest]
+        pass_filenames: false
+        files: ^test/common/complex_qr/.*\.py$|^tests/host/test_require_diagnostic_location\.py$
 
   # OAT 合规性检查 (Open Source Audit Tool) — 远程 Python hook
   - repo: https://gitcode.com/HiAgent/compliance
