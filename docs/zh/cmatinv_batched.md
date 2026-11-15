@@ -46,6 +46,20 @@ aclsolverStatus_t aclsolverCmatinvBatched(
 - 同步 stream 后读取逆矩阵和 Device `info`。返回成功不代表所有矩阵非奇异。
 - `batchSize == 0` 时在标量参数校验后直接成功；`n == 0` 且 batch 非空时清零 `info`。
 
+## 返回值
+
+接口返回 `aclsolverStatus_t`：
+
+| 返回值 | 触发条件 |
+|---|---|
+| `ACLSOLVER_STATUS_SUCCESS` | 求逆已提交；batch 内逐矩阵状态读取 info |
+| `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | handle 为 nullptr（Context 统一判定） |
+| `ACLSOLVER_STATUS_ARCH_MISMATCH` | 非 Ascend950 SoC |
+| `ACLSOLVER_STATUS_INTERNAL_ERROR` | 平台 AIV 核数查询失败，或 `DevicePointer`/`DeviceSpan` 的指针属性/区间查询失败（complex_solver_host.h:77/:105）、`ReadPointerArrays` 的指针元数据查询失败（:284-291） |
+| `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法，按 InvalidShape 位置码与写入范围分两档：batchSize 合法时（如 n 超限=-1、lda=-3、ldc=-5）Reject 的 count=batchSize，`ComplexSolverFillInfo` 将该负码写入**全部 batchSize 个槽位**；batchSize 本身非法（超限/负值=-7）时 ErrorInfoCount 返回 1，仅写 info[0] |
+| `ACLSOLVER_STATUS_EXECUTION_FAILED` | kernel 下发后线程级错误 |
+| `ACLSOLVER_STATUS_ALLOC_FAILED` | 内部 Host 元数据分配失败（`ReadPointerArrays` 的 aclrtMallocHost/:280、`std::bad_alloc`/:403-407） |
+
 ## 调用步骤
 
 1. 按列主序准备原始矩阵并复制到 Device，分配独立 Device 输出。

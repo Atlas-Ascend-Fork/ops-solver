@@ -53,6 +53,20 @@ aclsolverStatus_t aclsolverCgetri(
 - 数值结果和 Device `info` 应在调用方 stream 同步后读取。返回成功不代表矩阵非奇异。
 - 旧 Host 接口的迁移步骤见[复数求解器接口迁移](complex_solver_migration.md)。
 
+## 返回值
+
+两个入口均返回 `aclsolverStatus_t`：
+
+| 返回值 | 触发条件 |
+|---|---|
+| `ACLSOLVER_STATUS_SUCCESS` | 查询返回 Lwork 或求逆已提交；不代表矩阵非奇异（stream 同步后读取 devInfo） |
+| `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | handle 为 nullptr（ComplexSolver::Context 统一判定） |
+| `ACLSOLVER_STATUS_ARCH_MISMATCH` | 非 Ascend950 SoC |
+| `ACLSOLVER_STATUS_INTERNAL_ERROR` | 平台 AIV 核数查询失败，或 `DevicePointer`/`DeviceSpan` 的指针属性/区间查询失败（complex_solver_host.h:77/:105） |
+| `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（InvalidShape、无效主元写 devInfo=-4 等）；查询入口不写状态缓冲 |
+| `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误（CompleteGetri 内 LaunchStatus；`_bufferSize` 只走 Context 与 Reject，不下发 kernel） |
+| `ACLSOLVER_STATUS_ALLOC_FAILED` | 仅主入口：CompleteGetri 的 info 元数据 Host 回读分配失败（aclrtMallocHost，complex_solver_host.h:119-143） |
+
 ## 调用与边界
 
 - 先完成 LU 分解，再查询并分配求逆工作空间，随后调用本接口。
