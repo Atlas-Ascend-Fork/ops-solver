@@ -156,5 +156,5 @@ Solver Sgetrs算子实现。
   ```
   执行结果如下，说明精度对比成功。
   ```bash
-  [Success] Case accuracy is verification passed.
+  [Success] Case accuracy verification passed.
   ```
