@@ -108,7 +108,8 @@ int main(int argc, char **argv)
     std::cout << "[Output] X:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)B, N, NRHS * 2, 8, 8);
 
-    WriteFile("./test/cgetrs/data/output/X_gm.bin", B, bMatrixFileSize);
+    CHECK_RET(WriteFile("./test/cgetrs/data/output/X_gm.bin", B, bMatrixFileSize),
+              LOG_PRINT("WriteFile X_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
 
     auto cleanupRet = cleanup();
     CHECK_RET(cleanupRet == ACL_SUCCESS, return cleanupRet);

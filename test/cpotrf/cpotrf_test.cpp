@@ -80,7 +80,8 @@ int main(int argc, char** argv)
     std::cout << "[Output] A (U):" << std::endl;
     PrintPartOfMatrix<float>((uint8_t*)A, N, 2 * N, 8, 8);
 
-    WriteFile("./test/cpotrf/data/output/U_gm.bin", A, aMatrixFileSize);
+    CHECK_RET(WriteFile("./test/cpotrf/data/output/U_gm.bin", A, aMatrixFileSize),
+              LOG_PRINT("WriteFile U_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
 
     // Re-read original matrix for lower factorization
     CHECK_RET(ReadFile("./test/cpotrf/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize),
@@ -93,7 +94,8 @@ int main(int argc, char** argv)
     std::cout << "[Output] A (L):" << std::endl;
     PrintPartOfMatrix<float>((uint8_t*)A, N, 2 * N, 8, 8);
 
-    WriteFile("./test/cpotrf/data/output/L_gm.bin", A, aMatrixFileSize);
+    CHECK_RET(WriteFile("./test/cpotrf/data/output/L_gm.bin", A, aMatrixFileSize),
+              LOG_PRINT("WriteFile L_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
 
     auto cleanupRet = cleanup();
     CHECK_RET(cleanupRet == ACL_SUCCESS, return cleanupRet);

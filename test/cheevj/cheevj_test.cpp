@@ -72,18 +72,25 @@ void PrintVector(const float *data, int64_t size, int64_t maxSize)
     std::cout << std::endl;
 }
 
-void WriteResults(char jobz, const std::complex<float> *matrix, int64_t n, const std::vector<float> &eigenvalues,
+bool WriteResults(char jobz, const std::complex<float> *matrix, int64_t n, const std::vector<float> &eigenvalues,
                   size_t matrixBytes)
 {
     std::cout << "[Output] W:" << std::endl;
     PrintVector(eigenvalues.data(), n, 16);
-    WriteFile(OUTPUT_W_PATH, eigenvalues.data(), static_cast<size_t>(n) * sizeof(float));
+    if (!WriteFile(OUTPUT_W_PATH, eigenvalues.data(), static_cast<size_t>(n) * sizeof(float)))
+    {
+        return false;
+    }
     if (jobz == 'V')
     {
         std::cout << "[Output] V:" << std::endl;
         PrintComplexColumnMajor(matrix, n, n, 8, 8);
-        WriteFile(OUTPUT_V_PATH, matrix, matrixBytes);
+        if (!WriteFile(OUTPUT_V_PATH, matrix, matrixBytes))
+        {
+            return false;
+        }
     }
+    return true;
 }
 }  // namespace
 
@@ -162,7 +169,7 @@ int32_t main(int32_t argc, char *argv[])
                   cleanup(); return 1);
     }
 
-    WriteResults(jobzChar, A, n, W, aMatrixFileSize);
+    CHECK_RET(WriteResults(jobzChar, A, n, W, aMatrixFileSize), LOG_PRINT("WriteResults failed.\n"); cleanup(); return 1);
 
     cleanup();
     return 0;
