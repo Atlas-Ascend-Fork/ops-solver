@@ -187,7 +187,12 @@ CPOTRF_SCRIPT = (
 def identity_inputs(n=2, nrhs=1, dtype=np.complex64):
     lu = np.eye(n, dtype=dtype)
     rhs = np.ones((n, nrhs), dtype=dtype)
-    return {"LU": lu, "B": rhs, "X": rhs.copy(), "piv": np.arange(n, dtype=np.uint32)}
+    return {
+        "LU": lu,
+        "B": rhs,
+        "X": rhs.copy(),
+        "piv": np.arange(1, n + 1, dtype=np.int32),
+    }
 
 
 def run_cli(directory, arrays, operator="cgetrs"):
@@ -253,7 +258,7 @@ def test_cgetrs_finite_reference_preserves_accuracy_verdict(tmp_path, case):
         arrays["LU"] = np.array([[1, 1], [0, 2]], dtype=np.complex64)
         arrays["B"] = np.array([[4], [3]], dtype=np.complex64)
         arrays["X"] = np.array([[1], [2]], dtype=np.complex64)
-        arrays["piv"] = np.array([1, 1], dtype=np.uint32)
+        arrays["piv"] = np.array([2, 2], dtype=np.int32)
     run = run_cli(tmp_path, arrays)
     passed = case != "large_error"
     assert run.returncode == (0 if passed else 1), run.stdout + run.stderr
@@ -314,7 +319,7 @@ def test_sgetrs_finite_reference_preserves_accuracy_verdict(tmp_path, case):
         arrays["LU"] = np.array([[1, 1], [0, 2]], dtype=np.float32)
         arrays["B"] = np.array([[4], [3]], dtype=np.float32)
         arrays["X"] = np.array([[1], [2]], dtype=np.float32)
-        arrays["piv"] = np.array([1, 1], dtype=np.uint32)
+        arrays["piv"] = np.array([2, 2], dtype=np.int32)
     run = run_cli(tmp_path, arrays, operator="sgetrs")
     passed = case != "large_error"
     assert run.returncode == (0 if passed else 1), run.stdout + run.stderr
