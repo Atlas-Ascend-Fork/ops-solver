@@ -128,7 +128,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
     
 2. 安装依赖。
 
-    请根据所用系统，使用包管理器（如 apt、yum）安装上述基础依赖。Python 三方库请使用 pip 按需安装。
+    请根据所用系统，使用包管理器（如 apt、yum）安装上述基础依赖。Python 三方库清单见源码根目录 `requirements.txt`，在源码根目录执行 `pip3 install -r requirements.txt` 安装；也可直接执行 `bash install_deps.sh` 一并安装系统依赖与 Python 依赖。
 
 > **说明**：`${arch}` 表示 CPU 架构（如 `aarch64`、`x86_64`）；`${install_path}` 表示 CANN 安装路径，root 用户默认安装在 `/usr/local/Ascend`。下文命令中的这两个变量请替换为实际值。
 

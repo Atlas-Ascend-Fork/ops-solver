@@ -4,6 +4,8 @@
 
 本指南旨在帮助您快速上手CANN和`ops-solver`算子仓的使用。为方便快速了解算子开发全流程，将以**cmatinv_batched**算子为实践对象，算子源码统一存放于 `src/<算子名>/` 目录（如 `src/cmatinv_batched/`，包含 host 与 kernel 源文件），以下以 Ascend 950 硬件平台为例。
 
+> **硬件支持范围**：教程使用的 `cmatinv_batched` 仅支持 Ascend 950 系列（已在 Ascend950PR 验证），Atlas A2/A3（910B/910C）等非 950 平台不支持，详见[CmatinvBatched 产品支持情况](zh/cmatinv_batched.md)。在 A2/A3 上编译可成功（编译期无告警），但运行时返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`（status=8），**编译成功不代表样例可运行**。仓库内其他算子的支持范围各不相同，编译前请查阅对应算子文档的「产品支持情况」或[算子列表](api_list.md)。
+
 1. **[环境准备](#环境准备)**：完成软件包安装和源码下载，此处不再赘述。快速入门场景下，**推荐CANNLab或Docker环境**，安装操作简单。
 
    > **说明**：当前CANNLab或Docker环境默认最新商发版CANN包；如需体验master分支最新能力，可手动安装CANN包，注意软件与源码版本配套。
@@ -19,6 +21,14 @@
 **[环境部署](zh/install/quick_install.md)**：完成软件包安装和源码下载，此处不再赘述。快速入门场景下，**推荐CANNLab或Docker环境**，安装操作简单。
 
 > **说明**：当前CANNLab或Docker环境默认最新商发版CANN包；如需体验master分支最新能力，可手动安装CANN包，注意软件与源码版本配套。
+
+Python 依赖（`numpy`、`scipy` 等，清单见仓库根目录 `requirements.txt`）用于测试数据生成与结果校验。在源码根目录执行：
+
+```bash
+pip3 install -r requirements.txt
+```
+
+手动安装环境下也可执行 `bash install_deps.sh`，一并安装系统构建依赖与 Python 依赖。
 
 ---
 
@@ -79,7 +89,7 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 
 > **提示**：若已完成编译且仅需重新验证功能，可直接运行已编译的二进制文件，无需再次编译。编译完成后，测试二进制文件位于`build/test/<算子名>/<算子名>_test`。
 >
-> 注意：`bash build.sh --run` 在测试结束后会清理生成的测试数据（`test/<算子名>/data/` 下的 input/output/golden），直接运行二进制前需先按下例重新生成（参数需与测试用例的调用参数一致）：
+> 注意：`bash build.sh --run` 在测试结束后会清理生成的测试数据（`test/<算子名>/data/` 下的 input/output/golden），直接运行二进制前需先按下例重新生成（参数需与测试用例的调用参数一致；测试数据生成与校验脚本依赖 numpy/scipy，首次执行前请完成[环境准备](#环境准备)中的 Python 依赖安装）：
 >
 > ```bash
 > python3 test/cmatinv_batched/data/gen_data.py 3 2
