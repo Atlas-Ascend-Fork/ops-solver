@@ -8,6 +8,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
+
+if(NOT SOC_VERSION_LOWER MATCHES "^ascend950")
+    # 复数 LU 为 950 专属（文档契约：其他架构返回 ARCH_MISMATCH），测试断言
+    # SUCCESS 必失败：对齐 #295 门控记 SKIPPED（issue #491）。cgetrs 为 A2/A3
+    # legacy 接口，不在此列。
+    message(WARNING "cgetri_batched tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+    return()
+endif()
+
 add_executable(cgetri_batched_test
     cgetri_batched_test.cpp
 )
