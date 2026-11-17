@@ -238,4 +238,4 @@ __aicore__ inline void custom_trsm_upper(TBufPool<TPosition::VECCALC, 16> &tbufP
 #endif
 }
 
-#endif  // _TRSM_UPPER_CUSTOM_HPP
+#endif  // _TRSM_UPPER_CUSTOM_HPP_
