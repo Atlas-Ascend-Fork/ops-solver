@@ -8,6 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
+
+if(NOT SOC_VERSION_LOWER MATCHES "^ascend950")
+    # 五算子源码全部位于 arch35/（仅 ascend950* 映射，见根 CMakeLists get_soc_arch_dirs），非 950 下
+    # 库中无算子符号、测试链接必然失败：对齐 #295 门控跳过而非中断（issue #488）。
+    message(WARNING "sorgqr tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+    return()
+endif()
+
 add_executable(sorgqr_test
     sorgqr_test.cpp
 )
