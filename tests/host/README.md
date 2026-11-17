@@ -18,8 +18,8 @@
 | test_cheevj_2x2_vector_host.py | cheevj host 数值块（2x2 向量差分） | cheevj-host-block-tests | src/cheevj/cheevj_host.cpp、测试自身 |
 | test_cheevj_basis_verdict.py | cheevj verify 的正交基接受/非正交基拒绝/非有限基拒绝语义（8 用例） | cheevj-basis-verdict-tests | test/cheevj/data/verify_result.py、测试自身 |
 | test_cmake_repository_setup.py | install_deps.sh 的 CMake 仓库配置与失败路径 | install-deps-cmake-repository-tests | install_deps.sh、测试自身 |
-| test_cpack_run_registration.py | CPack External 打包链：.run 注册 + SHA256 校验、makeself/staging 缺失报错 | cpack-run-registration-tests（hook entry 自备 makeself） | cmake/makeself.cmake、cmake/package.cmake、scripts/package/install.sh、测试自身 |
-| test_nonfinite_accuracy_verdict.py | 6 算子 verify 脚本的非有限值不被精度容差稀释（#347 口径）；qr_ulp 子集锚 cgeqrf 的 ULP 硬限 | qr-ulp-host-tests（仅 qr_ulp 子集） | 6 算子 verify 脚本、测试自身 |
+| test_cpack_run_registration.py | CPack External 打包链：.run 注册 + SHA256 校验、makeself/staging 缺失报错 | cpack-run-registration-tests（entry 自备 makeself：下载先按 makeself-fetch.cmake 同一 SHA256 校验再解压，curl/tar 退出码显式检查，幂等判断双文件、不齐自动重下自愈——#486） | cmake/makeself.cmake、cmake/package.cmake、scripts/package/install.sh、测试自身 |
+| test_nonfinite_accuracy_verdict.py | 9 算子 verify 脚本的非有限值不被精度容差稀释（#347 口径，含 sgetrs/cgetrs/cpotrf 判定用例）；qr_ulp 子集锚 cgeqrf 的 ULP 硬限 | qr-ulp-host-tests（ULP 子集）+ nonfinite-verdict-tests（全量，#484） | qr-ulp 锚 cgeqrf verify；nonfinite-verdict 锚 9 个 getrf/getri/getrs/cpotrf 族 verify 脚本与测试自身 |
 | test_require_diagnostic_location.py | test/common/complex_qr 共享 require() 的诊断定位 | complex-qr-require-tests | test/common/complex_qr/*.py、测试自身 |
 | test_uninstall_deletion_status.py | scripts/package/install.sh 卸载的删除完整性与失败边界 | uninstall-deletion-tests | scripts/package/install.sh、测试自身 |
 
