@@ -6,6 +6,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+
+if(NOT SOC_VERSION_LOWER MATCHES "^ascend950")
+    # 复数 Cholesky 为 950 专属（文档产品表），非 950 构建走 cholesky_unsupported
+    # 桩（ARCH_MISMATCH），测试运行必失败：对齐 #295 门控记 SKIPPED（issue #489）。
+    message(WARNING "cpotri tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+    return()
+endif()
+
 add_executable(cpotri_test
     cpotri_test.cpp
     ../utils/cholesky/fixture_runner.cpp
