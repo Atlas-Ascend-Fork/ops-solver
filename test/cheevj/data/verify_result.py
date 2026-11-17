@@ -42,6 +42,7 @@ ORTHOGONAL_PROBES = 16
 MATRIX_KIND_ALIASES = {
     "random_hermitian": "random_hermitian",
     "random": "random_hermitian",
+    "eigenspectrum": "random_hermitian",
     "circulant": "circulant",
     "dense_circulant": "circulant",
     "sparse_2x2": "sparse_2x2",
@@ -68,6 +69,8 @@ def normalize_kind(value):
             f"matrix kind must be one of {sorted(set(MATRIX_KIND_ALIASES.values()))}, got {value}"
         )
     return MATRIX_KIND_ALIASES[kind]
+
+
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
@@ -249,7 +252,9 @@ if __name__ == "__main__":
         n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
         jobz = normalize_jobz(sys.argv[2] if len(sys.argv) > 2 else "V")
         uplo = normalize_uplo(sys.argv[3] if len(sys.argv) > 3 else "L")
-        matrix_kind = normalize_kind(sys.argv[4] if len(sys.argv) > 4 else "random_hermitian")
+        matrix_kind = normalize_kind(
+            sys.argv[4] if len(sys.argv) > 4 else "random_hermitian"
+        )
         if n <= 0:
             raise ValueError("n must be greater than 0")
 
