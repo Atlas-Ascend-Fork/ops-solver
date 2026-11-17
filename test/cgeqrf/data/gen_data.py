@@ -89,6 +89,15 @@ def main():
     m = int(sys.argv[1]) if len(sys.argv) > 1 else 1024
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 256
     zero_ratio = float(sys.argv[3]) if len(sys.argv) > 3 else 0.001
+    # 参数域校验（issue #485，对齐 12a03c5 LU 族 gen_data 口径）：m/n 非正数此前
+    # 在 numpy 深处报 'negative dimensions are not allowed'，错误定位差；
+    # zero_ratio 越界 [0, 1] 会静默生成失真的稀疏度夹具，污染比对基准
+    if m <= 0:
+        raise ValueError(f"m 必须是正整数, got {m}")
+    if n <= 0:
+        raise ValueError(f"n 必须是正整数, got {n}")
+    if not 0 <= zero_ratio <= 1:
+        raise ValueError(f"zero_ratio 必须在 [0, 1] 区间, got {zero_ratio}")
 
     # 确保输出目录存在
     output_dir = "./test/cgeqrf/data/input"
