@@ -33,7 +33,13 @@
 # 商业授权联系：yuantang@fudan.edu.cn
 
 
-if(NOT "arch35" IN_LIST SOC_ARCH_DIRS AND NOT "arch20" IN_LIST SOC_ARCH_DIRS)
+# 原 IN_LIST 门控极性反了：NOT arch35 AND NOT arch20 时才 add_executable——
+# 恰好只在无 arch35/arch20 的 SoC（如 910b，走 unsupported 桩）上构建 cgeqrf_test，
+# 950 上反而缺失（build.sh --run 记 "Test binary not found" FAILED）。本次按
+# #295 口径重写：950 构建，非 950 发 WARNING 记 SKIPPED（issue #490）。
+if(NOT SOC_VERSION_LOWER MATCHES "^ascend950")
+    message(WARNING "cgeqrf tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+else()
 add_executable(cgeqrf_test
     cgeqrf_test.cpp
 )
