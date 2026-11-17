@@ -75,11 +75,20 @@ repos:
     hooks:
       - id: qr-ulp-host-tests
         name: QR ULP hard limit Host tests
+        # 仅执行 QR-ULP 用例（两个 qr_ulp 测试只消费 cgeqrf verify 脚本），
+        # files 与 entry 匹配收窄；全量判定门禁由 nonfinite-verdict-tests 承担
         entry: python -m pytest -q tests/host/test_nonfinite_accuracy_verdict.py -k qr_ulp
         language: python
         additional_dependencies: [numpy, scipy, pytest]
         pass_filenames: false
-        files: ^test/(cgeqrf|sgetrf|cgetrf|sgetri|cgetri_batched|cmatinv_batched)/data/verify_result\.py$|^tests/host/test_nonfinite_accuracy_verdict\.py$
+        files: ^test/cgeqrf/data/verify_result\.py$
+      - id: nonfinite-verdict-tests
+        name: Nonfinite accuracy verdict Host tests
+        entry: python -m pytest -q tests/host/test_nonfinite_accuracy_verdict.py
+        language: python
+        additional_dependencies: [numpy, scipy, pytest]
+        pass_filenames: false
+        files: ^test/(cgeqrf|sgetrf|cgetrf|sgetri|cgetri_batched|cmatinv_batched|sgetrs|cgetrs|cpotrf)/data/verify_result\.py$|^tests/host/test_nonfinite_accuracy_verdict\.py$
       - id: cheevj-host-block-tests
         name: Cheevj Host numeric block tests
         entry: python -m pytest -q tests/host/test_cheevj_2x2_vector_host.py
@@ -145,7 +154,11 @@ repos:
         files: ^test/cholesky/data/verify_result\.py$|^test/cholesky/test_data_verify\.py$
       - id: cpack-run-registration-tests
         name: CPack run registration Host tests
-        entry: bash -c 'd="${SOLVER_MAKESELF_CACHE:-/tmp/ops-solver-makeself}"; mkdir -p "$d"; if [ ! -f "$d/makeself.sh" ]; then curl -sL "https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz" | tar xz -C "$d" --strip-components=1; fi; SOLVER_MAKESELF_PATH="$d" python -m pytest -q tests/host/test_cpack_run_registration.py'
+        # 下载到临时文件先做 SHA256 校验（对齐 cmake/third_party/makeself-fetch.cmake
+        # 的 URL_HASH），再解压；curl/tar 退出码逐一显式检查，失败报明确错误并清理
+        # 半成品缓存；幂等判断同时检查 makeself.sh 与 makeself-header.sh（对齐
+        # makeself-fetch.cmake:19），不齐则整体重新下载，避免部分解压永久毒化共享缓存
+        entry: bash -c 'd="${SOLVER_MAKESELF_CACHE:-/tmp/ops-solver-makeself}"; u="https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz"; h="bfa730a5763cdb267904a130e02b2e48e464986909c0733ff1c96495f620369a"; if [ ! -f "$d/makeself.sh" ] || [ ! -f "$d/makeself-header.sh" ]; then rm -rf "$d"; mkdir -p "$d"; t="$(mktemp -d)" || exit 1; curl -fsSL "$u" -o "$t/makeself.tar.gz" || { echo "ERROR makeself download failed, cannot run cpack registration tests" >&2; rm -rf "$t" "$d"; exit 1; }; echo "$h  $t/makeself.tar.gz" | sha256sum -c - > /dev/null || { echo "ERROR makeself archive sha256 mismatch, refusing to extract" >&2; rm -rf "$t" "$d"; exit 1; }; tar xzf "$t/makeself.tar.gz" -C "$d" --strip-components=1 || { echo "ERROR makeself extract failed" >&2; rm -rf "$t" "$d"; exit 1; }; rm -rf "$t"; fi; SOLVER_MAKESELF_PATH="$d" python -m pytest -q tests/host/test_cpack_run_registration.py'
         language: python
         additional_dependencies: [cmake, pytest]
         pass_filenames: false
