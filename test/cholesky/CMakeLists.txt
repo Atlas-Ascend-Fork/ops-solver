@@ -13,12 +13,17 @@ add_test(NAME cholesky_destroy_ownership COMMAND cholesky_destroy_test)
 set_tests_properties(cholesky_destroy_ownership PROPERTIES LABELS "cholesky;cpu" TIMEOUT 30)
 
 if(NOT SOC_VERSION_LOWER MATCHES "^ascend950")
-    add_executable(cholesky_test unsupported_test.cpp)
-    target_include_directories(cholesky_test PRIVATE
+    # 非 950 分支保留 ABI 冒烟（ARCH_MISMATCH 负向回归）但不再占用 cholesky_test
+    # 目标名：替身二进制会让 build.sh --run 的路径检查（二进制存在）放行，随后
+    # gen 正常、替身不产 kernel 输出、verify 读文件失败 → 误记 FAILED。目标改名
+    # 后 cholesky_test 路径缺失 + 本 WARNING 命中 build.sh 的 SKIPPED 正则（issue #492）。
+    message(WARNING "cholesky tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+    add_executable(cholesky_arch_mismatch_test unsupported_test.cpp)
+    target_include_directories(cholesky_arch_mismatch_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${ASCEND_CANN_PACKAGE_PATH}/include)
-    target_link_libraries(cholesky_test PRIVATE ${OPS_SOLVER})
-    add_test(NAME cholesky_arch_mismatch COMMAND cholesky_test)
+    target_link_libraries(cholesky_arch_mismatch_test PRIVATE ${OPS_SOLVER})
+    add_test(NAME cholesky_arch_mismatch COMMAND cholesky_arch_mismatch_test)
     set_tests_properties(cholesky_arch_mismatch PROPERTIES LABELS "cholesky;cpu;abi" TIMEOUT 30)
     return()
 endif()
