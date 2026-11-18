@@ -21,11 +21,11 @@ Ascend 950PR/Ascend 950DT 共用 dav-3510 / arch35 实现，构建入口均为 `
 
 | 计算接口 | 查询接口 | 输入与输出 |
 | --- | --- | --- |
-| `aclsolverCpotrf` | `aclsolverCpotrf_bufferSize` | 读取 A 的所选三角，原地生成 L 或 U；对角虚部为零 |
-| `aclsolverCpotrs` | 无 | 读取 L 或 U，保持 A 不变，原地更新 B；支持 0≤nrhs≤128 |
-| `aclsolverCpotri` | `aclsolverCpotri_bufferSize` | 读取 L 或 U，原地生成原矩阵逆的所选三角 |
-| `aclsolverCpotrfBatched` | 无 | Aarray 为设备上的指针数组，info 为逐矩阵设备数组 |
-| `aclsolverCpotrsBatched` | 无 | Aarray、Barray 为设备指针数组，非空批量仅支持 nrhs=1，info 为设备标量 |
+| [`aclsolverCpotrf`](cpotrf.md) | [`aclsolverCpotrf_bufferSize`](cpotrf.md) | 读取 A 的所选三角，原地生成 L 或 U；对角虚部为零 |
+| [`aclsolverCpotrs`](cpotrs.md) | 无 | 读取 L 或 U，保持 A 不变，原地更新 B；支持 0≤nrhs≤128 |
+| [`aclsolverCpotri`](cpotri.md) | [`aclsolverCpotri_bufferSize`](cpotri.md) | 读取 L 或 U，原地生成原矩阵逆的所选三角 |
+| [`aclsolverCpotrfBatched`](cpotrf_batched.md) | 无 | Aarray 为设备上的指针数组，info 为逐矩阵设备数组 |
+| [`aclsolverCpotrsBatched`](cpotrs_batched.md) | 无 | Aarray、Barray 为设备指针数组，非空批量仅支持 nrhs=1，info 为设备标量 |
 
 各接口的 workspace 归属：
 
