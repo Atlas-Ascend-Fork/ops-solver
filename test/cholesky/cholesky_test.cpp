@@ -295,6 +295,37 @@ void RunMixedScratch(bool complexFirst, bool separateStreams, bool upper)
     Check(aclrtDestroyStream(second));
 }
 
+// issue #493：非法参数错误路径同样经 Error()/BatchedErrorCount 按 count 全量回写
+// info[0..count)，info 实际分配小于 count*sizeof(int) 时构成设备越界写。范围校验前置
+// 后的行为契约：
+//   - 短 info + 非法参数 -> INVALID_VALUE，且 info 内容原样不动（哨兵值证明未回写）；
+//   - info 足量 + 非法参数 -> 仍按既有口径回写 -error（错误路径语义不变）。
+void RunBatchedShortInfo(aclsolverHandle_t handle, aclrtStream stream)
+{
+    constexpr int n = SAMPLE_N, ld = SAMPLE_LD;
+    Device<float> a(ld * n), other(ld * n);
+    Device<float *> arrayA(2);
+    arrayA.Put({a.data, other.data});
+    // 短 info + 非法 uplo：校验失败直接返回，info 不被回写。
+    // 短容量用"大分配内的尾部视图"构造（对齐 test/complex_solver 既有口径）：aclrtMalloc
+    // 对 4 字节请求通常按分配粒度返回更大的块，独立微分配的剩余 span 不一定小于请求量；
+    // 尾部视图的剩余 span 恒为 4 字节 < count=2 所需 8 字节，判定确定。
+    Device<int> pool(3);
+    pool.Put({7, 8, 42});
+    int *shortInfo = pool.data + 2;
+    auto status = aclsolverSpotrfBatched(handle, static_cast<aclsolverFillMode_t>(7), n, arrayA.data, ld, shortInfo, 2);
+    Require(status == ACLSOLVER_STATUS_INVALID_VALUE);
+    Check(aclrtSynchronizeStream(stream));
+    Require(pool.Get() == std::vector<int>({7, 8, 42}));
+    // info 足量（2 个 int）+ 非法 uplo：错误路径回写契约保持，逐条写 -1。
+    Device<int> info(2);
+    info.Put({-777, -777});
+    status = aclsolverSpotrfBatched(handle, static_cast<aclsolverFillMode_t>(7), n, arrayA.data, ld, info.data, 2);
+    Require(status == ACLSOLVER_STATUS_INVALID_VALUE);
+    Check(aclrtSynchronizeStream(stream));
+    Require(info.Get() == std::vector<int>({-1, -1}));
+}
+
 int main(int argc, char **argv)
 {
     try
@@ -323,6 +354,7 @@ int main(int argc, char **argv)
         Require(stream == returned);
         Run(handle, stream, false, argc == 1);
         Run(handle, stream, true, argc == 1);
+        RunBatchedShortInfo(handle, stream);
         for (bool complexFirst : {false, true})
             for (bool separateStreams : {false, true})
                 for (bool upper : {false, true}) RunMixedScratch(complexFirst, separateStreams, upper);

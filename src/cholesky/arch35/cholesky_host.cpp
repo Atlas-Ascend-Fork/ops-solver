@@ -289,10 +289,16 @@ extern "C"
         int error = MatrixError(u, n, a, ld, n > 0 && count > 0);
         if (!error && count > 0 && !info) error = 5;
         if (!error && count < 0) error = 6;
+        // infoArray 设备范围校验前置到任何 info 回写之前（issue #493）：非法参数错误路径
+        // 经 Error()/BatchedErrorCount 同样按 count 全量回写 info，若 info 分配小于
+        // count*sizeof(int) 会造成设备越界写；info 为空时 Error() 本身不写，无需校验，
+        // count<=0 不按数组写（count<0 只写 info[0]），维持 CheckInfoSpan 的放行口径。
+        if (info && count > 0)
+        {
+            auto span = CheckInfoSpan(info, count, "aclsolverSpotrfBatched", 5);
+            if (span != ACLSOLVER_STATUS_SUCCESS) return span;
+        }
         if (error) return Error(h, info, error, BatchedErrorCount(count));
-        // infoArray 设备范围校验（issue #367），见 CheckInfoSpan 说明。
-        auto span = CheckInfoSpan(info, count, "aclsolverSpotrfBatched", 5);
-        if (span != ACLSOLVER_STATUS_SUCCESS) return span;
         if (!n || !count)
         {
             if (count) SetInfo(info, 0, count, h->stream);
