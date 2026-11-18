@@ -40,6 +40,10 @@ __simt_callee__ __aicore__ inline aclFloatComplex NormalizeCachedValue(aclFloatC
     if (inverseScale == 0.0f) return PreparedDivide(value, divisor);
     float real = value.real * inverseScale;
     float imag = value.imag * inverseScale;
+    if (NeedsScaledNumerator(value, divisor.original, divisor.scale, real, imag))
+    {
+        return PreparedDivide(value, divisor);
+    }
     return {PreparedQuotient(real, divisor.real, imag, divisor.imag, divisor),
             PreparedQuotient(imag, divisor.real, -real, divisor.imag, divisor)};
 }

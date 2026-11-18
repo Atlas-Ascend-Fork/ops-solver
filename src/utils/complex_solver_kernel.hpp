@@ -50,12 +50,45 @@ __simt_callee__ __aicore__ inline float Quotient(float ar, float br, float ai, f
                                                  float denominatorError)
 {
     float product = ar * br;
-    float numerator = fmaf(ai, bi, product);
-    float error = fmaf(ar, br, -product) + fmaf(ai, bi, product - numerator);
+    float other = ai * bi;
+    float numerator = product + other;
+    float part = numerator - product;
+    float error = (product - (numerator - part)) + (other - part) + fmaf(ar, br, -product) + fmaf(ai, bi, -other);
     float reciprocal = 1.0f / denominator;
     float result = numerator * reciprocal;
     float remainder = fmaf(-result, denominator, numerator) + error - result * denominatorError;
     return fmaf(remainder, reciprocal, result);
+}
+
+// Align the two products, rather than both numerator components: a tiny component
+// must survive when the other component is multiplied by zero or a tiny coefficient.
+__simt_callee__ __aicore__ inline float ScaledQuotient(float a, float b, float c, float d, float scale,
+                                                       float denominator, float denominatorError)
+{
+    int ae, be, ce, de, se;
+    float am = frexpf(a, &ae), bm = frexpf(b, &be);
+    float cm = frexpf(c, &ce), dm = frexpf(d, &de);
+    float sm = frexpf(scale, &se);
+    int ab = ae + be, cd = ce + de;
+    bool zeroAb = a == 0.0f || b == 0.0f;
+    bool zeroCd = c == 0.0f || d == 0.0f;
+    int exponent = zeroAb ? cd : zeroCd ? ab : (ab > cd ? ab : cd);
+    am = zeroAb ? 0.0f : ldexpf(am, ab - exponent);
+    cm = zeroCd ? 0.0f : ldexpf(cm, cd - exponent);
+    float quotient = Quotient(am, bm, cm, dm, denominator, denominatorError);
+    return ldexpf(quotient / (sm * sm), exponent - 2 * se);
+}
+
+__simt_callee__ __aicore__ inline bool NeedsScaledNumerator(aclFloatComplex a, aclFloatComplex b, float scale, float ar,
+                                                            float ai)
+{
+    // Keep nonfinite-input behavior. Very small normalized operands lose product bits
+    // before the dot product; scale raw products on that path as well.
+    return Abs(a.real) <= 0x1.fffffep127f && Abs(a.imag) <= 0x1.fffffep127f && scale > 0.0f &&
+           scale <= 0x1.fffffep127f &&
+           (Abs(ar) > 0x1p120f || Abs(ai) > 0x1p120f || (a.real != 0.0f && Abs(ar) < 0x1p-100f) ||
+            (a.imag != 0.0f && Abs(ai) < 0x1p-100f) || (b.real != 0.0f && Abs(b.real / scale) < 0x1p-100f) ||
+            (b.imag != 0.0f && Abs(b.imag / scale) < 0x1p-100f));
 }
 
 __simt_callee__ __aicore__ inline aclFloatComplex Divide(aclFloatComplex a, aclFloatComplex b)
@@ -77,6 +110,11 @@ __simt_callee__ __aicore__ inline aclFloatComplex Divide(aclFloatComplex a, aclF
     float square = first * first;
     float denominator = fmaf(second, second, square);
     float error = fmaf(first, first, -square) + fmaf(second, second, square - denominator);
+    if (NeedsScaledNumerator(a, b, scale.value, ar, ai))
+    {
+        return {ScaledQuotient(a.real, b.real, a.imag, b.imag, scale.value, denominator, error),
+                ScaledQuotient(a.imag, b.real, -a.real, b.imag, scale.value, denominator, error)};
+    }
     return {Quotient(ar, br, ai, bi, denominator, error), Quotient(ai, br, -ar, bi, denominator, error)};
 }
 

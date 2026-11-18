@@ -448,8 +448,59 @@ void MemoryRegression(const Session& session)
     Batched(session, 32, true, true);
 }
 
+// Device regression: use the actual public APIs after building the modified library.
+bool WithinFourUlps(float actual, float expected)
+{
+    if (!std::isfinite(actual)) return false;
+    for (int step = 0; step <= 4; ++step)
+    {
+        if (actual == expected) return true;
+        actual = std::nextafter(actual, expected);
+    }
+    return false;
+}
+
+void DivisionRangeRegression(const Session& session)
+{
+    for (float real : {0x1p126f, 0x1p127f, -0x1p127f, 0x1.fffffep127f})
+        for (float imag : {real, -real, 0x1p-126f})
+        {
+            aclFloatComplex numerator{real, imag}, divisor{1, 1};
+            auto expected = Value(numerator) / Value(divisor);
+            std::vector<aclFloatComplex> column{divisor, numerator};
+            DeviceBuffer matrix(column.size() * sizeof(aclFloatComplex)), info(sizeof(int));
+            matrix.Upload(column.data(), column.size() * sizeof(aclFloatComplex));
+            Factor(session, 2, 1, matrix.As<aclFloatComplex>(), 2, nullptr, info.As<int>());
+            CheckInfo(info, 1);
+            matrix.Download(column.data(), column.size() * sizeof(aclFloatComplex));
+            Require(WithinFourUlps(column[1].real, float(expected.real())) &&
+                        WithinFourUlps(column[1].imag, float(expected.imag())),
+                    "large numerator LU factor");
+
+            // LU for [[1+i, -a], [0, 1]]: inverse upper-right entry is a/(1+i).
+            // Small-resident getri uses the prepared-divisor path.
+            std::vector<aclFloatComplex> lu{divisor, {0, 0}, {-real, -imag}, {1, 0}};
+            DeviceBuffer factors(lu.size() * sizeof(aclFloatComplex));
+            factors.Upload(lu.data(), lu.size() * sizeof(aclFloatComplex));
+            int elements = 0;
+            Check(aclsolverCgetri_bufferSize(session.handle, 2, factors.As<aclFloatComplex>(), 2, &elements),
+                  "getri query");
+            DeviceBuffer workspace(static_cast<size_t>(elements) * sizeof(aclFloatComplex));
+            Check(aclsolverCgetri(session.handle, 2, factors.As<aclFloatComplex>(), 2, nullptr,
+                                  workspace.As<aclFloatComplex>(), elements, info.As<int>()),
+                  "getri range");
+            session.Sync();
+            CheckInfo(info, 1);
+            factors.Download(lu.data(), lu.size() * sizeof(aclFloatComplex));
+            Require(WithinFourUlps(lu[2].real, float(expected.real())) &&
+                        WithinFourUlps(lu[2].imag, float(expected.imag())),
+                    "large numerator inverse");
+        }
+}
+
 void RunRegression(const Session& session)
 {
+    DivisionRangeRegression(session);
     PanelRegression(session);
     VectorBatched(session);
     for (int n : {3, 4, 5, 8}) ShiftedBatched(session, n);
@@ -488,13 +539,16 @@ int main(int argc, char** argv)
     try
     {
         Require(argc == 1 || (argc == 2 && (std::string(argv[1]) == "--panel-regression" ||
-                                            std::string(argv[1]) == "--memory-regression")),
-                "usage: complex_solver_test [--panel-regression|--memory-regression]");
+                                            std::string(argv[1]) == "--memory-regression" ||
+                                            std::string(argv[1]) == "--division-range-regression")),
+                "usage: complex_solver_test [--panel-regression|--memory-regression|--division-range-regression]");
         Session session(0);
         if (argc == 2)
         {
             if (std::string(argv[1]) == "--panel-regression")
                 PanelRegression(session);
+            else if (std::string(argv[1]) == "--division-range-regression")
+                DivisionRangeRegression(session);
             else
                 MemoryRegression(session);
             std::cout << "complex solver focused regression passed" << std::endl;

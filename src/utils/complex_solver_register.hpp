@@ -177,6 +177,7 @@ struct PreparedDivisor
     float denominator;
     float error;
     float reciprocal;
+    aclFloatComplex original;
 };
 
 __simt_callee__ __aicore__ inline PreparedDivisor PrepareDivisor(aclFloatComplex value)
@@ -196,15 +197,17 @@ __simt_callee__ __aicore__ inline PreparedDivisor PrepareDivisor(aclFloatComplex
     float square = first * first;
     float denominator = fmaf(second, second, square);
     float error = fmaf(first, first, -square) + fmaf(second, second, square - denominator);
-    return {scale.value, real, imag, denominator, error, 1.0f / denominator};
+    return {scale.value, real, imag, denominator, error, 1.0f / denominator, value};
 }
 
 __simt_callee__ __aicore__ inline float PreparedQuotient(float ar, float br, float ai, float bi,
                                                          const PreparedDivisor& divisor)
 {
     float product = ar * br;
-    float numerator = fmaf(ai, bi, product);
-    float error = fmaf(ar, br, -product) + fmaf(ai, bi, product - numerator);
+    float other = ai * bi;
+    float numerator = product + other;
+    float part = numerator - product;
+    float error = (product - (numerator - part)) + (other - part) + fmaf(ar, br, -product) + fmaf(ai, bi, -other);
     float result = numerator * divisor.reciprocal;
     float remainder = fmaf(-result, divisor.denominator, numerator) + error - result * divisor.error;
     return fmaf(remainder, divisor.reciprocal, result);
@@ -214,6 +217,13 @@ __simt_callee__ __aicore__ inline aclFloatComplex PreparedDivide(aclFloatComplex
 {
     float real = value.real / divisor.scale;
     float imag = value.imag / divisor.scale;
+    if (NeedsScaledNumerator(value, divisor.original, divisor.scale, real, imag))
+    {
+        return {ScaledQuotient(value.real, divisor.original.real, value.imag, divisor.original.imag, divisor.scale,
+                               divisor.denominator, divisor.error),
+                ScaledQuotient(value.imag, divisor.original.real, -value.real, divisor.original.imag, divisor.scale,
+                               divisor.denominator, divisor.error)};
+    }
     return {PreparedQuotient(real, divisor.real, imag, divisor.imag, divisor),
             PreparedQuotient(imag, divisor.real, -real, divisor.imag, divisor)};
 }
@@ -221,9 +231,13 @@ __simt_callee__ __aicore__ inline aclFloatComplex PreparedDivide(aclFloatComplex
 template <int Width>
 __simt_callee__ __aicore__ inline PreparedDivisor BroadcastDivisor(PreparedDivisor divisor, int column)
 {
-    return {asc_shfl(divisor.scale, column, Width), asc_shfl(divisor.real, column, Width),
-            asc_shfl(divisor.imag, column, Width),  asc_shfl(divisor.denominator, column, Width),
-            asc_shfl(divisor.error, column, Width), asc_shfl(divisor.reciprocal, column, Width)};
+    return {asc_shfl(divisor.scale, column, Width),
+            asc_shfl(divisor.real, column, Width),
+            asc_shfl(divisor.imag, column, Width),
+            asc_shfl(divisor.denominator, column, Width),
+            asc_shfl(divisor.error, column, Width),
+            asc_shfl(divisor.reciprocal, column, Width),
+            {asc_shfl(divisor.original.real, column, Width), asc_shfl(divisor.original.imag, column, Width)}};
 }
 
 template <int Width>
