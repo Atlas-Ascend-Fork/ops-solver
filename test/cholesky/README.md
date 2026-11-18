@@ -107,7 +107,8 @@ bash build.sh --soc=ascend950 --ops=cholesky
 |---|---|
 | `build/libops_solver.so` | 公共算子库，导出全部五个计算接口及两个查询接口 |
 | `build/libcholesky_simt.so` | 纯 SIMT 设备链接库，主库的运行时依赖 |
-| `build/test/cholesky/cholesky_test` | 五接口原生调用样例，包含两个查询接口 |
+| `build/test/cholesky/cholesky_test` | 五接口原生调用样例，包含两个查询接口（**仅 Ascend 950 构建产出**） |
+| `build/test/cholesky/cholesky_arch_mismatch_test` | 非 950 构建的 ABI 冒烟替身（ARCH_MISMATCH 负向回归；非 950 构建下 `build.sh --ops=cholesky --run` 记 **Skipped**） |
 | `build_out/lib64/` | 上述两个库的安装目录 |
 | `build_out/include/` | `cann_ops_solver.h` 和 `cann_ops_solver_common.h` |
 
@@ -147,6 +148,7 @@ ctest --test-dir build --output-on-failure
 已编译后，单独重跑三段步骤，无需再次构建：
 
 ```bash
+# 仅 950 构建产出 cholesky_test（非 950 构建产出 cholesky_arch_mismatch_test 替身）
 python3 test/cholesky/data/gen_data.py
 LD_LIBRARY_PATH="build:${LD_LIBRARY_PATH}" build/test/cholesky/cholesky_test
 python3 test/cholesky/data/verify_result.py
