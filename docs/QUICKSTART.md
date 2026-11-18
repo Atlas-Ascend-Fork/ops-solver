@@ -87,6 +87,11 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 ```
 预期输出：打印算子`cmatinv_batched`的计算结果，表明算子已成功部署并正确执行。
 
+> **Test Summary 三态语义**：`--run` 结束时输出 Passed / Failed / **Skipped** 三行汇总——
+> - **Passed**：测试二进制执行且结果校验通过；
+> - **Failed**：执行失败或校验未过——含非 950 SoC 上**直接调用** 950 专属算子 API 返回 `ARCH_MISMATCH` 的场景（见上文 cmatinv_batched 示例的说明）；
+> - **Skipped**：当前 SoC 不满足该算子测试的构建条件——多数 950 专属算子的测试目录有 configure 期 WARNING 门控（二进制不生成，`--run` 记 Skipped）；个别算子无数据脚本或测试二进制也记 Skipped。非 950 SoC 上 950 专属算子的**测试**被跳过属预期行为（库中的算子 API 仍可链接调用，返回 `ARCH_MISMATCH`），详见上方「各 SoC 的算子覆盖概览」与各算子文档的「产品支持情况」。
+
 > **提示**：若已完成编译且仅需重新验证功能，可直接运行已编译的二进制文件，无需再次编译。编译完成后，测试二进制文件位于`build/test/<算子名>/<算子名>_test`。
 >
 > 注意：`bash build.sh --run` 在测试结束后会清理生成的测试数据（`test/<算子名>/data/` 下的 input/output/golden），直接运行二进制前需先按下例重新生成（参数需与测试用例的调用参数一致；测试数据生成与校验脚本依赖 numpy/scipy，首次执行前请完成[环境准备](#环境准备)中的 Python 依赖安装）：
@@ -154,6 +159,14 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 | Ascend 950 系列（型号如 Ascend950PR_/Ascend950DT_） | `ascend950` |
 | Atlas 200I/500 A2 推理产品（Ascend 310P） | `ascend310p` |
 
+> **各 SoC 的算子覆盖概览**（详细口径以各算子文档的「产品支持情况」为准）：
+>
+> | --soc | 算子覆盖 |
+> | --- | --- |
+> | `ascend950` | 全部算子（复数 Cholesky/LU/QR、实数 LU/QR、cheevj、spotrf 双接口等） |
+> | `ascend910b` / `ascend910_93` | A2/A3 契约算子（sgetrs、cgetrs、spotrf A2/A3 接口、cheevj 等）；950 专属算子的**测试**经 configure 门控在 `--run` 时记 Skipped（库中的算子 API 构建为 unsupported 桩，直接调用返回 `ARCH_MISMATCH`） |
+> | `ascend310p` | 同 A2/A3 契约算子（Atlas 200I/500 A2 推理）；其余同上（测试 Skipped、API 返回 `ARCH_MISMATCH`） |
+>
 > **说明**：初代 Ascend 910A（Ascend910A/PremiumA/ProA 等）不在当前支持列表中；完整支持列表见 `build.sh` 中 `SUPPORT_COMPUTE_UNIT_SHORT`。若 `npu-smi info` 显示的型号不在上表覆盖范围内，可在 [CANN 官网下载中心](https://www.hiascend.com/cann/download) 的产品列表中确认产品系列，再对照 `build.sh` 的支持前缀选择 `--soc` 取值。
 
 ### 3. 打开 CANN 日志
