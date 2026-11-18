@@ -110,7 +110,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 - python >= 3.7.0（建议版本 <= 3.10）
 - gcc >= 7.3.0
-- cmake >= 3.16.0；运行包含 sgetrf、sgetri 等测试的 `bash build.sh --run` 时，需要 cmake >= 3.18。
+- cmake >= 3.16.0；运行包含 sgetrf、sgetri、sgetri_batched、smatinv_batched 测试的 `bash build.sh --run` 时，需要 cmake >= 3.18（这四个测试目录的 CMakeLists 使用 TARGET_DIRECTORY 源属性并显式声明了 cmake_minimum_required(3.18)；cheevj 的同款使用有 CMAKE_VERSION 守卫，3.16 即可配置，仅损失 -O2/-O3 源级优化）。
 - pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
 - dos2unix
 - make
