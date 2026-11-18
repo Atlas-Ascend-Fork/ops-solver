@@ -33,9 +33,11 @@
 
 // acl/acl.h、cann_ops_solver.h 以及 algorithm / chrono / random / string / vector
 // 这批都由 qr_test_utils.h 统一提供，这里只列本文件额外要的。
-#include "../utils/qr_test_utils.h"
 #include <cmath>
+#include <limits>
+
 #include "../../src/sgeqrf/kernel/householder.hpp"
+#include "../utils/qr_test_utils.h"
 
 namespace
 {
@@ -115,6 +117,10 @@ double Sqrt16(int m, int n, int nrhs, int ldx, const std::vector<double> &R, con
         {
             nx += std::fabs(static_cast<double>(X[static_cast<size_t>(j) * ldx + c]));
         }
+        if (!std::isfinite(nr) || !std::isfinite(nx))
+        {
+            return std::numeric_limits<double>::infinity();
+        }
         if (nx == 0.0)
         {
             // X 整列为 0：LAPACK sqrt16 在这种情形把残差直接记为 1/eps（无意义解）
@@ -144,6 +150,10 @@ double Sqrt17(int m, int n, int nrhs, int lda, const std::vector<float> &A, cons
                 dot += R[static_cast<size_t>(j) * m + r] * static_cast<double>(A[static_cast<size_t>(c) * lda + r]);
             }
             colSum += std::fabs(dot);
+        }
+        if (!std::isfinite(colSum))
+        {
+            return std::numeric_limits<double>::infinity();
         }
         worst = std::max(worst, colSum);
     }
@@ -273,6 +283,21 @@ bool GelsRunRepeats(aclsolverHandle_t handle, aclrtStream stream, int m, int n, 
 bool GelsVerifyAcc(int m, int n, int nrhs, int ldda, int lddb, int lddx, const std::vector<float> &A0,
                    const std::vector<float> &B0, const std::vector<float> &Xdev, bool verbose)
 {
+    // Only logical solution entries count; leading-dimension padding is ignored.
+    for (int j = 0; j < nrhs; ++j)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            if (!std::isfinite(Xdev[static_cast<size_t>(j) * lddx + i]))
+            {
+                if (verbose)
+                {
+                    printf("  Non-finite solution at row=%d rhs=%d\n", i, j);
+                }
+                return false;
+            }
+        }
+    }
     const double normA = Norm1(m, n, ldda, A0);
     const double normB = Norm1(m, nrhs, lddb, B0);
     std::vector<double> Rdev, Rcpu;
@@ -286,7 +311,7 @@ bool GelsVerifyAcc(int m, int n, int nrhs, int ldda, int lddb, int lddx, const s
         const double ratio = Sqrt16(m, n, nrhs, lddx, Rdev, Xdev, normA);
         const double ratioCpu = Sqrt16(m, n, nrhs, lddx, Rcpu, Xcpu, normA);
         const double th = std::max(5.0 * ratioCpu, 0.015);
-        const bool pass = (ratio <= th);
+        const bool pass = std::isfinite(ratio) && std::isfinite(ratioCpu) && (ratio <= th);
         if (verbose)
         {
             printf("  m=%-5d n=%-5d nrhs=%-4d 方阵 SQRT16 ratio=%.4f ratio_cpu=%.4f th=%.4f %s\n", m, n, nrhs, ratio,
@@ -300,7 +325,7 @@ bool GelsVerifyAcc(int m, int n, int nrhs, int ldda, int lddb, int lddx, const s
     // （最小二乘解让正规方程残差本来就接近 0），此时纯相对判据失去判别力，
     // 补一个 1.0 的绝对地板（量纲已被 eps 归一化，1.0 就是"1 个 ulp 的量级"）。
     const double th = std::max(10.0 * ratioCpu, 1.0);
-    const bool pass = (ratio <= th);
+    const bool pass = std::isfinite(ratio) && std::isfinite(ratioCpu) && (ratio <= th);
     if (verbose)
     {
         printf("  m=%-5d n=%-5d nrhs=%-4d 超定 SQRT17 ratio_opt=%.3e cpu=%.3e th=%.3e %s\n", m, n, nrhs, ratio,
