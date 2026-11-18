@@ -189,7 +189,8 @@ aclError aclsolverCgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     buf.aMatrixHost = reinterpret_cast<uint8_t *>(A);
     buf.wHost = reinterpret_cast<uint8_t *>(ipiv);
     buf.bMatrixHost = reinterpret_cast<uint8_t *>(B);
-    CHECK_ACLRT(AllocAndUploadCgetrs(buf, N, NRHS, lda, ldb, resizedN, strideN, strideNRHS), ReleaseCgetrsBuffers(buf));
+    // AllocAndUploadCgetrs already releases every allocated buffer on failure.
+    CHECK_ACLRT(AllocAndUploadCgetrs(buf, N, NRHS, lda, ldb, resizedN, strideN, strideNRHS), ((void)0));
 
     // GenerateTiling 无失败分支（issue #364），调用处恒假的错误分支已随签名改为 void 一并清理
     GenerateTiling(buf.gatherHost);

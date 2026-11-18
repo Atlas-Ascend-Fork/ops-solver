@@ -178,12 +178,14 @@ aclError aclsolverSgetrs(aclsolverHandle_t handle, const uint64_t trans, const i
     buf.aHost = reinterpret_cast<uint8_t *>(A);
     buf.wHost = reinterpret_cast<uint8_t *>(ipiv);
     buf.bHost = reinterpret_cast<uint8_t *>(B);
+    // Helpers own failure cleanup, including retention when stream completion is unknown.
+    // The caller releases buffers only after all helpers have succeeded.
     CHECK_ACLRT(AllocAndUploadA(buf, N * lda * sizeof(float), resizedN * strideN * sizeof(float)),
-                ReleaseSgetrsBuffers(buf));
-    CHECK_ACLRT(AllocAndUploadPivots(buf, N * sizeof(int)), ReleaseSgetrsBuffers(buf));
+                ((void)0));
+    CHECK_ACLRT(AllocAndUploadPivots(buf, N * sizeof(int)), ((void)0));
     CHECK_ACLRT(AllocAndUploadB(buf, N * ldb * sizeof(float), resizedN * strideNRHS * sizeof(float)),
-                ReleaseSgetrsBuffers(buf));
-    CHECK_ACLRT(LaunchSgetrs(buf, N, NRHS, trans, lda, ldb, blockM, numBlocks, stream), ReleaseSgetrsBuffers(buf));
+                ((void)0));
+    CHECK_ACLRT(LaunchSgetrs(buf, N, NRHS, trans, lda, ldb, blockM, numBlocks, stream), ((void)0));
 
     ReleaseSgetrsBuffers(buf);
 
