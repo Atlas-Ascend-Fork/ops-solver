@@ -124,6 +124,28 @@ aclsolverStatus_t CheckShape(int32_t m, int32_t n, int32_t lda, int32_t *badIdx)
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
+/// 设备指针归属与范围校验（issue #495，见 utils/host_common.h QRDeviceSpan 说明）：
+/// host 指针、跨设备指针或分配不足的缓冲区在 kernel 下发前拒绝，避免按错误地址访存。
+/// 失败按既有 info 负参数序号口径回写 -idx 并返回 INVALID_VALUE，成功返回 SUCCESS。
+/// 抽成独立函数保持 aclsolverSgeqrf 的函数规模在阈值内（CodeCheck 超大函数规则）。
+aclsolverStatus_t CheckDeviceSpans(int32_t *devInfo, int32_t m, int32_t n, int32_t lda, const float *A,
+                                   const float *TAU, const float *Workspace, int64_t wsTotal)
+{
+    QR_PARAM_CHECK(QRDeviceSpan(devInfo, A, static_cast<uint64_t>(lda) * n * sizeof(float), alignof(float),
+                                "aclsolverSgeqrf", 3) == ACLSOLVER_STATUS_SUCCESS,
+                   3, "aclsolverSgeqrf invalid param 3: A 必须是当前 Device 上的指针且范围充足。");
+    QR_PARAM_CHECK(QRDeviceSpan(devInfo, TAU, static_cast<uint64_t>(std::min(m, n)) * sizeof(float), alignof(float),
+                                "aclsolverSgeqrf", 5) == ACLSOLVER_STATUS_SUCCESS,
+                   5, "aclsolverSgeqrf invalid param 5: TAU 必须是当前 Device 上的指针且范围充足。");
+    QR_PARAM_CHECK(QRDeviceSpan(devInfo, Workspace, static_cast<uint64_t>(wsTotal) * sizeof(float), alignof(float),
+                                "aclsolverSgeqrf", 6) == ACLSOLVER_STATUS_SUCCESS,
+                   6, "aclsolverSgeqrf invalid param 6: Workspace 必须是当前 Device 上的指针且范围充足。");
+    QR_PARAM_CHECK(QRDeviceSpan(devInfo, devInfo, sizeof(int32_t), alignof(int32_t), "aclsolverSgeqrf", 8) ==
+                       ACLSOLVER_STATUS_SUCCESS,
+                   8, "aclsolverSgeqrf invalid param 8: devInfo 必须是当前 Device 上的指针。");
+    return ACLSOLVER_STATUS_SUCCESS;
+}
+
 }  // namespace
 
 aclsolverStatus_t aclsolverSgeqrf_bufferSize(aclsolverHandle_t handle, int m, int n, float *A, int lda, int *Lwork)
@@ -206,6 +228,11 @@ aclsolverStatus_t aclsolverSgeqrf(aclsolverHandle_t handle, int m, int n, float 
     QR_PARAM_CHECK(Workspace != nullptr, 6, "aclsolverSgeqrf invalid param 6: Workspace is nullptr.");
     QR_PARAM_CHECK(static_cast<int64_t>(Lwork) >= ws.total, 7,
                    "aclsolverSgeqrf invalid param 7: Lwork 小于 _bufferSize 返回的尺寸。");
+
+    // 设备指针归属与范围校验（issue #495，见下方 CheckDeviceSpans 说明）
+    SOLVER_ECHECK(CheckDeviceSpans(devInfo, mi, ni, ldai, A, TAU, Workspace, ws.total) == ACLSOLVER_STATUS_SUCCESS,
+                  "aclsolverSgeqrf: 设备指针归属/范围校验失败（详见上方日志与 devInfo）。",
+                  ACLSOLVER_STATUS_INVALID_VALUE);
 
     aclrtStream stream = nullptr;
     const aclsolverStatus_t stRt = aclsolverGetStream(handle, &stream);

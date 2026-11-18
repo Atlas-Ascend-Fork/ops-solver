@@ -25,6 +25,7 @@
 #include "align_up.h"
 #include "assert.h"
 #include "cann_ops_solver.h"
+#include "complex_solver_host.h"
 #include "gm_addr.h"
 #include "tiling/platform/platform_ascendc.h"
 
@@ -52,5 +53,23 @@ inline aclError WriteInfoSync(int32_t *devInfo, int32_t value)
             SOLVER_ECHECK(false, (msg), ACLSOLVER_STATUS_INVALID_VALUE); \
         }                                                                \
     } while (0)
+
+/// QR / 最小二乘五算子共用的设备指针归属与范围校验（issue #495）。
+///
+/// 对齐 complex 家族的 DeviceSpan（cgetrf/cgetri 同款）与 real LU CheckSingle 的口径：
+/// 只拦非法指针 —— host 指针、非当前 Device 的指针、分配范围不足、对齐不足 —— 合法形状
+/// 不入额外分支。失败时沿用各入口既有的 info 负参数序号口径回写 -idx（info 为空时
+/// WriteInfoSync 不做事，xlarft 没有 devInfo 传 nullptr 即可），并按五个入口统一的
+/// INVALID_VALUE 返回，不新造返回语义；DeviceSpan 内部已输出带参数序号的错误日志。
+inline aclsolverStatus_t QRDeviceSpan(int32_t *info, const void *ptr, uint64_t bytes, size_t alignment, const char *op,
+                                      int idx)
+{
+    if (ComplexSolver::DeviceSpan(ptr, bytes, alignment, op, idx) != ACLSOLVER_STATUS_SUCCESS)
+    {
+        (void)WriteInfoSync(info, -idx);
+        return ACLSOLVER_STATUS_INVALID_VALUE;
+    }
+    return ACLSOLVER_STATUS_SUCCESS;
+}
 
 #endif  // ACLSOLVER_UTILS_HOST_COMMON_H

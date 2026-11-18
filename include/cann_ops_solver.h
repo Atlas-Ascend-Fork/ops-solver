@@ -724,12 +724,12 @@ extern "C"
      * @param k Number of elementary reflectors, also the order of T; must be non-negative.
      * @param dataTypeV Element type of V; must be ACLSOLVER_R_32F.
      * @param V Reflector vectors in column-major storage. Not read by this query.
-     * @param ldv Leading dimension of V; must be at least max(1, n).
+     * @param ldv Leading dimension of V; must be at least max(1, n) and at most INT32_MAX.
      * @param dataTypeTau Element type of tau; must be ACLSOLVER_R_32F.
      * @param tau Reflector scalars of length k. Not read by this query.
      * @param dataTypeT Element type of T; must be ACLSOLVER_R_32F.
      * @param T Output triangular factor. Not read by this query.
-     * @param ldt Leading dimension of T; must be at least max(1, k).
+     * @param ldt Leading dimension of T; must be at least max(1, k) and at most INT32_MAX.
      * @param computeType Compute precision; must be ACLSOLVER_R_32F.
      * @param workspaceInBytesOnDevice Output device workspace size in bytes. 0 when n or k is 0.
      * @param workspaceInBytesOnHost Output host workspace size in bytes. Always 0.
@@ -766,12 +766,12 @@ extern "C"
      * @param k Number of elementary reflectors; must satisfy 0 <= k <= min(n, 256).
      * @param dataTypeV Element type of V; must be ACLSOLVER_R_32F.
      * @param V Input reflector vectors in column-major storage.
-     * @param ldv Leading dimension of V; must be at least max(1, n).
+     * @param ldv Leading dimension of V; must be at least max(1, n) and at most INT32_MAX.
      * @param dataTypeTau Element type of tau; must be ACLSOLVER_R_32F.
      * @param tau Input array of k reflector scalars.
      * @param dataTypeT Element type of T; must be ACLSOLVER_R_32F.
      * @param T Output k x k triangular factor in column-major storage.
-     * @param ldt Leading dimension of T; must be at least max(1, k).
+     * @param ldt Leading dimension of T; must be at least max(1, k) and at most INT32_MAX.
      * @param computeType Compute precision; must be ACLSOLVER_R_32F.
      * @param bufferOnDevice Device workspace of at least workspaceInBytesOnDevice bytes.
      * @param workspaceInBytesOnDevice Device workspace size in bytes, as returned by the query.

@@ -34,6 +34,7 @@
 // acl/acl.h、cann_ops_solver.h 以及 algorithm / chrono / random / string / vector
 // 这批都由 qr_test_utils.h 统一提供，这里只列本文件额外要的。
 #include <cmath>
+#include <cstdint>
 
 #include "../../src/sgeqrf/kernel/householder.hpp"
 #include "../utils/qr_test_utils.h"
@@ -341,6 +342,17 @@ void CheckShapeRanges(aclsolverHandle_t handle, const Buffers &buf, size_t devBy
     ExpectStatus("ldt<k",
                  CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, kBpLdv, kR32, kR32, kBpK - 1, kR32,
                             buf.ws, devBytes),
+                 ACLSOLVER_STATUS_INVALID_VALUE, ok);
+    // ldv/ldt 下发时会被 static_cast<int32_t> 截断（issue #494）：2^32+64 这类值回绕成
+    // 64 后 kernel 按错误行距访存，域校验必须在截断前拒绝；错误码与其它入参域校验一致
+    // 取 INVALID_VALUE，与 n/k 超 kernel 上限的 NOT_SUPPORTED 区分开。
+    ExpectStatus("ldv>INT32_MAX",
+                 CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, static_cast<int64_t>(INT32_MAX) + 64,
+                            kR32, kR32, kBpLdt, kR32, buf.ws, devBytes),
+                 ACLSOLVER_STATUS_INVALID_VALUE, ok);
+    ExpectStatus("ldt>INT32_MAX",
+                 CallXlarft(buf, handle, nullptr, kFwd, kColw, kBpN, kBpK, kR32, kBpLdv, kR32, kR32,
+                            static_cast<int64_t>(INT32_MAX) + 64, kR32, buf.ws, devBytes),
                  ACLSOLVER_STATUS_INVALID_VALUE, ok);
 }
 

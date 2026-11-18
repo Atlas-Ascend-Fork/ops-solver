@@ -179,8 +179,7 @@ aclsolverStatus_t aclsolverSSgels_bufferSize(aclsolverHandle_t handle, int m, in
     // 同一范围校验（issue #369 口径）；实数版本入口此前缺同款检查，调用方按查询成功
     // 分配后执行时才被拒（sorgqr issue #392 / sgeqrf #386 同族模式）。
     SOLVER_ECHECK(m <= GELS_MAX_DIM && n <= GELS_MAX_DIM,
-                  "aclsolverSSgels_bufferSize: m / n 超过当前 kernel 上限 4096。",
-                  ACLSOLVER_STATUS_INVALID_VALUE);
+                  "aclsolverSSgels_bufferSize: m / n 超过当前 kernel 上限 4096。", ACLSOLVER_STATUS_INVALID_VALUE);
     WsLayout ws;
     const aclsolverStatus_t st =
         PlanWorkspace(handle, static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(nrhs),
@@ -236,6 +235,35 @@ aclsolverStatus_t GelsRunPhases(aclsolverHandle_t handle, aclrtStream stream, in
     // failed. Device execution errors are still observed by stream synchronization.
     return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
                                                                     : ACLSOLVER_STATUS_EXECUTION_FAILED;
+}
+/// workspace 与设备指针校验（issue #495，见 utils/host_common.h QRDeviceSpan 说明）：
+/// workspace 尺寸/空指针与数据缓冲区的设备归属、范围在 kernel 下发前统一拒绝。
+/// 失败按既有 dinfo 负参数序号口径回写 -idx 并返回 INVALID_VALUE，成功返回 SUCCESS。
+/// dA 是 m x n（n <= m，足迹取 n 列）、dB/dX 按 nrhs 列；dWorkspace 按字节口径校验。
+/// 抽成独立函数保持 aclsolverSSgels 的函数规模在阈值内（CodeCheck 超大函数规则）。
+aclsolverStatus_t CheckDeviceSpans(int32_t *dinfo, int32_t n, int32_t nrhs, int32_t lda, int32_t ldb, int32_t ldx,
+                                   const float *dA, const float *dB, const float *dX, const void *dWorkspace,
+                                   size_t lworkBytes, int64_t wsTotal)
+{
+    GELS_PARAM_CHECK(dWorkspace != nullptr, 10, "aclsolverSSgels invalid param 10: dWorkspace is nullptr.");
+    GELS_PARAM_CHECK(lworkBytes >= static_cast<size_t>(wsTotal) * sizeof(float), 11,
+                     "aclsolverSSgels invalid param 11: lwork_bytes 小于 _bufferSize 返回的字节数。");
+    GELS_PARAM_CHECK(QRDeviceSpan(dinfo, dA, static_cast<uint64_t>(lda) * n * sizeof(float), alignof(float),
+                                  "aclsolverSSgels", 4) == ACLSOLVER_STATUS_SUCCESS,
+                     4, "aclsolverSSgels invalid param 4: dA 必须是当前 Device 上的指针且范围充足。");
+    GELS_PARAM_CHECK(QRDeviceSpan(dinfo, dB, static_cast<uint64_t>(ldb) * nrhs * sizeof(float), alignof(float),
+                                  "aclsolverSSgels", 6) == ACLSOLVER_STATUS_SUCCESS,
+                     6, "aclsolverSSgels invalid param 6: dB 必须是当前 Device 上的指针且范围充足。");
+    GELS_PARAM_CHECK(QRDeviceSpan(dinfo, dX, static_cast<uint64_t>(ldx) * nrhs * sizeof(float), alignof(float),
+                                  "aclsolverSSgels", 8) == ACLSOLVER_STATUS_SUCCESS,
+                     8, "aclsolverSSgels invalid param 8: dX 必须是当前 Device 上的指针且范围充足。");
+    GELS_PARAM_CHECK(
+        QRDeviceSpan(dinfo, dWorkspace, lworkBytes, alignof(float), "aclsolverSSgels", 10) == ACLSOLVER_STATUS_SUCCESS,
+        10, "aclsolverSSgels invalid param 10: dWorkspace 必须是当前 Device 上的指针且范围充足。");
+    GELS_PARAM_CHECK(QRDeviceSpan(dinfo, dinfo, sizeof(int32_t), alignof(int32_t), "aclsolverSSgels", 13) ==
+                         ACLSOLVER_STATUS_SUCCESS,
+                     13, "aclsolverSSgels invalid param 13: dinfo 必须是当前 Device 上的指针。");
+    return ACLSOLVER_STATUS_SUCCESS;
 }
 }  // namespace
 
@@ -294,10 +322,12 @@ aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nr
     WsLayout ws;
     const aclsolverStatus_t stWs = PlanWorkspace(handle, mi, ni, ri, lda, ldb, &ws);
     SOLVER_ECHECK(stWs == ACLSOLVER_STATUS_SUCCESS, "aclsolverSSgels: 推导 workspace 失败。", stWs);
-    const size_t need = static_cast<size_t>(ws.total) * sizeof(float);
-    GELS_PARAM_CHECK(dWorkspace != nullptr, 10, "aclsolverSSgels invalid param 10: dWorkspace is nullptr.");
-    GELS_PARAM_CHECK(lwork_bytes >= need, 11,
-                     "aclsolverSSgels invalid param 11: lwork_bytes 小于 _bufferSize 返回的字节数。");
+
+    // workspace 尺寸/空指针与设备指针归属、范围校验（issue #495，见上方 CheckDeviceSpans 说明）
+    SOLVER_ECHECK(CheckDeviceSpans(dinfo, ni, ri, lda, ldb, ldx, dA, dB, dX, dWorkspace, lwork_bytes, ws.total) ==
+                      ACLSOLVER_STATUS_SUCCESS,
+                  "aclsolverSSgels: workspace/设备指针校验失败（详见上方日志与 dinfo）。",
+                  ACLSOLVER_STATUS_INVALID_VALUE);
 
     aclrtStream stream = nullptr;
     const aclsolverStatus_t stRt = aclsolverGetStream(handle, &stream);

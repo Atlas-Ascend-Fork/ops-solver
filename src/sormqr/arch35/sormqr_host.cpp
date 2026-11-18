@@ -225,6 +225,31 @@ aclsolverStatus_t SormqrLaunch(aclsolverHandle_t handle, bool isLeft, aclsolverO
     return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
                                                                     : ACLSOLVER_STATUS_EXECUTION_FAILED;
 }
+/// 设备指针归属与范围校验（issue #495，见 utils/host_common.h QRDeviceSpan 说明）：
+/// host 指针、跨设备指针或分配不足的缓冲区在 kernel 下发前拒绝，避免按错误地址访存。
+/// 失败按既有 info 负参数序号口径回写 -idx 并返回 INVALID_VALUE，成功返回 SUCCESS。
+/// C 恒为 m x n（列主序，ldc >= max(1, m)），足迹与 side 无关。
+/// 抽成独立函数保持 aclsolverSormqr 的函数规模在阈值内（CodeCheck 超大函数规则）。
+aclsolverStatus_t CheckDeviceSpans(int32_t *devInfo, int32_t m, int32_t n, int32_t k, int32_t lda, int32_t ldc,
+                                   const float *A, const float *tau, const float *C, const float *work, int64_t wsTotal)
+{
+    ORMQR_PARAM_CHECK(QRDeviceSpan(devInfo, A, static_cast<uint64_t>(lda) * k * sizeof(float), alignof(float),
+                                   "aclsolverSormqr", 6) == ACLSOLVER_STATUS_SUCCESS,
+                      6, "aclsolverSormqr invalid param 6: A 必须是当前 Device 上的指针且范围充足。");
+    ORMQR_PARAM_CHECK(QRDeviceSpan(devInfo, tau, static_cast<uint64_t>(k) * sizeof(float), alignof(float),
+                                   "aclsolverSormqr", 8) == ACLSOLVER_STATUS_SUCCESS,
+                      8, "aclsolverSormqr invalid param 8: tau 必须是当前 Device 上的指针且范围充足。");
+    ORMQR_PARAM_CHECK(QRDeviceSpan(devInfo, C, static_cast<uint64_t>(ldc) * n * sizeof(float), alignof(float),
+                                   "aclsolverSormqr", 9) == ACLSOLVER_STATUS_SUCCESS,
+                      9, "aclsolverSormqr invalid param 9: C 必须是当前 Device 上的指针且范围充足。");
+    ORMQR_PARAM_CHECK(QRDeviceSpan(devInfo, work, static_cast<uint64_t>(wsTotal) * sizeof(float), alignof(float),
+                                   "aclsolverSormqr", 11) == ACLSOLVER_STATUS_SUCCESS,
+                      11, "aclsolverSormqr invalid param 11: work 必须是当前 Device 上的指针且范围充足。");
+    ORMQR_PARAM_CHECK(QRDeviceSpan(devInfo, devInfo, sizeof(int32_t), alignof(int32_t), "aclsolverSormqr", 13) ==
+                          ACLSOLVER_STATUS_SUCCESS,
+                      13, "aclsolverSormqr invalid param 13: devInfo 必须是当前 Device 上的指针。");
+    return ACLSOLVER_STATUS_SUCCESS;
+}
 }  // namespace
 
 aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans, int m,
@@ -281,6 +306,11 @@ aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t 
     ORMQR_PARAM_CHECK(work != nullptr, 11, "aclsolverSormqr invalid param 11: work is nullptr.");
     ORMQR_PARAM_CHECK(static_cast<int64_t>(lwork) >= ws.total, 12,
                       "aclsolverSormqr invalid param 12: lwork 小于 _bufferSize 返回的尺寸。");
+
+    // 设备指针归属与范围校验（issue #495，见上方 CheckDeviceSpans 说明）
+    SOLVER_ECHECK(
+        CheckDeviceSpans(devInfo, mi, ni, ki, ldai, ldci, A, tau, C, work, ws.total) == ACLSOLVER_STATUS_SUCCESS,
+        "aclsolverSormqr: 设备指针归属/范围校验失败（详见上方日志与 devInfo）。", ACLSOLVER_STATUS_INVALID_VALUE);
 
     return SormqrLaunch(handle, isLeft, trans, mi, ni, ki, ldai, ldci, A, tau, C, work, devInfo, ws);
 }

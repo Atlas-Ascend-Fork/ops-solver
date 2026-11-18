@@ -112,6 +112,32 @@ aclsolverStatus_t CheckShape(int32_t m, int32_t n, int32_t k, int32_t lda, int32
     return ACLSOLVER_STATUS_SUCCESS;
 }
 
+/// workspace 与设备指针校验（issue #495，见 utils/host_common.h QRDeviceSpan 说明）：
+/// workspace 尺寸/空指针与数据缓冲区的设备归属、范围在 kernel 下发前统一拒绝。
+/// 失败按既有 info 负参数序号口径回写 -idx 并返回 INVALID_VALUE，成功返回 SUCCESS。
+/// k == 0 时 tau 可为空（Q 为单位列，kernel 不读 tau），故 tau 只在 k > 0 时校验。
+/// 抽成独立函数保持 aclsolverSorgqr 的函数规模在阈值内（CodeCheck 超大函数规则）。
+aclsolverStatus_t CheckDeviceSpans(int32_t *devInfo, int32_t k, int32_t lda, int32_t n, const float *A,
+                                   const float *tau, const float *work, int lwork, int64_t wsTotal)
+{
+    ORGQR_PARAM_CHECK(wsTotal <= INT32_MAX, 8, "aclsolverSorgqr: workspace 元素数超出 int32 范围。");
+    ORGQR_PARAM_CHECK(work != nullptr, 7, "aclsolverSorgqr invalid param 7: work is nullptr.");
+    ORGQR_PARAM_CHECK(static_cast<int64_t>(lwork) >= wsTotal, 8,
+                      "aclsolverSorgqr invalid param 8: lwork 小于 _bufferSize 返回的尺寸。");
+    ORGQR_PARAM_CHECK(QRDeviceSpan(devInfo, A, static_cast<uint64_t>(lda) * n * sizeof(float), alignof(float),
+                                   "aclsolverSorgqr", 4) == ACLSOLVER_STATUS_SUCCESS,
+                      4, "aclsolverSorgqr invalid param 4: A 必须是当前 Device 上的指针且范围充足。");
+    ORGQR_PARAM_CHECK(k == 0 || QRDeviceSpan(devInfo, tau, static_cast<uint64_t>(k) * sizeof(float), alignof(float),
+                                             "aclsolverSorgqr", 6) == ACLSOLVER_STATUS_SUCCESS,
+                      6, "aclsolverSorgqr invalid param 6: tau 必须是当前 Device 上的指针且范围充足。");
+    ORGQR_PARAM_CHECK(QRDeviceSpan(devInfo, work, static_cast<uint64_t>(wsTotal) * sizeof(float), alignof(float),
+                                   "aclsolverSorgqr", 7) == ACLSOLVER_STATUS_SUCCESS,
+                      7, "aclsolverSorgqr invalid param 7: work 必须是当前 Device 上的指针且范围充足。");
+    ORGQR_PARAM_CHECK(QRDeviceSpan(devInfo, devInfo, sizeof(int32_t), alignof(int32_t), "aclsolverSorgqr", 9) ==
+                          ACLSOLVER_STATUS_SUCCESS,
+                      9, "aclsolverSorgqr invalid param 9: devInfo 必须是当前 Device 上的指针。");
+    return ACLSOLVER_STATUS_SUCCESS;
+}
 }  // namespace
 
 aclsolverStatus_t aclsolverSorgqr_bufferSize(aclsolverHandle_t handle, int m, int n, int k, const float *A, int lda,
@@ -187,10 +213,6 @@ aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k,
     ORGQR_PARAM_CHECK(ki == 0 || tau != nullptr, 6, "aclsolverSorgqr invalid param 6: tau is nullptr while k > 0.");
 
     const WsLayout ws = PlanWorkspace(mi, ni, ki);
-    ORGQR_PARAM_CHECK(ws.total <= INT32_MAX, 8, "aclsolverSorgqr: workspace 元素数超出 int32 范围。");
-    ORGQR_PARAM_CHECK(work != nullptr, 7, "aclsolverSorgqr invalid param 7: work is nullptr.");
-    ORGQR_PARAM_CHECK(static_cast<int64_t>(lwork) >= ws.total, 8,
-                      "aclsolverSorgqr invalid param 8: lwork 小于 _bufferSize 返回的尺寸。");
 
     if (mi > ORGQR_MAX_ROWS)
     {
@@ -198,6 +220,11 @@ aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k,
         SOLVER_ECHECK(false, "aclsolverSorgqr: m 超过当前 kernel 支持的行数上限 ORGQR_MAX_ROWS。",
                       ACLSOLVER_STATUS_NOT_SUPPORTED);
     }
+
+    // workspace 尺寸/空指针与设备指针归属、范围校验（issue #495，见上方 CheckDeviceSpans 说明）
+    SOLVER_ECHECK(CheckDeviceSpans(devInfo, ki, ldai, ni, A, tau, work, lwork, ws.total) == ACLSOLVER_STATUS_SUCCESS,
+                  "aclsolverSorgqr: workspace/设备指针校验失败（详见上方日志与 devInfo）。",
+                  ACLSOLVER_STATUS_INVALID_VALUE);
 
     aclrtStream stream = nullptr;
     const aclsolverStatus_t stRt = aclsolverGetStream(handle, &stream);

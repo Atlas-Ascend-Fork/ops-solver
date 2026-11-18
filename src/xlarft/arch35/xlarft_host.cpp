@@ -98,6 +98,13 @@ aclsolverStatus_t CheckArgs(aclsolverParams_t params, aclsolverDirectMode_t dire
                   ACLSOLVER_STATUS_INVALID_VALUE);
     SOLVER_ECHECK(ldt >= std::max<int64_t>(1, k), "aclsolverXlarft: ldt 小于 max(1, k)。",
                   ACLSOLVER_STATUS_INVALID_VALUE);
+    // 下发时 ldv/ldt 会被 static_cast<int32_t> 截断（issue #494）：n/k 已由 kernel 上限
+    // 拦住、ldy 由 n/k 推导，真正无约束的只有这两个入参。2^32+64 这类值回绕成 64 后
+    // kernel 按错误行距访存，会越界读写或静默算错，必须在域校验阶段拒绝。
+    // 对齐 aclsolverCgeqrf 的 m/n <= INT32_MAX 口径；错误码用 INVALID_VALUE，与 n/k 超
+    // kernel 上限返回的 NOT_SUPPORTED 区分开。
+    SOLVER_ECHECK(ldv <= INT32_MAX, "aclsolverXlarft: ldv 超出 int32 可表示范围。", ACLSOLVER_STATUS_INVALID_VALUE);
+    SOLVER_ECHECK(ldt <= INT32_MAX, "aclsolverXlarft: ldt 超出 int32 可表示范围。", ACLSOLVER_STATUS_INVALID_VALUE);
     SOLVER_ECHECK(AllFloat32(dv, dt, dT, dc), "aclsolverXlarft: 本任务只支持 FLOAT32 四元组。",
                   ACLSOLVER_STATUS_NOT_SUPPORTED);
     return ACLSOLVER_STATUS_SUCCESS;
@@ -218,6 +225,23 @@ aclsolverStatus_t aclsolverXlarft(aclsolverHandle_t handle, aclsolverParams_t pa
                   "aclsolverXlarft: workspaceInBytesOnDevice 小于 _bufferSize 返回的字节数。",
                   ACLSOLVER_STATUS_INVALID_VALUE);
     (void)workspaceInBytesOnHost;
+
+    // 设备指针归属与范围校验（issue #495，见 utils/host_common.h QRDeviceSpan 说明）：
+    // host 指针、跨设备指针或分配不足的缓冲区在 kernel 下发前拒绝，避免按错误地址访存。
+    // 本接口没有 devInfo，失败仅通过返回码报告（info 传 nullptr，回写自动跳过）；
+    // 消息沿用本文件"不带参数序号"的风格（无 devInfo，参数序号无处回写）。
+    SOLVER_ECHECK(QRDeviceSpan(nullptr, V, static_cast<uint64_t>(ldv) * k * sizeof(float), alignof(float),
+                               "aclsolverXlarft", 8) == ACLSOLVER_STATUS_SUCCESS,
+                  "aclsolverXlarft: V 必须是当前 Device 上的指针且范围充足。", ACLSOLVER_STATUS_INVALID_VALUE);
+    SOLVER_ECHECK(QRDeviceSpan(nullptr, tau, static_cast<uint64_t>(k) * sizeof(float), alignof(float),
+                               "aclsolverXlarft", 11) == ACLSOLVER_STATUS_SUCCESS,
+                  "aclsolverXlarft: tau 必须是当前 Device 上的指针且范围充足。", ACLSOLVER_STATUS_INVALID_VALUE);
+    SOLVER_ECHECK(QRDeviceSpan(nullptr, T, static_cast<uint64_t>(ldt) * k * sizeof(float), alignof(float),
+                               "aclsolverXlarft", 13) == ACLSOLVER_STATUS_SUCCESS,
+                  "aclsolverXlarft: T 必须是当前 Device 上的指针且范围充足。", ACLSOLVER_STATUS_INVALID_VALUE);
+    SOLVER_ECHECK(
+        QRDeviceSpan(nullptr, bufferOnDevice, need, alignof(float), "aclsolverXlarft", 16) == ACLSOLVER_STATUS_SUCCESS,
+        "aclsolverXlarft: bufferOnDevice 必须是当前 Device 上的指针且范围充足。", ACLSOLVER_STATUS_INVALID_VALUE);
 
     return XlarftLaunch(handle, direct, n, k, V, ldv, tau, T, ldt, bufferOnDevice, ws);
 }
