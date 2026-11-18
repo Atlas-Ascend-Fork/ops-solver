@@ -179,6 +179,8 @@ Solver SgetriBatched算子实现。
   如需链接其他位置的固定算子库，替换 `OPS_SOLVER_LIBRARY`；CANN头文件及ascendcl由当前环境查找。
 
 
+> **CMake 版本要求**：本测试目录的 `CMakeLists.txt` 使用 `TARGET_DIRECTORY` 源属性（CMake 3.18 新增），构建包含本测试的 `bash build.sh --run` 时需要 cmake >= 3.18（见 [快速安装](../../docs/zh/install/quick_install.md) 的依赖清单）。
+
 ## 官方测试协议接入
 
 `solver_adapter.h` 保持官方固定v2协议定义。descriptor声明 `sgetribatched`、`float32`、

@@ -199,6 +199,8 @@ python3 test/sgetri/data/verify_result.py 32
 该文件样例用于接口回归；正式Sgetri性能自测的前置LU准备在目标采集区间外完成。
 
 
+> **CMake 版本要求**：本测试目录的 `CMakeLists.txt` 使用 `TARGET_DIRECTORY` 源属性（CMake 3.18 新增），构建包含本测试的 `bash build.sh --run` 时需要 cmake >= 3.18（见 [快速安装](../../docs/zh/install/quick_install.md) 的依赖清单）。
+
 ## 官方测试协议接入
 
 `solver_adapter.h` 保持官方固定v2协议定义。descriptor声明 `sgetri`、`float32`、
