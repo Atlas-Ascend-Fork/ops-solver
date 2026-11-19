@@ -24,7 +24,7 @@
     A \cdot X = B
     $$
 
-    当`trans`不为0时：
+    当`trans`为1时：
     $$
     A^T \cdot X = B
     $$
