@@ -105,7 +105,7 @@
     <tr>
         <td align="center">storev</td>
         <td align="center">输入</td>
-        <td align="left"><strong>仅支持</strong> ACLSOLVER_STOREV_COLUMNWISE；传 ROWWISE 返回 ACLSOLVER_STATUS_NOT_SUPPORTED</td>
+        <td align="left"><strong>仅支持</strong> ACLSOLVER_STOREV_COLUMNWISE；传 ROWWISE 返回 ACLSOLVER_STATUS_INVALID_VALUE</td>
     </tr>
     <tr>
         <td align="center">n</td>
