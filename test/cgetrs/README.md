@@ -166,3 +166,11 @@ Solver Cgetrs算子实现。
   ```bash
   [Success] Case accuracy verification passed.
   ```
+
+`--run` 结束后会清理测试数据。直接运行二进制前需重新生成（参数需一致）：
+
+```bash
+python3 test/cgetrs/data/gen_data.py 32 32   # 参数：矩阵阶数 n、右端项列数 nrhs
+./build/test/cgetrs/cgetrs_test 0 32 32        # 参数：设备号、n、nrhs
+python3 test/cgetrs/data/verify_result.py 32 32 # 参数：n、nrhs
+```
