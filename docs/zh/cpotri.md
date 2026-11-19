@@ -9,7 +9,7 @@
 
 ## 功能说明
 
-输入已经分解的三角因子，原地生成原矩阵逆的所选三角。输入因子的零实部对角通过 info 报告。
+输入已经分解的三角因子，原地生成原矩阵逆的所选三角。
 
 $$
 A^{-1}=(LL^{H})^{-1}\quad\text{或}\quad (U^{H}U)^{-1}
@@ -49,7 +49,7 @@ aclsolverStatus_t aclsolverCpotri(aclsolverHandle_t handle, aclsolverFillMode_t 
 
 返回值使用 aclsolverStatus_t。成功为 ACLSOLVER_STATUS_SUCCESS；非法参数为 ACLSOLVER_STATUS_INVALID_VALUE；内部工作区分配失败为 ACLSOLVER_STATUS_ALLOC_FAILED。失败路径提供主机 ERROR 日志。分配、初始化或执行失败时 info 未定义，不可用 info=0 判成功。
 
-先检查 host 返回状态；SUCCESS 且 stream 成功完成后，info=0 表示成功；非法参数且 handle、stream、info 有效时，负值为错误参数的一基位置，不计 handle。分解时正值为最早失败主子式索引；求逆时为第一个零实部对角索引；求解仅报告参数错误。
+先检查 host 返回状态；SUCCESS 且 stream 成功完成后，info=0 表示成功；非法参数且 handle、stream、info 有效时，负值为错误参数的一基位置，不计 handle。分解时正值为最早失败主子式索引；求逆时正值为首个非法对角元素的一基索引（实部非正、虚部非零，或实部/虚部非有限）；求解仅报告参数错误。
 
 空规模允许无需读取的矩阵地址为空，但仍要求 lda/ldb 至少为 1，以及可写 info。
 

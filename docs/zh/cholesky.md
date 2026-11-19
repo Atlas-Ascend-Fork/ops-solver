@@ -63,7 +63,7 @@ Destroy 记录首个错误并继续回收其他已确认不再使用的块；str
 须先检查 host 返回状态：仅当返回 SUCCESS 且 stream 成功完成后，数值 info 才有效。
 分配、初始化或执行失败时 info 未定义，即使其值为 0 也不能据此判成功。
 在上述成功条件下，info=0 表示成功；分解 info>0 为最早非正定主子式的一基索引，此前列已经完成；
-求逆 info>0 为第一个零实部对角元素的一基索引。
+复数求逆 `Cpotri` 的 info>0 为首个非法对角元素的一基索引（实部非正、虚部非零，或实部/虚部非有限）。
 非法参数返回 `ACLSOLVER_STATUS_INVALID_VALUE`，并在 handle、stream 有效且 info 可写时异步记录负参数位置，
 位置不计 handle。批量分解的 Host 参数错误写入范围按实/复两族不同：实数 `SpotrfBatched` 在 `batchSize>0` 时
 向全部 infoArray 槽位写同一负编号（cholesky_host.cpp 的 BatchedErrorCount），`batchSize=0` 不写、负值仅写首槽；
