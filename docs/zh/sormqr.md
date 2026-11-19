@@ -101,7 +101,7 @@
     <tr>
         <td align="center">k</td>
         <td align="center">输入</td>
-        <td align="left">反射子个数，需满足 0 <= k <= nq，其中 nq = m（LEFT）或 n（RIGHT）；nq 超过当前 kernel 上限 4096 时两个入口均返回 ACLSOLVER_STATUS_NOT_SUPPORTED（主入口另写 devInfo = -3/-4）</td>
+        <td align="left">反射子个数，需满足 0 <= k <= nq，其中 nq = m（LEFT）或 n（RIGHT）。两个入口均要求 nq <= 4096；当 m、n、k 均非零且 nq 超过当前 kernel 上限 4096 时，_bufferSize 与执行接口均返回 ACLSOLVER_STATUS_NOT_SUPPORTED（主入口另写 devInfo = -3/-4）。仅在 m、n 或 k 为 0 的退化情形下，_bufferSize 在 nq 检查前返回 lwork = 0，执行接口直接成功返回。</td>
     </tr>
     <tr>
         <td align="center">A</td>
@@ -141,7 +141,7 @@
     <tr>
         <td align="center">devInfo</td>
         <td align="center">输出</td>
-        <td align="left">device 侧 int32：成功写 0，第 i 个参数非法写 -i（handle 不计入）<br><strong>不可为 nullptr</strong>（为空返回 ACLSOLVER_STATUS_INVALID_VALUE，:234）</td>
+        <td align="left">device 侧 int32 输出指针（<strong>必须非空，不允许传 nullptr</strong>）：成功写 0，第 i 个参数非法写 -i（handle 不计入）；为空返回 ACLSOLVER_STATUS_INVALID_VALUE</td>
     </tr>
     </table>
 

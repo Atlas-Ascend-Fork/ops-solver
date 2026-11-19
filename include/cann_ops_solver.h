@@ -659,9 +659,10 @@ extern "C"
      * @param m Number of rows of C; must be non-negative.
      * @param n Number of columns of C; must be non-negative.
      * @param k Number of elementary reflectors; must satisfy 0 <= k <= nq, where nq is m for
-     *          side LEFT and n for side RIGHT; nq must be at most 4096, otherwise the call is
-     *          rejected with ACLSOLVER_STATUS_NOT_SUPPORTED. nq is m for
-     *          side LEFT and n for side RIGHT.
+     *          side LEFT and n for side RIGHT. For a non-empty problem, nq must not exceed 4096;
+     *          when nq > 4096 both this query and aclsolverSormqr return
+     *          ACLSOLVER_STATUS_NOT_SUPPORTED. If m, n or k is zero, the query returns lwork = 0
+     *          before the nq check and the execution entry succeeds as a no-op.
      * @param A Householder representation from aclsolverSgeqrf. Not read by this query.
      * @param lda Leading dimension of A; must be at least max(1, nq).
      * @param tau Reflector scalars of length k. Not read by this query.
@@ -700,8 +701,8 @@ extern "C"
      * @param ldc Leading dimension of C; must be at least max(1, m).
      * @param work Device workspace of at least lwork float elements.
      * @param lwork Workspace size in elements, as returned by aclsolverSormqr_bufferSize.
-     * @param devInfo Device int32 output: 0 on success, -i when the i-th argument is
-     *                invalid (the handle is not counted).
+     * @param devInfo Non-null device int32 output: 0 on success, -i when the i-th argument
+     *                is invalid (the handle is not counted).
      * @return ACLSOLVER_STATUS_SUCCESS when the kernel is submitted, otherwise a status code.
      */
     aclsolverStatus_t aclsolverSormqr(aclsolverHandle_t handle, aclsolverSideMode_t side, aclsolverOperation_t trans,
