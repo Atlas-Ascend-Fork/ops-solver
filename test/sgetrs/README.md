@@ -67,7 +67,7 @@ Solver Sgetrs算子实现。
             <td align="center">A</td>
             <td align="center">[n, n]</td>
             <td align="center">FLOAT32</td>
-            <td align="left">LU分解后的矩阵（由getrf输出）</td>
+            <td align="left">按行主序存储的packed LU因子，逻辑元素A(r, c)位于A[r * lda + c]；getrf输出为列主序，复用时需重排</td>
             <td align="center">ND</td>
         </tr>
         <tr>
@@ -121,7 +121,8 @@ Solver Sgetrs算子实现。
 
 
 - 算子约束：
-    - 输入矩阵A必须为aclsolverSgetrf分解后的LU矩阵；ipiv必须为其输出的pivot信息（1-based行号，取值须在[1, n]，非法值返回ACL_ERROR_INVALID_PARAM且info置-4）。
+    - 输入矩阵A必须为aclsolverSgetrf分解得到的packed LU因子，并按行主序传入：A(r, c)位于A[r * lda + c]。aclsolverSgetrf输出Device列主序因子；复用该结果时，须先复制到Host，再按逻辑坐标重排为行主序（A_sgetrs[r * lda + c] = A_sgetrf[c * lda_rf + r]），不能直接传入列主序缓冲区。
+    - ipiv必须为aclsolverSgetrf输出的pivot信息（1-based行号，取值须在[1, n]，非法值返回ACL_ERROR_INVALID_PARAM且info置-4）。
     - A、ipiv、B、info 均为 Host 内存；接口内部搬运至 Device 计算，返回前将解 X 写回 B（详见 docs/zh/sgetrs.md）。
     - n、nrhs取值范围均为[1, 8192]；lda >= n且lda - n <= 16383；ldb >= nrhs且ldb - nrhs <= 16383（kernel以uint16_t字节计数承载行间隙）。
     - trans仅支持0（AX=B）与1（AᵀX=B），其他取值返回ACL_ERROR_INVALID_PARAM。

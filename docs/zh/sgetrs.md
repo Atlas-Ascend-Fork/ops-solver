@@ -113,12 +113,12 @@
     <tr>
         <td align="center">A</td>
         <td align="center">输入</td>
-        <td align="left">输入为经过LU分解后的矩阵A，位于Host内存（接口内部完成上/下板搬运）。<br>数据类型仅支持FLOAT32，数据格式支持ND，shape为[n, n]</td>
+        <td align="left">输入为按行主序存储的packed LU因子，逻辑元素A(r, c)位于A[r * lda + c]，位于Host内存（接口内部完成上/下板搬运）。<br>数据类型仅支持FLOAT32，数据格式支持ND，shape为[n, n]</td>
     </tr>
     <tr>
         <td align="center">lda</td>
         <td align="center">输入</td>
-        <td align="left">A上下相邻元素间的内存地址偏移量</td>
+        <td align="left">A相邻逻辑行首元素间的偏移量，以FLOAT32元素计；lda >= n</td>
     </tr>
     <tr>
         <td align="center">ipiv</td>
@@ -128,12 +128,12 @@
     <tr>
         <td align="center">B</td>
         <td align="center">输入/输出</td>
-        <td align="left">输入为右端项矩阵B，输出为求解结果矩阵X，位于Host内存（接口返回前将结果写回B）。<br>数据类型仅支持FLOAT32，数据格式支持ND，shape为[n, nrhs]</td>
+        <td align="left">输入为按行主序存储的右端项矩阵B，输出为求解结果矩阵X；逻辑元素B(r, c)位于B[r * ldb + c]。位于Host内存（接口返回前将结果写回B）。<br>数据类型仅支持FLOAT32，数据格式支持ND，shape为[n, nrhs]</td>
     </tr>
     <tr>
         <td align="center">ldb</td>
         <td align="center">输入</td>
-        <td align="left">B上下相邻元素间的内存地址偏移量</td>
+        <td align="left">B相邻逻辑行首元素间的偏移量，以FLOAT32元素计；ldb >= nrhs</td>
     </tr>
     <tr>
         <td align="center">info</td>
@@ -143,7 +143,7 @@
     </table>
 
 - 算子约束：
-  - 输入矩阵A必须为aclsolverSgetrf分解后的LU矩阵。
+  - 输入矩阵A必须为aclsolverSgetrf分解得到的packed LU因子，并按行主序传入：A(r, c)位于A[r * lda + c]。aclsolverSgetrf输出Device列主序因子；复用该结果时，须先复制到Host，再按逻辑坐标重排为行主序（A_sgetrs[r * lda + c] = A_sgetrf[c * lda_rf + r]），不能直接传入列主序缓冲区。
   - ipiv必须为aclsolverSgetrf输出的pivot信息（1-based行号，取值须在[1, n]，非法值在设备下发前被拦截：返回ACL_ERROR_INVALID_PARAM且info置-4）。
   - 当前仅支持FLOAT32数据类型。
   - A、ipiv、B、info 均为 Host 内存；接口内部搬运至 Device 计算，返回前将解 X 写回 B（与本仓其余 dense solver 接口的 Device 缓冲契约不同，详见头文件中 aclsolverSgetrs 的契约注释）。
