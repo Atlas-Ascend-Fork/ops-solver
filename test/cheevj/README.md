@@ -3,6 +3,13 @@
 本目录包含 `aclsolverCheevj` 的调用样例、API 契约测试和性能测试程序。
 测试应在已配置 CANN 9.0.0 的 Ascend 机器上执行。
 
+## 支持的产品
+
+- Atlas A3 训练系列产品/Atlas A3 推理系列产品
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品
+
+（详见 [接口说明](../../docs/zh/cheevj.md) 的产品支持情况）
+
 ## Build
 
 ```bash
