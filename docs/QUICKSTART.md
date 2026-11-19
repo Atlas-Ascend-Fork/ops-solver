@@ -6,7 +6,7 @@
 
 > **硬件支持范围**：教程使用的 `cmatinv_batched` 仅支持 Ascend 950 系列（已在 Ascend950PR 验证），Atlas A2/A3（910B/910C）等非 950 平台不支持，详见[CmatinvBatched 产品支持情况](zh/cmatinv_batched.md)。在 A2/A3 上编译可成功（编译期无告警），但运行时返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`（status=8），**编译成功不代表样例可运行**。仓库内其他算子的支持范围各不相同，编译前请查阅对应算子文档的「产品支持情况」或[算子列表](api_list.md)。
 
-1. **[环境准备](#环境准备)**：完成软件包安装和源码下载，此处不再赘述。快速入门场景下，**推荐CANNLab或Docker环境**，安装操作简单。
+1. **[环境准备](#环境准备)**：完成软件包安装和源码下载，此处不再赘述。快速入门场景下，**推荐使用能提供 Ascend 950 的 CANNLab、Docker 环境或匹配的手动安装环境**，安装操作简单。
 
    > **说明**：当前CANNLab或Docker环境默认最新商发版CANN包；如需体验master分支最新能力，可手动安装CANN包，注意软件与源码版本配套。
 
@@ -18,7 +18,7 @@
 
 ## 环境准备
 
-**[环境部署](zh/install/quick_install.md)**：完成软件包安装和源码下载，此处不再赘述。快速入门场景下，**推荐CANNLab或Docker环境**，安装操作简单。
+**[环境部署](zh/install/quick_install.md)**：完成软件包安装和源码下载。本指南后续构建命令固定使用 `--soc=ascend950`；环境部署文档中的 Docker 示例仅适用于 Atlas A2（910B，镜像 `8.5.0-910b`），不能直接用于这些 950 命令。若使用该 Docker 环境，应改用与 910B 和其 CANN 版本匹配的构建流程及 run 包名。
 
 > **说明**：当前CANNLab或Docker环境默认最新商发版CANN包；如需体验master分支最新能力，可手动安装CANN包，注意软件与源码版本配套。
 
