@@ -33,14 +33,14 @@ Solver SSgels 算子实现（`aclsolverSSgels / aclsolverSSgels_bufferSize`）�
     | 输入 | m, n, nrhs | [1] | int | m >= n >= 0，nrhs >= 0 |
     | 输入/输出 | dA | [ldda, n] | FLOAT32 | 列主序 ND；**求解后内容被破坏**（任务书允许）；ldda >= max(1, m) |
     | 输入 | dB | [lddb, nrhs] | FLOAT32 | 列主序 ND，**只读、不被修改**；lddb >= max(1, m) |
-    | 输出 | dX | [lddx, nrhs] | FLOAT32 | 列主序 ND，n x nrhs 的解；**不得与 dB 同址**；lddx >= max(1, n) |
+    | 输出 | dX | [lddx, nrhs] | FLOAT32 | 列主序 ND，n x nrhs 的解；**不得与 dB 或 dA 同址**（同址返回 info = -8）；lddx >= max(1, n) |
     | 输入 | dWorkspace / lwork_bytes | - | void*/size_t | device workspace，以**字节**计 |
     | 输出 | niter | [1] | int* | **Host 标量**。本实现是直接 QR 解、不做迭代精化，恒为 0 |
     | 输出 | dinfo | [1] | INT32 | 0 成功；-i 第 i 个参数非法 |
 
     核函数名：`strsm_mix_kernel（前两段复用 sgeqrf_mix_kernel / sormqr_mix_kernel）`
 
-- 算子约束：m / n 上限 4096；要求 m >= n（m < n 返回 info = -1）；`dX` 与 `dB` 同址返回 info = -8。
+- 算子约束：m / n 上限 4096；要求 m >= n（m < n 返回 info = -1）；`dX` 与 `dB` 或 `dA` 同址返回 info = -8；`dinfo` 不允许为 nullptr。
 
 - 调用实现：Host 侧做参数校验与 workspace 布局，使用内核调用符 `<<<>>>` 下发核函数。
 

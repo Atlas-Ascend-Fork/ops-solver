@@ -115,7 +115,7 @@
     <tr>
         <td align="center">dX</td>
         <td align="center">输出</td>
-        <td align="left">最小二乘解，shape 为 [n, nrhs]，<strong>列主序</strong><br>不得与 dB 同址（同址返回 -8）</td>
+        <td align="left">最小二乘解，shape 为 [n, nrhs]，<strong>列主序</strong><br>不得与 dB 或 dA 同址（同址返回 -8）</td>
     </tr>
     <tr>
         <td align="center">lddx</td>
@@ -153,7 +153,7 @@
   - **元素量级窗口**：内部 QR 与 aclsolverSgeqrf 同一约束，要求 `5e-20 < max|dA| < 1.8e19`。
   - 仅支持超定/方阵情形 <strong>m >= n</strong>；m < n 返回参数错误。
   - m、n、nrhs 任一为 0 时 lwork_bytes = 0，主入口写 dinfo = 0 后返回成功。
-  - <strong>dX 与 dB 不得同址</strong>（会返回 -8）；dB 是只读输入，内部先整块拷入 workspace。
+  - <strong>dX 与 dB、dA 均不得同址</strong>（会返回 -8）；dB 是只读输入，内部先整块拷入 workspace；dX 与 dA 同址会覆盖 QR 因子。
   - 内部按 aclsolverSgeqrf -> aclsolverSormqr(LEFT, OP_T) -> 上三角回代三步实现，前两步直接调用本仓公开接口。
   - 多个接口串联调用时<strong>不要共用同一块 workspace</strong>：它们在同一条流上重叠执行，后者会冲掉前者的中间结果。
 
