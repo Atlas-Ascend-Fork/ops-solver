@@ -154,15 +154,15 @@ extern "C"
                                       int* devInfo);
 
     /**
-     * @brief Solve A*X=B using an existing complex Cholesky factor; overwrite B with X.
+     * @brief Solve the system represented by an existing complex Cholesky factor; overwrite B with X.
      * @param handle Initialized, caller-serialized handle; see aclsolverCpotrf_bufferSize for info validity.
-     * @param uplo Select the stored LOWER factor L or UPPER factor U.
+     * @param uplo Select the stored LOWER factor L or UPPER factor U; match the preceding factorization.
      * @param n Matrix order, 0 <= n <= 4096.
      * @param nrhs Right-hand side count, 0 <= nrhs <= 128. n=0 or nrhs=0 is empty.
      * @param A Read-only device factor; may be null for an empty problem. Positive definiteness
      *          must be checked by the preceding factorization, not by this solve.
      * @param lda Factor column stride in complex elements, at least max(1,n).
-     * @param B Device n-by-nrhs matrix, overwritten by X; may be null for an empty problem.
+     * @param B Device column-major n-by-nrhs matrix, overwritten by X; may be null for an empty problem.
      * @param ldb B column stride in complex elements, at least max(1,n); padding is preserved.
      * @param devInfo Device scalar, zero or negative invalid argument index excluding handle.
      * @return SUCCESS, INVALID_VALUE, NOT_INITIALIZED, ALLOC_FAILED, or a handle/stream error.
@@ -452,15 +452,15 @@ extern "C"
                                       float* Workspace, int Lwork, int* devInfo);
 
     /**
-     * @brief Solve A*X=B using an existing real Cholesky factor; overwrite B with X.
+     * @brief Solve the system represented by an existing real Cholesky factor; overwrite B with X.
      * @param handle Initialized, caller-serialized solver handle; see aclsolverSpotrf_bufferSize for shared contracts.
-     * @param uplo Select the stored LOWER factor L or UPPER factor U.
+     * @param uplo Select the stored LOWER factor L or UPPER factor U; match the preceding factorization.
      * @param n Matrix order, 0 <= n <= 4096.
      * @param nrhs Right-hand side count, 0 <= nrhs <= 128; n=0 or nrhs=0 is empty.
      * @param A Read-only device FLOAT32 factor; may be null for an empty problem. The preceding
      *          factorization must have succeeded; this solve does not check positive definiteness or zero diagonals.
      * @param lda Factor column stride in float elements, at least max(1,n); all factor storage is preserved.
-     * @param B Device n-by-nrhs matrix, overwritten by X; may be null for an empty problem.
+     * @param B Device column-major n-by-nrhs matrix, overwritten by X; may be null for an empty problem.
      * @param ldb B column stride in float elements, at least max(1,n); padding is preserved.
      * @param devInfo Device scalar, zero or negative first invalid argument index excluding handle.
      * @return ACLSOLVER_STATUS_SUCCESS, ACLSOLVER_STATUS_INVALID_VALUE, ACLSOLVER_STATUS_ALLOC_FAILED,

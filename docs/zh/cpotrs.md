@@ -12,8 +12,10 @@
 输入已经分解的三角因子，保持 A 不变，原地将 B 更新为 X。调用前需完成 Cholesky 分解；本接口不包含前置分解。
 
 $$
-AX=B,\quad A=LL^{H}\ \text{或}\ U^{H}U
+A_0X=B,\quad A_0=LL^{H}\ \text{或}\ U^{H}U
 $$
+
+其中，$A_0$ 是原始系数矩阵，参数 `A` 保存对应的 Cholesky 因子 `L` 或 `U`。
 
 ## 函数原型
 
@@ -30,10 +32,10 @@ aclsolverStatus_t aclsolverCpotrs(aclsolverHandle_t handle, aclsolverFillMode_t 
 | 参数 | 方向与位置 | 说明 |
 | --- | --- | --- |
 | handle | 输入 / host | 由 aclsolverCreate 创建；使用其绑定的调用方 stream。 |
-| uplo | 输入 / host | ACLSOLVER_FILL_MODE_LOWER 或 ACLSOLVER_FILL_MODE_UPPER。 |
+| uplo | 输入 / host | ACLSOLVER_FILL_MODE_LOWER 或 ACLSOLVER_FILL_MODE_UPPER；必须与生成 `A` 中因子的 Cholesky 分解调用一致。 |
 | n | 输入 / host | int，矩阵阶数，0≤n≤4096；超限返回 `ACLSOLVER_STATUS_INVALID_VALUE`。 |
 | nrhs | 输入 / host | int，0≤nrhs≤128；超限返回 `ACLSOLVER_STATUS_INVALID_VALUE` 并写 `devInfo` = -3；n=0 或 nrhs=0 为空问题。 |
-| A | 输入 / device | 列主序 aclsolverFloatComplex 矩阵，元素由 FP32 real、imag 组成；求解时保持全部字节不变。 |
+| A | 输入 / device | 列主序 aclsolverFloatComplex 因子矩阵，所选三角存放 `L` 或 `U`；元素由 FP32 real、imag 组成。求解时保持全部字节不变。 |
 | lda | 输入 / host | int，A 的相邻两列起点间距，以复数元素计，至少为 max(1,n)；填充区保持不变。 |
 | B | 输入/输出 / device | n×nrhs 的设备矩阵地址；列主序 COMPLEX64，原地更新为解。 |
 | ldb | 输入 / host | int，B 的列间距，以复数元素计，至少为 max(1,n)；填充区保持不变。 |
@@ -58,6 +60,27 @@ A 必须是有效的 Cholesky 因子。正定性由前置分解验证，求解�
 ## 调用说明
 
 原生入口：[test/cpotrs/cpotrs_test.cpp](../../test/cpotrs/cpotrs_test.cpp)。公开 C API 的完整调用流程由[共享 runner](../../test/utils/cholesky/fixture_runner.cpp) 中的 `InvokeFixture()` 和 `RunCase()` 实现，包含 workspace 查询、stream 等待及输出读取。
+
+### 调用示例
+
+`dFactor` 必须是 `aclsolverCpotrf` 成功生成的因子，并使用相同的 `uplo`。
+`dB` 按列主序存放 `n×nrhs` 个右端项，`ldb` 可与 `lda` 不同。
+
+例如，对
+$A_0=\begin{bmatrix}4&1\\1&3\end{bmatrix}$，下三角分解得到
+$L=\begin{bmatrix}2&0\\0.5&\sqrt{11}/2\end{bmatrix}$。
+当 `uplo=ACLSOLVER_FILL_MODE_LOWER`、`n=2`、`nrhs=1`、`lda=2`、`ldb=3`，
+且 B 的有效列为 `[5, 7]^T` 时，求解后有效列为
+$X=[8/11,23/11]^T$；B 每列第 3 个填充元素保持不变。
+
+```cpp
+Check(aclsolverCpotrs(handle, uplo, n, nrhs, dFactor, lda, dB, ldb, dInfo));
+Check(aclrtSynchronizeStream(stream));
+int info = -1;
+Check(aclrtMemcpy(&info, sizeof(info), dInfo, sizeof(info), ACL_MEMCPY_DEVICE_TO_HOST));
+```
+
+流同步后，`info==0` 表示 `dB` 保存解 `X`，`dFactor` 保持不变。
 
 ```bash
 bash build.sh --soc=ascend950 --ops=cpotrs --run
