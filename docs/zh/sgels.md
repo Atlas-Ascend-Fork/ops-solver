@@ -90,7 +90,7 @@
     <tr>
         <td align="center">nrhs</td>
         <td align="center">输入</td>
-        <td align="left">右端项个数，需满足 nrhs >= 0</td>
+        <td align="left">右端项个数，需满足 nrhs >= 0 且 nrhs <= 128；nrhs 超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE（主入口写 dinfo = -3）</td>
     </tr>
     <tr>
         <td align="center">dA</td>

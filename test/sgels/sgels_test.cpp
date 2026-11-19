@@ -102,8 +102,7 @@ void Residual(int m, int n, int nrhs, int lda, int ldb, int ldx, const std::vect
 }
 
 /// SQRT16：方阵判据，逐列取最大
-double Sqrt16(int m, int n, int nrhs, int ldx, const std::vector<double> &R, const std::vector<float> &X,
-              double normA)
+double Sqrt16(int m, int n, int nrhs, int ldx, const std::vector<double> &R, const std::vector<float> &X, double normA)
 {
     double worst = 0.0;
     for (int j = 0; j < nrhs; ++j)
@@ -134,8 +133,8 @@ double Sqrt16(int m, int n, int nrhs, int ldx, const std::vector<double> &R, con
 }
 
 /// SQRT17：正规方程最优性残差 ||R^T A||_1 / ( ||A||_1 ||B||_1 max(m,n,nrhs) eps )
-double Sqrt17(int m, int n, int nrhs, int lda, const std::vector<float> &A, const std::vector<double> &R,
-              double normA, double normB)
+double Sqrt17(int m, int n, int nrhs, int lda, const std::vector<float> &A, const std::vector<double> &R, double normA,
+              double normB)
 {
     // R^T A 是 nrhs x n：列 c 的和 = sum_j |sum_r R(r,j) A(r,c)|
     double worst = 0.0;
@@ -218,8 +217,8 @@ bool GelsAlloc(Buffers *buf, size_t aBytes, size_t bBytes, size_t xBytes, size_t
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->A), aBytes, ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->B), bBytes, ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->X), xBytes, ACL_MEM_MALLOC_HUGE_FIRST));
-    TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->ws), std::max<size_t>(wsBytes, 1),
-                           ACL_MEM_MALLOC_HUGE_FIRST));
+    TEST_CHECK(
+        aclrtMalloc(reinterpret_cast<void **>(&buf->ws), std::max<size_t>(wsBytes, 1), ACL_MEM_MALLOC_HUGE_FIRST));
     TEST_CHECK(aclrtMalloc(reinterpret_cast<void **>(&buf->info), sizeof(int32_t), ACL_MEM_MALLOC_HUGE_FIRST));
     return true;
 }
@@ -235,9 +234,9 @@ struct GelsRunOut
 };
 
 /// 连跑 runs 次，比跨次 bit-wise 一致，带回 X、回读的 B、info/niter 与最快一趟的耗时
-bool GelsRunRepeats(aclsolverHandle_t handle, aclrtStream stream, int m, int n, int nrhs, int ldda, int lddb,
-                    int lddx, const Buffers &buf, size_t wsBytes, const std::vector<float> &A0,
-                    const std::vector<float> &B0, int runs, GelsRunOut *out)
+bool GelsRunRepeats(aclsolverHandle_t handle, aclrtStream stream, int m, int n, int nrhs, int ldda, int lddb, int lddx,
+                    const Buffers &buf, size_t wsBytes, const std::vector<float> &A0, const std::vector<float> &B0,
+                    int runs, GelsRunOut *out)
 {
     const size_t aB = A0.size() * sizeof(float), bB = B0.size() * sizeof(float);
     const size_t xB = static_cast<size_t>(lddx) * nrhs * sizeof(float);
@@ -251,8 +250,7 @@ bool GelsRunRepeats(aclsolverHandle_t handle, aclrtStream stream, int m, int n, 
         const auto t0 = std::chrono::steady_clock::now();
         const aclsolverStatus_t st = aclsolverSSgels(
             handle, m, n, nrhs, reinterpret_cast<float *>(buf.A), ldda, reinterpret_cast<float *>(buf.B), lddb,
-            reinterpret_cast<float *>(buf.X), lddx, buf.ws, wsBytes, &out->niter,
-            reinterpret_cast<int *>(buf.info));
+            reinterpret_cast<float *>(buf.X), lddx, buf.ws, wsBytes, &out->niter, reinterpret_cast<int *>(buf.info));
         const aclError sync = aclrtSynchronizeStream(stream);
         const auto t1 = std::chrono::steady_clock::now();
         if (st != ACLSOLVER_STATUS_SUCCESS || sync != ACL_SUCCESS)
@@ -357,8 +355,7 @@ bool RunShape(aclsolverHandle_t handle, aclrtStream stream, int caseIdx, int m, 
     }
 
     GelsRunOut out;
-    const bool ran =
-        GelsRunRepeats(handle, stream, m, n, nrhs, ldda, lddb, lddx, buf, wsBytes, A0, B0, runs, &out);
+    const bool ran = GelsRunRepeats(handle, stream, m, n, nrhs, ldda, lddb, lddx, buf, wsBytes, A0, B0, runs, &out);
     buf.Free();
     if (!ran)
     {
@@ -432,16 +429,21 @@ void CheckShapeArgs(const GBadFixture &fx, bool *ok)
                                fx.wsBytes, fx.niter, fx.INFO),
                bad, -1, ok);
     ExpectInfo(fx.stream, fx.devInfo, "m<n -> info=-1",
-               aclsolverSSgels(fx.handle, 16, 32, kBpNrhs, fx.A, kBpLda, fx.B, kBpLdb, fx.X, kBpLdx, fx.ws,
-                               fx.wsBytes, fx.niter, fx.INFO),
+               aclsolverSSgels(fx.handle, 16, 32, kBpNrhs, fx.A, kBpLda, fx.B, kBpLdb, fx.X, kBpLdx, fx.ws, fx.wsBytes,
+                               fx.niter, fx.INFO),
                bad, -1, ok);
     ExpectInfo(fx.stream, fx.devInfo, "n<0 -> info=-2",
                aclsolverSSgels(fx.handle, kBpM, -1, kBpNrhs, fx.A, kBpLda, fx.B, kBpLdb, fx.X, kBpLdx, fx.ws,
                                fx.wsBytes, fx.niter, fx.INFO),
                bad, -2, ok);
     ExpectInfo(fx.stream, fx.devInfo, "nrhs<0 -> info=-3",
-               aclsolverSSgels(fx.handle, kBpM, kBpN, -1, fx.A, kBpLda, fx.B, kBpLdb, fx.X, kBpLdx, fx.ws,
-                               fx.wsBytes, fx.niter, fx.INFO),
+               aclsolverSSgels(fx.handle, kBpM, kBpN, -1, fx.A, kBpLda, fx.B, kBpLdb, fx.X, kBpLdx, fx.ws, fx.wsBytes,
+                               fx.niter, fx.INFO),
+               bad, -3, ok);
+    // nrhs 上界与复数版 CC_GELS_MAX_RHS=128 对齐（issue #520）：超限同样指向 nrhs 参数位
+    ExpectInfo(fx.stream, fx.devInfo, "nrhs=129 -> info=-3",
+               aclsolverSSgels(fx.handle, kBpM, kBpN, 129, fx.A, kBpLda, fx.B, kBpLdb, fx.X, kBpLdx, fx.ws, fx.wsBytes,
+                               fx.niter, fx.INFO),
                bad, -3, ok);
 }
 
@@ -517,8 +519,12 @@ void CheckBufferSizeArgs(aclsolverHandle_t handle, bool *ok)
                                             kBpLdx, nullptr, nullptr),
                  bad, ok);
     ExpectStatus("bufferSize m<n",
-                 aclsolverSSgels_bufferSize(handle, 16, 32, kBpNrhs, nullptr, kBpLda, nullptr, kBpLdb, nullptr,
-                                            kBpLdx, nullptr, &wb),
+                 aclsolverSSgels_bufferSize(handle, 16, 32, kBpNrhs, nullptr, kBpLda, nullptr, kBpLdb, nullptr, kBpLdx,
+                                            nullptr, &wb),
+                 bad, ok);
+    ExpectStatus("bufferSize nrhs=129",
+                 aclsolverSSgels_bufferSize(handle, kBpM, kBpN, 129, nullptr, kBpLda, nullptr, kBpLdb, nullptr, kBpLdx,
+                                            nullptr, &wb),
                  bad, ok);
 }
 
@@ -527,8 +533,7 @@ bool RunBadParams(aclsolverHandle_t handle, aclrtStream stream)
 {
     size_t wsBytes = 0;
     if (aclsolverSSgels_bufferSize(handle, kBpM, kBpN, kBpNrhs, nullptr, kBpLda, nullptr, kBpLdb, nullptr, kBpLdx,
-                                   nullptr, &wsBytes)
-        != ACLSOLVER_STATUS_SUCCESS)
+                                   nullptr, &wsBytes) != ACLSOLVER_STATUS_SUCCESS)
     {
         printf("  bufferSize 失败\n");
         return false;
@@ -578,8 +583,8 @@ bool RunEmpty(aclsolverHandle_t handle, int m, int n, int nrhs)
     TEST_CHECK(aclrtMemcpy(info, sizeof(poison), &poison, sizeof(poison), ACL_MEMCPY_HOST_TO_DEVICE));
     int niter = -1;
     const aclsolverStatus_t st =
-        aclsolverSSgels(handle, m, n, nrhs, nullptr, std::max(m, 1), nullptr, std::max(m, 1), nullptr,
-                        std::max(n, 1), nullptr, 0, &niter, reinterpret_cast<int *>(info));
+        aclsolverSSgels(handle, m, n, nrhs, nullptr, std::max(m, 1), nullptr, std::max(m, 1), nullptr, std::max(n, 1),
+                        nullptr, 0, &niter, reinterpret_cast<int *>(info));
     int32_t got = -12345;
     (void)aclrtMemcpy(&got, sizeof(got), info, sizeof(got), ACL_MEMCPY_DEVICE_TO_HOST);
     aclrtFree(info);
@@ -592,20 +597,22 @@ bool RunEmpty(aclsolverHandle_t handle, int m, int n, int nrhs)
 struct Case
 {
     int m, n, nrhs, ldda, lddb, lddx;
-    double gpuUs; // 0 表示 cuSolver 自己失败、无基线
+    double gpuUs;  // 0 表示 cuSolver 自己失败、无基线
 };
 
 bool LoadCases(const char *path, std::vector<Case> &out)
 {
-    return LoadCaseList(path, 7, out, [](const std::vector<double> &row, Case *c) {
-        c->m = RowInt(row, 0, 0);
-        c->n = RowInt(row, 1, 0);
-        c->nrhs = RowInt(row, 2, 0);
-        c->ldda = RowInt(row, 3, 0);
-        c->lddb = RowInt(row, 4, 0);
-        c->lddx = RowInt(row, 5, 0);
-        c->gpuUs = row[6];
-    });
+    return LoadCaseList(path, 7, out,
+                        [](const std::vector<double> &row, Case *c)
+                        {
+                            c->m = RowInt(row, 0, 0);
+                            c->n = RowInt(row, 1, 0);
+                            c->nrhs = RowInt(row, 2, 0);
+                            c->ldda = RowInt(row, 3, 0);
+                            c->lddb = RowInt(row, 4, 0);
+                            c->lddx = RowInt(row, 5, 0);
+                            c->gpuUs = row[6];
+                        });
 }
 
 int RunSweep(aclsolverHandle_t handle, aclrtStream stream, const char *path, int ldExtra)
@@ -615,11 +622,13 @@ int RunSweep(aclsolverHandle_t handle, aclrtStream stream, const char *path, int
     {
         return 1;
     }
-    return SweepCases(cases, [&](const Case &c, int idx) {
-        // ldExtra：在清单给的最小合法 ld 上再加一档 padding（§3.5 要求 +8 / +32 两档）
-        return RunShape(handle, stream, idx, c.m, c.n, c.nrhs, c.ldda + ldExtra, c.lddb + ldExtra,
-                        c.lddx + ldExtra, 2, true, true, nullptr);
-    });
+    return SweepCases(cases,
+                      [&](const Case &c, int idx)
+                      {
+                          // ldExtra：在清单给的最小合法 ld 上再加一档 padding（§3.5 要求 +8 / +32 两档）
+                          return RunShape(handle, stream, idx, c.m, c.n, c.nrhs, c.ldda + ldExtra, c.lddb + ldExtra,
+                                          c.lddx + ldExtra, 2, true, true, nullptr);
+                      });
 }
 
 int RunPerfSweep(aclsolverHandle_t handle, aclrtStream stream, const char *path)
@@ -676,31 +685,27 @@ void GelsQueryAllWs(aclsolverHandle_t handle, int m, int n, int nrhs, long long 
     {
         ws[0] = static_cast<long long>(lw) * sizeof(float);
     }
-    if (n <= m
-        && aclsolverSorgqr_bufferSize(handle, m, n, k, nullptr, m, nullptr, &lw) == ACLSOLVER_STATUS_SUCCESS)
+    if (n <= m && aclsolverSorgqr_bufferSize(handle, m, n, k, nullptr, m, nullptr, &lw) == ACLSOLVER_STATUS_SUCCESS)
     {
         ws[1] = static_cast<long long>(lw) * sizeof(float);
     }
     if (aclsolverSormqr_bufferSize(handle, ACLSOLVER_SIDE_LEFT, ACLSOLVER_OP_T, m, nrhs, k, nullptr, m, nullptr,
-                                   nullptr, m, &lw)
-        == ACLSOLVER_STATUS_SUCCESS)
+                                   nullptr, m, &lw) == ACLSOLVER_STATUS_SUCCESS)
     {
         ws[2] = static_cast<long long>(lw) * sizeof(float);
     }
     size_t dev = 0, host = 0;
     const int64_t kx = std::min<int64_t>(n, 256);
-    if (kx >= 1
-        && aclsolverXlarft_bufferSize(handle, nullptr, ACLSOLVER_DIRECT_FORWARD, ACLSOLVER_STOREV_COLUMNWISE, n, kx,
-                                      ACLSOLVER_R_32F, nullptr, n, ACLSOLVER_R_32F, nullptr, ACLSOLVER_R_32F,
-                                      nullptr, kx, ACLSOLVER_R_32F, &dev, &host)
-               == ACLSOLVER_STATUS_SUCCESS)
+    if (kx >= 1 &&
+        aclsolverXlarft_bufferSize(handle, nullptr, ACLSOLVER_DIRECT_FORWARD, ACLSOLVER_STOREV_COLUMNWISE, n, kx,
+                                   ACLSOLVER_R_32F, nullptr, n, ACLSOLVER_R_32F, nullptr, ACLSOLVER_R_32F, nullptr, kx,
+                                   ACLSOLVER_R_32F, &dev, &host) == ACLSOLVER_STATUS_SUCCESS)
     {
         ws[3] = static_cast<long long>(dev);
     }
     size_t wb = 0;
-    if (n <= m
-        && aclsolverSSgels_bufferSize(handle, m, n, nrhs, nullptr, m, nullptr, m, nullptr, n, nullptr, &wb)
-               == ACLSOLVER_STATUS_SUCCESS)
+    if (n <= m && aclsolverSSgels_bufferSize(handle, m, n, nrhs, nullptr, m, nullptr, m, nullptr, n, nullptr, &wb) ==
+                      ACLSOLVER_STATUS_SUCCESS)
     {
         ws[4] = static_cast<long long>(wb);
     }
@@ -720,8 +725,8 @@ int RunMem(aclsolverHandle_t handle)
     };
     printf("# 单位：字节。workspace = 各接口 _bufferSize 的返回值（元素数已折算成字节）\n");
     printf("# 用户矩阵 = 该形状下调用方自备的 A / B / X / tau 等，列出来便于核对量级\n");
-    printf("%-18s %14s %14s %14s %14s %14s %16s\n", "shape(m,n,nrhs)", "sgeqrf", "sorgqr", "sormqr",
-           "xlarft", "SSgels", "用户矩阵合计");
+    printf("%-18s %14s %14s %14s %14s %14s %16s\n", "shape(m,n,nrhs)", "sgeqrf", "sorgqr", "sormqr", "xlarft", "SSgels",
+           "用户矩阵合计");
     for (const auto &sp : shapes)
     {
         const int m = sp.m, n = sp.n, nrhs = sp.nrhs;
@@ -730,8 +735,7 @@ int RunMem(aclsolverHandle_t handle)
         GelsQueryAllWs(handle, m, n, nrhs, ws);
         // 用户矩阵：A(m*n) + tau(min(m,n)) + B(m*nrhs) + X(n*nrhs)
         const long long userBytes =
-            (static_cast<long long>(m) * n + k + static_cast<long long>(m) * nrhs +
-             static_cast<long long>(n) * nrhs) *
+            (static_cast<long long>(m) * n + k + static_cast<long long>(m) * nrhs + static_cast<long long>(n) * nrhs) *
             static_cast<long long>(sizeof(float));
         const std::string tag = std::to_string(m) + "," + std::to_string(n) + "," + std::to_string(nrhs);
         printf("%-18s %14lld %14lld %14lld %14lld %14lld %16lld\n", tag.c_str(), ws[0], ws[1], ws[2], ws[3], ws[4],
@@ -743,7 +747,7 @@ int RunMem(aclsolverHandle_t handle)
     return 0;
 }
 
-} // namespace
+}  // namespace
 
 // §3.5 的跨接口必测场景（单独一个文件，别让 sgels_test.cpp 继续膨胀）。
 // 它自己再开一次匿名 namespace —— 同一个翻译单元里的匿名 namespace 是同一个，
@@ -813,9 +817,9 @@ void RunShapeCases(aclsolverHandle_t handle, aclrtStream stream, int *pass, int 
         int m, n, nrhs, ldaExtra, ldbExtra, ldxExtra;
     };
     const Shape shapes[] = {
-        {1, 1, 1, 0, 0, 0},      {2, 2, 1, 0, 0, 0},     {4, 2, 1, 0, 0, 0},     {8, 8, 8, 0, 0, 0},
-        {16, 8, 32, 3, 5, 7},    {64, 64, 1, 0, 0, 0},   {64, 32, 128, 0, 0, 0}, {65, 33, 8, 7, 7, 7},
-        {128, 128, 1, 0, 0, 0},  {256, 64, 32, 0, 0, 0}, {257, 129, 8, 7, 3, 5}, {512, 512, 1, 0, 0, 0},
+        {1, 1, 1, 0, 0, 0},      {2, 2, 1, 0, 0, 0},       {4, 2, 1, 0, 0, 0},     {8, 8, 8, 0, 0, 0},
+        {16, 8, 32, 3, 5, 7},    {64, 64, 1, 0, 0, 0},     {64, 32, 128, 0, 0, 0}, {65, 33, 8, 7, 7, 7},
+        {128, 128, 1, 0, 0, 0},  {256, 64, 32, 0, 0, 0},   {257, 129, 8, 7, 3, 5}, {512, 512, 1, 0, 0, 0},
         {1024, 256, 1, 0, 0, 0}, {1024, 1024, 8, 0, 0, 0},
     };
     int idx = 0;
@@ -823,14 +827,14 @@ void RunShapeCases(aclsolverHandle_t handle, aclrtStream stream, int *pass, int 
     {
         ++idx;
         ++(*total);
-        *pass += RunShape(handle, stream, idx, s.m, s.n, s.nrhs, s.m + s.ldaExtra, s.m + s.ldbExtra,
-                          s.n + s.ldxExtra, 2, true, true, nullptr)
+        *pass += RunShape(handle, stream, idx, s.m, s.n, s.nrhs, s.m + s.ldaExtra, s.m + s.ldbExtra, s.n + s.ldxExtra,
+                          2, true, true, nullptr)
                      ? 1
                      : 0;
     }
 }
 
-} // namespace
+}  // namespace
 
 int main(int argc, char **argv)
 {

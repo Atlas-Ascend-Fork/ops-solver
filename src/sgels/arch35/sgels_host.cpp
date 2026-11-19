@@ -41,8 +41,10 @@ namespace
 {
 // 回代的块宽。与 kernel 里的 MAX_NB 一致，且必须是 8 的倍数（UB 里按 nb 做行距）
 constexpr int32_t GELS_TRSM_NB = 64;
-// 任务书 §2.6：m ∈ [n, 4096]，n ∈ [1, 4096]，nrhs ∈ [1, 128]
+// 任务书 §2.6：m ∈ [n, 4096]，n ∈ [1, 4096]，nrhs ∈ [1, 128]；空问题（m/n/nrhs 任一
+// 为 0）不受范围约束（与复数版 ccgels 的 Empty 豁免口径一致，issue #520）
 constexpr int32_t GELS_MAX_DIM = 4096;
+constexpr int32_t GELS_MAX_RHS = 128;
 // workspace 各区段起始按 512B（128 个 float）对齐
 constexpr int64_t GELS_WS_ALIGN = 128;
 // 分 K 的份数上限，必须 >= kernel 里的 KSPLIT_MAX
@@ -173,13 +175,15 @@ aclsolverStatus_t aclsolverSSgels_bufferSize(aclsolverHandle_t handle, int m, in
         *lwork_bytes = 0;
         return ACLSOLVER_STATUS_SUCCESS;
     }
-    // 与执行入口同口径：m/n 超过 GELS_MAX_DIM(4096) 的形状在 PlanWorkspace 之前早退
-    // （执行入口见 GELS_PARAM_CHECK(mi <= GELS_MAX_DIM && ni <= GELS_MAX_DIM, 1, ...)，
-    // 返回 INVALID_VALUE + dinfo=-1）。复数版 ccgels 的查询入口经 policy.check 共享
-    // 同一范围校验（issue #369 口径）；实数版本入口此前缺同款检查，调用方按查询成功
-    // 分配后执行时才被拒（sorgqr issue #392 / sgeqrf #386 同族模式）。
+    // 与执行入口同口径：m/n 超过 GELS_MAX_DIM(4096) 或 nrhs 超过 GELS_MAX_RHS(128) 的
+    // 形状在 PlanWorkspace 之前早退（执行入口经 CheckTaskRangeAndPlanWorkspace 在推导
+    // 之前拒绝，返回 INVALID_VALUE + dinfo=-1/-3）。复数版 ccgels 的查询入口经
+    // policy.check 共享同一范围校验（issue #369 口径）；实数版本入口此前缺同款检查，
+    // 调用方按查询成功分配后执行时才被拒（sorgqr issue #392 / sgeqrf #386 同族模式）。
     SOLVER_ECHECK(m <= GELS_MAX_DIM && n <= GELS_MAX_DIM,
                   "aclsolverSSgels_bufferSize: m / n 超过当前 kernel 上限 4096。", ACLSOLVER_STATUS_INVALID_VALUE);
+    SOLVER_ECHECK(nrhs <= GELS_MAX_RHS, "aclsolverSSgels_bufferSize: nrhs 超过当前 kernel 上限 128。",
+                  ACLSOLVER_STATUS_INVALID_VALUE);
     WsLayout ws;
     const aclsolverStatus_t st =
         PlanWorkspace(handle, static_cast<int32_t>(m), static_cast<int32_t>(n), static_cast<int32_t>(nrhs),
@@ -235,6 +239,18 @@ aclsolverStatus_t GelsRunPhases(aclsolverHandle_t handle, aclrtStream stream, in
     // failed. Device execution errors are still observed by stream synchronization.
     return aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) == ACL_SUCCESS ? ACLSOLVER_STATUS_SUCCESS
                                                                     : ACLSOLVER_STATUS_EXECUTION_FAILED;
+}
+/// 任务书范围校验（issue #520）+ workspace 布局推导：m/n 超过 GELS_MAX_DIM(4096) 写
+/// dinfo=-1、nrhs 超过 GELS_MAX_RHS(128) 写 dinfo=-3（与 nrhs<0 同参数位）后直接返回
+/// INVALID_VALUE，不再推导；通过则推导 WsLayout。nrhs 上界与复数版 CC_GELS_MAX_RHS 对齐，
+/// 调用点都在空问题早退之后（nrhs=0 不受影响）。范围校验与推导合并成一个入口，保持
+/// aclsolverSSgels 的函数规模在阈值内（CodeCheck 超大函数规则）。
+aclsolverStatus_t CheckTaskRangeAndPlanWorkspace(int32_t *dinfo, aclsolverHandle_t handle, int32_t mi, int32_t ni,
+                                                 int32_t ri, int32_t lda, int32_t ldb, WsLayout *ws)
+{
+    GELS_PARAM_CHECK(mi <= GELS_MAX_DIM && ni <= GELS_MAX_DIM, 1, "aclsolverSSgels: m / n 超过当前 kernel 上限 4096。");
+    GELS_PARAM_CHECK(ri <= GELS_MAX_RHS, 3, "aclsolverSSgels: nrhs 超过当前 kernel 上限 128。");
+    return PlanWorkspace(handle, mi, ni, ri, lda, ldb, ws);
 }
 /// workspace 与设备指针校验（issue #495，见 utils/host_common.h QRDeviceSpan 说明）：
 /// workspace 尺寸/空指针与数据缓冲区的设备归属、范围在 kernel 下发前统一拒绝。
@@ -317,11 +333,10 @@ aclsolverStatus_t aclsolverSSgels(aclsolverHandle_t handle, int m, int n, int nr
     GELS_PARAM_CHECK(!ComplexSolver::Overlap(dX, static_cast<uint64_t>(ri) * ldx * sizeof(float), dA,
                                              static_cast<uint64_t>(ni) * lda * sizeof(float)),
                      8, "aclsolverSSgels invalid param 8: dX 与 dA 缓冲区间重叠。");
-    GELS_PARAM_CHECK(mi <= GELS_MAX_DIM && ni <= GELS_MAX_DIM, 1, "aclsolverSSgels: m / n 超过当前 kernel 上限 4096。");
-
     WsLayout ws;
-    const aclsolverStatus_t stWs = PlanWorkspace(handle, mi, ni, ri, lda, ldb, &ws);
-    SOLVER_ECHECK(stWs == ACLSOLVER_STATUS_SUCCESS, "aclsolverSSgels: 推导 workspace 失败。", stWs);
+    // 任务书范围校验（issue #520）与 workspace 推导合并入口，见 CheckTaskRangeAndPlanWorkspace
+    const aclsolverStatus_t stWs = CheckTaskRangeAndPlanWorkspace(dinfo, handle, mi, ni, ri, lda, ldb, &ws);
+    SOLVER_ECHECK(stWs == ACLSOLVER_STATUS_SUCCESS, "aclsolverSSgels: 任务范围/workspace 推导失败。", stWs);
 
     // workspace 尺寸/空指针与设备指针归属、范围校验（issue #495，见上方 CheckDeviceSpans 说明）
     SOLVER_ECHECK(CheckDeviceSpans(dinfo, ni, ri, lda, ldb, ldx, dA, dB, dX, dWorkspace, lwork_bytes, ws.total) ==
