@@ -22,13 +22,11 @@
 #include <complex>
 #include <cstdint>
 #include <cstdio>
-#include <complex>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <complex>
 
 #include "acl/acl.h"
 #include "cann_ops_solver_common.h"
