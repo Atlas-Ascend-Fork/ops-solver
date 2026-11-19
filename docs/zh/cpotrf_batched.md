@@ -39,9 +39,9 @@ aclsolverStatus_t aclsolverCpotrfBatched(aclsolverHandle_t handle, aclsolverFill
 
 ## 约束与状态
 
-矩阵采用列主序。LOWER 使用 L，UPPER 使用 U；未选择的三角不参与数学计算。只对所选三角承诺计算结果，lda/ldb 填充区保持不变。
+矩阵采用列主序。LOWER 使用 L，UPPER 使用 U；未选择的三角不参与数学计算。只对所选三角承诺计算结果，lda 填充区保持不变。
 
-计算在调用方 stream 上异步执行；查询接口不启动设备任务。调用方应等待 stream 完成后读取输出，并先销毁 handle，再销毁 stream。
+计算在调用方 stream 上异步执行。调用方应等待 stream 完成后读取输出，并先销毁 handle，再销毁 stream。
 
 同一 handle 不支持跨 Host 线程并发使用；调用方须串行化查询、SetStream、计算和 Destroy。
 Destroy 不能与任何其他线程访问同一 handle 重叠。不同 handle 可独立使用。
@@ -58,7 +58,7 @@ Destroy 不能与任何其他线程访问同一 handle 重叠。不同 handle �
 
 ## 调用说明
 
-原生入口：[test/cpotrf_batched/cpotrf_batched_test.cpp](../../test/cpotrf_batched/cpotrf_batched_test.cpp)。公开 C API 的完整调用流程由[共享 runner](../../test/utils/cholesky/fixture_runner.cpp) 中的 `InvokeFixture()` 和 `RunCase()` 实现，包含 workspace 查询、stream 等待及输出读取。
+原生入口：[test/cpotrf_batched/cpotrf_batched_test.cpp](../../test/cpotrf_batched/cpotrf_batched_test.cpp)。公开 C API 的调用流程由[共享 runner](../../test/utils/cholesky/fixture_runner.cpp) 中的 `InvokeFixture()` 和 `RunCase()` 实现，直接提交批量调用、等待 stream 完成并读取输出；本接口没有公开 workspace 查询 API。
 
 ```bash
 bash build.sh --soc=ascend950 --ops=cpotrf_batched --run
