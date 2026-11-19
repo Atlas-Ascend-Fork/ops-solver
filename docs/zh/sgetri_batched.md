@@ -114,7 +114,7 @@
 - 算子约束：
 
   - 每个输入矩阵须为已分解LU，PivotArray须与分解结果对应；nullptr表示不选主元的LU。
-  - 输入、输出矩阵均使用Device列主序，支持合法lda、ldc padding；各输出矩阵彼此独立，并与所有输入、主元和INFO分开分配。
+  - 输入、输出矩阵均使用Device列主序，支持合法lda、ldc padding；各输出矩阵彼此不重叠，并与输入矩阵、主元、INFO及两组Device指针数组的有效访问范围不重叠。不同缓冲区可以位于同一Device分配的不同区域；输入矩阵之间允许只读区域重叠。
   - 指针数组本身和所指向的矩阵均在Device；输入矩阵可位于独立分配中。
   - batchSize=0成功返回；n=0且batchSize>0时向全部INFO槽位写0。
   - 工作区由handle内部管理，计算接口没有调用方workspace参数。
