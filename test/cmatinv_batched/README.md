@@ -139,3 +139,11 @@ Solver CmatinvBatched算子实现。
   ```bash
   [Success] Case accuracy verification passed.
   ```
+
+直接运行前需重新生成数据（参数与测试一致）：
+
+```bash
+python3 test/cmatinv_batched/data/gen_data.py 3 2   # 参数：n、batchSize
+./build/test/cmatinv_batched/cmatinv_batched_test 0 3 2
+python3 test/cmatinv_batched/data/verify_result.py 3 2
+```

@@ -139,3 +139,11 @@ Solver CgetriBatched算子实现。
   ```bash
   [Success] Case accuracy verification passed.
   ```
+
+直接运行前需重新生成数据（参数与测试一致）：
+
+```bash
+python3 test/cgetri_batched/data/gen_data.py 48 2   # 参数：n、batchSize
+./build/test/cgetri_batched/cgetri_batched_test 0 48 2
+python3 test/cgetri_batched/data/verify_result.py 48 2
+```
