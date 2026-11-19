@@ -212,6 +212,11 @@
         // 构造输入数据（列主序）
         int m = 8, n = 4, nrhs = 1;
         int ldda = m, lddb = m, lddx = n;
+        std::vector<float> hA(static_cast<size_t>(ldda) * n, 0.0f);
+        std::vector<float> hB(static_cast<size_t>(lddb) * nrhs, 1.0f);
+        for (int i = 0; i < n; ++i) {
+            hA[static_cast<size_t>(i) * ldda + i] = 1.0f;
+        }
         size_t lworkBytes = 0;
         aclsolverSSgels_bufferSize(handle, m, n, nrhs, nullptr, ldda, nullptr, lddb, nullptr, lddx, nullptr,
                                    &lworkBytes);
@@ -222,6 +227,12 @@
         aclrtMalloc(&dX, static_cast<size_t>(lddx) * nrhs * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST);
         aclrtMalloc(&dWork, lworkBytes, ACL_MEM_MALLOC_HUGE_FIRST);
         aclrtMalloc(&dInfo, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(aclrtMemcpy(dA, hA.size() * sizeof(float), hA.data(), hA.size() * sizeof(float),
+                              ACL_MEMCPY_HOST_TO_DEVICE) == ACL_SUCCESS,
+                  LOG_PRINT("Copy dA failed.\n"); return -1);
+        CHECK_RET(aclrtMemcpy(dB, hB.size() * sizeof(float), hB.data(), hB.size() * sizeof(float),
+                              ACL_MEMCPY_HOST_TO_DEVICE) == ACL_SUCCESS,
+                  LOG_PRINT("Copy dB failed.\n"); return -1);
 
         // 调用 aclsolverSSgels
         int niter = 0;
@@ -229,7 +240,12 @@
                                    reinterpret_cast<float *>(dB), lddb, reinterpret_cast<float *>(dX), lddx,
                                    dWork, lworkBytes, &niter, reinterpret_cast<int *>(dInfo));
         CHECK_RET(ret == ACLSOLVER_STATUS_SUCCESS, LOG_PRINT("aclsolverSSgels failed. ERROR: %d\n", ret); return ret);
-        aclrtSynchronizeStream(stream);
+        CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS,
+                  LOG_PRINT("Stream synchronization failed.\n"); return -1);
+        int32_t info = -1;
+        CHECK_RET(aclrtMemcpy(&info, sizeof(info), dInfo, sizeof(info), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
+                  LOG_PRINT("Copy dinfo failed.\n"); return -1);
+        CHECK_RET(info == 0, LOG_PRINT("aclsolverSSgels dinfo=%d\n", info); return -1);
 
         aclrtFree(dA); aclrtFree(dB); aclrtFree(dX); aclrtFree(dWork); aclrtFree(dInfo);
 
