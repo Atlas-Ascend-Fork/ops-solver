@@ -25,7 +25,7 @@ C++ 调用按完整原型选择对应重载，不根据设备隐式转换参数�
 
 ### 功能说明
 
-`aclsolverSpotrf` 对单精度实数对称正定矩阵进行 Cholesky 分解：
+`aclsolverSpotrf` 对单精度实数对称正定矩阵进行 Cholesky 分解（复数版见 [Cpotrf](cpotrf.md)）：
 
 $$
 A=L L^T\quad(\mathrm{LOWER}),\qquad A=U^T U\quad(\mathrm{UPPER}).

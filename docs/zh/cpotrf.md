@@ -35,7 +35,7 @@
 ### 功能说明
 
 - 接口功能\
-  `aclsolverCpotrf`：对 Hermitian 正定复数矩阵进行 Cholesky 分解。
+  `aclsolverCpotrf`：对 Hermitian 正定复数矩阵进行 Cholesky 分解（实数版见 [Spotrf](spotrf.md)）。
 
 - 计算公式
 
