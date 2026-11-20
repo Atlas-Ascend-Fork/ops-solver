@@ -12,6 +12,10 @@
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
 
 
+## 上下游接口
+
+输入因子来自 [Sgetrf LU 分解](sgetrf.md)——须先从 Device 复制到 Host 并重排为行主序（A[r*lda+c] = A_sgetrf[c*lda+r]）；求逆见 [Sgetri](sgetri.md)（Device 列主序直接复用）。
+
 ## 功能说明
 
 - 接口功能\

@@ -19,6 +19,11 @@
 
 同架构的<term>Ascend 950DT</term>复用同一份 arch35 代码（与 sgels/sgeqrf 等实数算子同机制）；表中"待验证"仅指缺少该平台的实测回归记录，非代码未适配。
 
+## 上下游接口
+
+- [Sgetri 求逆](sgetri.md)：Device 列主序 packed LU 可直接复用（同为 Device 内存契约）；
+- [Sgetrs 求解](sgetrs.md)：须先将 packed LU 与主元从 Device 复制到 Host，再按逻辑坐标重排为行主序（A_sgetrs[r*lda+c] = A_sgetrf[c*lda+r]，见 Sgetrs 约束），不能直接传入 Device 列主序缓冲区。
+
 ## 功能说明
 
 - 接口功能\

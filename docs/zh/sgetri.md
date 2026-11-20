@@ -19,6 +19,10 @@
 
 同架构的<term>Ascend 950DT</term>复用同一份 arch35 代码（与 sgels/sgeqrf 等实数算子同机制）；表中"待验证"仅指缺少该平台的实测回归记录，非代码未适配。
 
+## 上下游接口
+
+输入因子来自 [Sgetrf LU 分解](sgetrf.md)（Device 列主序 packed LU 直接复用）；基于因子求解见 [Sgetrs](sgetrs.md)（Host 行主序契约，须复制重排）。
+
 ## 功能说明
 
 - 接口功能\
