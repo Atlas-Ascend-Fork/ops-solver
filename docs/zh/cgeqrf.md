@@ -218,7 +218,7 @@ aclsolverStatus_t aclsolverCgeqrf(
 ## 约束与状态
 
 - 数据类型为两个连续 FLOAT32 的 `aclsolverFloatComplex {real, imag}`；不支持广播或行主序。
-- 任务保证范围为 `m,n` 从 1 到 4096 的合法组合，另外处理空问题；更大维数不作为本任务验收保证。
+- 任务保证范围为 `m,n` 从 1 到 4096 的合法组合，另外处理空问题；更大维数不作为本任务验收保证，当前实现不显式拦截——超限形状按实际 kernel 能力执行（可能成功或因内部资源限制失败），不做确定性拒绝承诺。
 - `m=0` 或 `n=0` 时成功写入 info=0，允许 A、TAU 为空；lda 仍须合法，devInfo 必须可写。
 - 非空问题的输入必须为有限复数。非有限输入、非法参数或不足的工作区返回
   `ACLSOLVER_STATUS_INVALID_VALUE`，并在 info 可写时写入对应负编号。
