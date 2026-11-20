@@ -4,6 +4,11 @@
 
 本实现支持 Ascend950 系列，已在 Ascend950PR 验证。其他架构返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`。
 
+## 上下游接口
+
+- [Cgetri 求逆](cgetri.md)：同为 Ascend 950 接口，Device 列主序 packed LU 可直接复用；
+- [Cgetrs 求解](cgetrs.md)：**平台互斥提示**——Cgetrs 仅支持 Atlas A2/A3（本接口为 950 专属），两者无法在同一平台串联；且 Cgetrs 为 Host 行主序契约（本接口为 Device 列主序），跨平台使用时须复制重排。
+
 ## 功能说明
 
 对 `m × n` 复数矩阵执行原地 LU 分解。输出将 L 的严格下三角和 U 合并存储，L 的对角线隐含为 1。

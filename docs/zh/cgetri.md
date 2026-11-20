@@ -4,6 +4,10 @@
 
 本实现支持 Ascend950 系列，已在 Ascend950PR 验证。其他架构返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`。
 
+## 上下游接口
+
+输入因子来自 [Cgetrf LU 分解](cgetrf.md)（同为 950 接口，Device 列主序 packed LU 直接复用）；基于因子求解见 [Cgetrs](cgetrs.md)（仅 A2/A3、Host 行主序契约——平台互斥，无法与本接口直接串联）。
+
 ## 功能说明
 
 输入已完成 LU 分解的 `n × n` 复数矩阵及其主元，原地输出原矩阵的逆。

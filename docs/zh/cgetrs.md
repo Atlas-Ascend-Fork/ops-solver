@@ -12,6 +12,10 @@
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
 
 
+## 上下游接口
+
+本接口的 packed LU 因子须由 Host 侧提供（行主序）。**平台提示**：[Cgetrf LU 分解](cgetrf.md)为 Ascend 950 专属接口（本接口仅支持 Atlas A2/A3），跨平台使用时须将 Cgetrf 的 Device 列主序输出复制到 Host 并重排为行主序；求逆见 [Cgetri](cgetri.md)（950 Device 契约）。
+
 ## 功能说明
 
 - 接口功能\
