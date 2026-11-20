@@ -130,7 +130,7 @@
     <tr>
         <td align="center">ldv</td>
         <td align="center">输入</td>
-        <td align="left">V 的 leading dimension，需满足 ldv >= max(1, n)</td>
+        <td align="left">V 的 leading dimension，需满足 ldv >= max(1, n) 且 ldv <= INT32_MAX（超限返回 INVALID_VALUE，防 int32 截断回绕）</td>
     </tr>
     <tr>
         <td align="center">tau</td>
@@ -145,7 +145,7 @@
     <tr>
         <td align="center">ldt</td>
         <td align="center">输入</td>
-        <td align="left">T 的 leading dimension，需满足 ldt >= max(1, k)</td>
+        <td align="left">T 的 leading dimension，需满足 ldt >= max(1, k) 且 ldt <= INT32_MAX（超限返回 INVALID_VALUE，防 int32 截断回绕）</td>
     </tr>
     <tr>
         <td align="center">bufferOnDevice</td>
@@ -181,7 +181,7 @@
 |---|---|
 | `ACLSOLVER_STATUS_SUCCESS` | 查询返回 workspace 尺寸或 T 生成已提交 |
 | `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | 仅主入口：handle 为 nullptr |
-| `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（params 非空、direct/storev 取值非法、n<0/k<0/n<k、ldv/ldt 不足、四 dataType 非 FLOAT32；主入口另有 bufferOnDevice 为空或 workspace 不足） |
+| `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（params 非空、direct/storev 取值非法、n<0/k<0/n<k、ldv/ldt 不足或超 INT32_MAX、四 dataType 非 FLOAT32；主入口另有 bufferOnDevice 为空或 workspace 不足） |
 | `ACLSOLVER_STATUS_NOT_SUPPORTED` | n > 4096 或 k > 256（两入口同口径，在尺寸推导前早退） |
 | `ACLSOLVER_STATUS_INTERNAL_ERROR` | 仅主入口：平台信息获取失败、AIC 核数为 0 或不足以放下 T 的行 |
 | `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误 |
