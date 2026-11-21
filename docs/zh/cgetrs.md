@@ -122,12 +122,12 @@
     <tr>
         <td align="center">A</td>
         <td align="center">输入</td>
-        <td align="left">输入为经过LU分解后的矩阵A，位于Host内存（接口内部完成上/下板搬运）。<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, n]</td>
+        <td align="left">输入为按行主序存储的packed LU因子，逻辑元素A(r, c)位于A[r * lda + c]，位于Host内存（接口内部完成上/下板搬运）。<br>数据类型仅支持COMPLEX64，数据格式支持ND，shape为[n, n]</td>
     </tr>
     <tr>
         <td align="center">lda</td>
         <td align="center">输入</td>
-        <td align="left">A上下相邻元素间的内存地址偏移量</td>
+        <td align="left">A相邻逻辑行首元素间的偏移量，以COMPLEX64元素计；lda >= n</td>
     </tr>
     <tr>
         <td align="center">ipiv</td>
