@@ -328,7 +328,7 @@ do_uninstall() {
     remove_uninstall_paths "solver headers" -f "${real_include}"/cann_ops_solver*.h
   fi
   if [ -d "${target_info}" ]; then
-    rm -rf "${target_info}"
+    remove_uninstall_paths "solver metadata" -rf "${target_info}"
   fi
 
   restore_permissions
