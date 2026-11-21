@@ -12,10 +12,17 @@ from __future__ import annotations
 import itertools
 import json
 import logging
+import sys
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 import numpy as np
 from scipy.linalg import lapack
+
+_UTILS_DIR = str(Path(__file__).resolve().parent.parent)
+if _UTILS_DIR not in sys.path:
+    sys.path.insert(0, _UTILS_DIR)
+from verify_utils import read_binary_strict  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -533,20 +540,20 @@ def read_case(root, op, spec):
         spec.ldb,
     )
     solve = unbatch_op(op) == "cpotrs"
-    a_input = np.fromfile(root / "input" / f"{index}-A.bin", np.complex64).reshape(
-        batch, n, lda
-    )
-    a_output = np.fromfile(root / "output" / f"{index}-A.bin", np.complex64).reshape(
-        batch, n, lda
-    )
-    b_input = np.fromfile(root / "input" / f"{index}-B.bin", np.complex64).reshape(
-        batch, nrhs, ldb
-    )
-    b_output = np.fromfile(root / "output" / f"{index}-B.bin", np.complex64).reshape(
-        batch, nrhs, ldb
-    )
-    info = np.fromfile(root / "output" / f"{index}-info.bin", np.int32)
-    expected_info = np.fromfile(root / "input" / f"{index}-info.bin", np.int32)
+    a_input = read_binary_strict(
+        root / "input" / f"{index}-A.bin", np.complex64
+    ).reshape(batch, n, lda)
+    a_output = read_binary_strict(
+        root / "output" / f"{index}-A.bin", np.complex64
+    ).reshape(batch, n, lda)
+    b_input = read_binary_strict(
+        root / "input" / f"{index}-B.bin", np.complex64
+    ).reshape(batch, nrhs, ldb)
+    b_output = read_binary_strict(
+        root / "output" / f"{index}-B.bin", np.complex64
+    ).reshape(batch, nrhs, ldb)
+    info = read_binary_strict(root / "output" / f"{index}-info.bin", np.int32)
+    expected_info = read_binary_strict(root / "input" / f"{index}-info.bin", np.int32)
     if not (
         info.size == (batch if op == "cpotrfBatched" else 1)
         and np.array_equal(info, expected_info)
@@ -572,8 +579,8 @@ def verify_invalid_case(root, spec):
             root / "output" / filename
         ).read_bytes():
             raise RuntimeError(f"invalid-argument operand changed: {index}/{operand}")
-    info = np.fromfile(root / "output" / f"{index}-info.bin", np.int32)
-    expected = np.fromfile(root / "input" / f"{index}-info.bin", np.int32)
+    info = read_binary_strict(root / "output" / f"{index}-info.bin", np.int32)
+    expected = read_binary_strict(root / "input" / f"{index}-info.bin", np.int32)
     if not np.array_equal(info, expected):
         raise RuntimeError(f"invalid-argument info: {index}")
     logging.info(
