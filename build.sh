@@ -286,7 +286,11 @@ if [ "${RUN_TEST}" == "ON" ]; then
         fi
 
         echo "step 1: generate test data..."
-        python3 "${GEN_SCRIPT}"
+        if ! python3 "${GEN_SCRIPT}"; then
+            echo "[FAIL] ${op}_test (test data generation failed)"
+            FAILED_OPS+=("${op}")
+            continue
+        fi
 
         echo -e "\nstep 2: run ${op}_test..."
         # 临时禁用 errexit 以捕获测试退出码
@@ -297,7 +301,7 @@ if [ "${RUN_TEST}" == "ON" ]; then
         set -e
 
         echo -e "\nstep 3: verify result..."
-        if python3 "${VERIFY_SCRIPT}" && [ $exit_code -eq 0 ]; then
+        if [ "$exit_code" -eq 0 ] && python3 "${VERIFY_SCRIPT}"; then
             echo "[PASS] ${op}_test"
             PASSED_OPS+=("${op}")
         else
