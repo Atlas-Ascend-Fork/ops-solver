@@ -43,7 +43,7 @@ aclsolverStatus_t aclsolverCpotri(aclsolverHandle_t handle, aclsolverFillMode_t 
 
 ## 约束与状态
 
-矩阵采用列主序。LOWER 使用 L，UPPER 使用 U；未选择的三角不参与数学计算。只对所选三角承诺计算结果，lda/ldb 填充区保持不变。
+矩阵采用列主序。LOWER 使用 L，UPPER 使用 U；未选择的三角不参与数学计算。只对所选三角承诺计算结果，lda 填充区保持不变。
 
 计算在调用方 stream 上异步执行；查询接口不启动设备任务。调用方应等待 stream 完成后读取输出，并先销毁 handle，再销毁 stream。
 
@@ -51,7 +51,7 @@ aclsolverStatus_t aclsolverCpotri(aclsolverHandle_t handle, aclsolverFillMode_t 
 
 先检查 host 返回状态；SUCCESS 且 stream 成功完成后，info=0 表示成功；非法参数且 handle、stream、info 有效时，负值为错误参数的一基位置，不计 handle。分解时正值为最早失败主子式索引；求逆时正值为首个非法对角元素的一基索引（实部非正、虚部非零，或实部/虚部非有限）；求解仅报告参数错误。
 
-空规模允许无需读取的矩阵地址为空，但仍要求 lda/ldb 至少为 1，以及可写 info。
+空规模允许无需读取的矩阵地址为空，但仍要求 lda 至少为 1，以及可写 info。
 
 先调用对应 bufferSize 查询，再分配 Lwork×sizeof(aclsolverFloatComplex) 字节；查询的 Lwork 为主机输出指针，计算的 Workspace 为设备地址。
 
