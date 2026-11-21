@@ -90,7 +90,7 @@
     <tr>
         <td align="center">nrhs</td>
         <td align="center">输入</td>
-        <td align="left">右端项个数，需满足 nrhs >= 0 且 nrhs <= 128；nrhs 超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE（主入口写 dinfo = -3）</td>
+        <td align="left">右端项个数，需满足 nrhs >= 0；当 m、n、nrhs 均非零时还需满足 nrhs <= 128，超限时两个入口均返回 ACLSOLVER_STATUS_INVALID_VALUE（主入口写 dinfo = -3）</td>
     </tr>
     <tr>
         <td align="center">dA</td>
@@ -153,6 +153,7 @@
   - **元素量级窗口**：内部 QR 与 aclsolverSgeqrf 同一约束，要求 `5e-20 < max|dA| < 1.8e19`。
   - 仅支持超定/方阵情形 <strong>m >= n</strong>；m < n 返回参数错误。
   - m、n、nrhs 任一为 0 时 lwork_bytes = 0，主入口写 dinfo = 0 后返回成功。
+  - 128 的 nrhs 上限仅对 m、n、nrhs 均非零的非空问题生效；合法空问题在两个入口中先于该上限检查处理。
   - <strong>dX 与 dB、dA 均不得同址</strong>（会返回 -8）；dB 是只读输入，内部先整块拷入 workspace；dX 与 dA 同址会覆盖 QR 因子。
   - 内部按 aclsolverSgeqrf -> aclsolverSormqr(LEFT, OP_T) -> 上三角回代三步实现，前两步直接调用本仓公开接口。
   - 多个接口串联调用时<strong>不要共用同一块 workspace</strong>：它们在同一条流上重叠执行，后者会冲掉前者的中间结果。

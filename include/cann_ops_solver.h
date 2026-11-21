@@ -799,7 +799,8 @@ extern "C"
      * @param m Number of rows of A; must satisfy m >= n >= 0, with m, n <= 4096
      *          (GELS_MAX_DIM; both entries enforce it, exceeding returns INVALID_VALUE).
      * @param n Number of columns of A; must be non-negative, n <= 4096.
-     * @param nrhs Number of right-hand sides; must be non-negative.
+     * @param nrhs Number of right-hand sides; must be non-negative, and at most 128
+     *             for non-empty problems (m, n and nrhs all non-zero).
      * @param dA Coefficient matrix. Not read by this query.
      * @param ldda Leading dimension of dA; must be at least max(1, m).
      * @param dB Right-hand side matrix. Not read by this query.
@@ -834,7 +835,8 @@ extern "C"
      *               stream bound to the handle.
      * @param m Number of rows of A; must satisfy m >= n >= 0 and m <= 4096.
      * @param n Number of columns of A; must be non-negative and at most 4096.
-     * @param nrhs Number of right-hand sides; must be non-negative.
+     * @param nrhs Number of right-hand sides; must be non-negative, and at most 128
+     *             for non-empty problems (m, n and nrhs all non-zero).
      * @param dA Input/output matrix in column-major storage; its contents are destroyed.
      *           The internal QR step carries the same magnitude window as aclsolverSgeqrf:
      *           5e-20 < max|dA| < 1.8e19.
