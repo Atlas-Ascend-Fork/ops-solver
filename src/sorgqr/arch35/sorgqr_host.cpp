@@ -212,14 +212,16 @@ aclsolverStatus_t aclsolverSorgqr(aclsolverHandle_t handle, int m, int n, int k,
     ORGQR_PARAM_CHECK(A != nullptr, 4, "aclsolverSorgqr invalid param 4: A is nullptr.");
     ORGQR_PARAM_CHECK(ki == 0 || tau != nullptr, 6, "aclsolverSorgqr invalid param 6: tau is nullptr while k > 0.");
 
-    const WsLayout ws = PlanWorkspace(mi, ni, ki);
-
+    // m 超 kernel 上限（UB 单列整列驻留容量）的形状在 PlanWorkspace 之前就早退（与 bufferSize
+    // 同口径，issue #555）：PlanWorkspace 的 ldy 推导以 m 为上界，极端形状下 int32 回绕产生垃圾布局。
     if (mi > ORGQR_MAX_ROWS)
     {
         (void)WriteInfoSync(devInfo, -1);
         SOLVER_ECHECK(false, "aclsolverSorgqr: m 超过当前 kernel 支持的行数上限 ORGQR_MAX_ROWS。",
                       ACLSOLVER_STATUS_NOT_SUPPORTED);
     }
+
+    const WsLayout ws = PlanWorkspace(mi, ni, ki);
 
     // workspace 尺寸/空指针与设备指针归属、范围校验（issue #495，见上方 CheckDeviceSpans 说明）
     SOLVER_ECHECK(CheckDeviceSpans(devInfo, ki, ldai, ni, A, tau, work, lwork, ws.total) == ACLSOLVER_STATUS_SUCCESS,

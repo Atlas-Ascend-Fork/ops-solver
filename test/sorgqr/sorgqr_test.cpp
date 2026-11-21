@@ -25,9 +25,10 @@
 
 // acl/acl.h、cann_ops_solver.h 以及 algorithm / chrono / random / string / vector
 // 这批都由 qr_test_utils.h 统一提供，这里只列本文件额外要的。
-#include "../utils/qr_test_utils.h"
 #include <cmath>
+
 #include "../../src/sgeqrf/kernel/householder.hpp"
+#include "../utils/qr_test_utils.h"
 
 namespace
 {
@@ -88,8 +89,7 @@ bool AllocFor(Buffers &buf, size_t aElems, int k, int lwork)
 
 /// 连跑两次 Sorgqr，两次的输出都带回来用于比 bit-wise。失败时已打印原因。
 bool OrgqrRunTwice(aclsolverHandle_t handle, aclrtStream stream, int m, int n, int k, int lda, int lwork,
-                   const std::vector<float> &fac, const std::vector<float> &tau, std::vector<float> *out,
-                   int32_t *info)
+                   const std::vector<float> &fac, const std::vector<float> &tau, std::vector<float> *out, int32_t *info)
 {
     Buffers buf;
     if (!AllocFor(buf, fac.size(), k, lwork))
@@ -107,10 +107,9 @@ bool OrgqrRunTwice(aclsolverHandle_t handle, aclrtStream stream, int m, int n, i
     {
         TEST_CHECK(aclrtMemcpy(buf.A, fac.size() * sizeof(float), fac.data(), fac.size() * sizeof(float),
                                ACL_MEMCPY_HOST_TO_DEVICE));
-        const aclsolverStatus_t st =
-            aclsolverSorgqr(handle, m, n, k, reinterpret_cast<float *>(buf.A), lda,
-                            reinterpret_cast<const float *>(buf.tau), reinterpret_cast<float *>(buf.ws), lwork,
-                            reinterpret_cast<int *>(buf.info));
+        const aclsolverStatus_t st = aclsolverSorgqr(
+            handle, m, n, k, reinterpret_cast<float *>(buf.A), lda, reinterpret_cast<const float *>(buf.tau),
+            reinterpret_cast<float *>(buf.ws), lwork, reinterpret_cast<int *>(buf.info));
         if (st != ACLSOLVER_STATUS_SUCCESS)
         {
             printf("  m=%-5d n=%-5d k=%-5d  aclsolverSorgqr 返回 %d\n", m, n, k, static_cast<int>(st));
@@ -119,8 +118,8 @@ bool OrgqrRunTwice(aclsolverHandle_t handle, aclrtStream stream, int m, int n, i
         }
         TEST_CHECK(aclrtSynchronizeStream(stream));
         out[rep].assign(fac.size(), 0.0f);
-        TEST_CHECK(aclrtMemcpy(out[rep].data(), out[rep].size() * sizeof(float), buf.A,
-                               out[rep].size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST));
+        TEST_CHECK(aclrtMemcpy(out[rep].data(), out[rep].size() * sizeof(float), buf.A, out[rep].size() * sizeof(float),
+                               ACL_MEMCPY_DEVICE_TO_HOST));
         TEST_CHECK(aclrtMemcpy(info, sizeof(*info), buf.info, sizeof(*info), ACL_MEMCPY_DEVICE_TO_HOST));
     }
     buf.Free();
@@ -159,8 +158,8 @@ bool OrgqrVerify(int m, int n, int k, int lda, int maxCols, const std::vector<fl
     const bool ok = (info == 0) && nanFree && deterministic && (ratio <= thresh);
     if (verbose || !ok)
     {
-        printf("  m=%-5d n=%-5d k=%-5d lda=%-5d info=%d det=%d ratio=%.4f ratio_cpu=%.4f th=%.4f %s %s\n", m, n, k,
-               lda, info, deterministic ? 1 : 0, ratio, ratioCpu, thresh, exact ? "精确" : "抽样下界",
+        printf("  m=%-5d n=%-5d k=%-5d lda=%-5d info=%d det=%d ratio=%.4f ratio_cpu=%.4f th=%.4f %s %s\n", m, n, k, lda,
+               info, deterministic ? 1 : 0, ratio, ratioCpu, thresh, exact ? "精确" : "抽样下界",
                ok ? "PASS" : "**FAIL**");
         fflush(stdout);
     }
@@ -206,8 +205,8 @@ void CheckArgPositions(aclsolverHandle_t handle, aclrtStream stream, const Buffe
     int *INFO = reinterpret_cast<int *>(buf.info);
     const auto bad = ACLSOLVER_STATUS_INVALID_VALUE;
     // 这两条接口还没走到写 devInfo 那步，只看返回码
-    ExpectStatus("devInfo=nullptr", aclsolverSorgqr(handle, kBpM, kBpN, kBpK, A, kBpLda, tau, WS, lwork, nullptr),
-                 bad, ok);
+    ExpectStatus("devInfo=nullptr", aclsolverSorgqr(handle, kBpM, kBpN, kBpK, A, kBpLda, tau, WS, lwork, nullptr), bad,
+                 ok);
     ExpectStatus("handle=nullptr", aclsolverSorgqr(nullptr, kBpM, kBpN, kBpK, A, kBpLda, tau, WS, lwork, INFO),
                  ACLSOLVER_STATUS_HANDLE_IS_NULLPTR, ok);
     ExpectInfo(stream, buf.info, "m<0 -> info=-1",
@@ -226,9 +225,14 @@ void CheckArgPositions(aclsolverHandle_t handle, aclrtStream stream, const Buffe
                aclsolverSorgqr(handle, kBpM, kBpN, kBpK, A, kBpLda, tau, nullptr, lwork, INFO), bad, -7, ok);
     ExpectInfo(stream, buf.info, "lwork 太小 -> info=-8",
                aclsolverSorgqr(handle, kBpM, kBpN, kBpK, A, kBpLda, tau, WS, lwork - 1, INFO), bad, -8, ok);
+    // issue #555：m 超 kernel 上限的形状须按 NOT_SUPPORTED 拒绝（info=-1），
+    // 且在 PlanWorkspace 之前早退（与 bufferSize 同口径，sgeqrf issue #386 同款）。
+    ExpectInfo(stream, buf.info, "m 超上限 (INT32_MAX) -> info=-1",
+               aclsolverSorgqr(handle, 2147483647, 1, 0, A, 2147483647, nullptr, WS, lwork, INFO),
+               ACLSOLVER_STATUS_NOT_SUPPORTED, -1, ok);
     ExpectInfo(stream, buf.info, "lda>m 合法",
-               aclsolverSorgqr(handle, kBpM, kBpN, kBpK, A, kBpLda + 7, tau, WS, lwork, INFO),
-               ACLSOLVER_STATUS_SUCCESS, 0, ok);
+               aclsolverSorgqr(handle, kBpM, kBpN, kBpK, A, kBpLda + 7, tau, WS, lwork, INFO), ACLSOLVER_STATUS_SUCCESS,
+               0, ok);
 }
 
 /// 查询接口自己的参数校验
@@ -237,22 +241,26 @@ void CheckBufferSizeArgs(aclsolverHandle_t handle, bool *ok)
     const auto bad = ACLSOLVER_STATUS_INVALID_VALUE;
     int lw = -1;
     ExpectStatus("bufferSize lwork=nullptr",
-                     aclsolverSorgqr_bufferSize(handle, kBpM, kBpN, kBpK, nullptr, kBpLda, nullptr, nullptr), bad,
-                     ok);
+                 aclsolverSorgqr_bufferSize(handle, kBpM, kBpN, kBpK, nullptr, kBpLda, nullptr, nullptr), bad, ok);
     ExpectStatus("bufferSize lda<m",
-                     aclsolverSorgqr_bufferSize(handle, kBpM, kBpN, kBpK, nullptr, kBpM - 1, nullptr, &lw), bad, ok);
+                 aclsolverSorgqr_bufferSize(handle, kBpM, kBpN, kBpK, nullptr, kBpM - 1, nullptr, &lw), bad, ok);
     // m=0 时 n 必须也是 0：LAPACK 的判据是 N<0 || N>M，所以 m=0,n=8 是 info=-2，
     // 不能当成"空问题"放过去。
-    ExpectStatus("bufferSize m=0,n=8 (n>m)",
-                     aclsolverSorgqr_bufferSize(handle, 0, 8, 0, nullptr, 1, nullptr, &lw), bad, ok);
+    ExpectStatus("bufferSize m=0,n=8 (n>m)", aclsolverSorgqr_bufferSize(handle, 0, 8, 0, nullptr, 1, nullptr, &lw), bad,
+                 ok);
+    // issue #555：极端大 m（接近 INT32_MAX）的 bufferSize 查询不得返回 SUCCESS 加垃圾值，
+    // 须与执行入口同口径返回 NOT_SUPPORTED。
+    ExpectStatus("bufferSize m 超上限 (INT32_MAX)",
+                 aclsolverSorgqr_bufferSize(handle, 2147483647, 1, 0, nullptr, 2147483647, nullptr, &lw),
+                 ACLSOLVER_STATUS_NOT_SUPPORTED, ok);
 }
 
 /// 参数校验：须返回 INVALID_VALUE，且 devInfo 写入 -i（i 不计 handle）
 bool RunBadParams(aclsolverHandle_t handle, aclrtStream stream)
 {
     int lwork = 0;
-    if (aclsolverSorgqr_bufferSize(handle, kBpM, kBpN, kBpK, nullptr, kBpLda, nullptr, &lwork)
-        != ACLSOLVER_STATUS_SUCCESS)
+    if (aclsolverSorgqr_bufferSize(handle, kBpM, kBpN, kBpK, nullptr, kBpLda, nullptr, &lwork) !=
+        ACLSOLVER_STATUS_SUCCESS)
     {
         return false;
     }
@@ -309,11 +317,11 @@ bool RunKZero(aclsolverHandle_t handle, aclrtStream stream, int m, int n)
         buf.Free();
         return false;
     }
-    TEST_CHECK(aclrtMemcpy(buf.A, Ah.size() * sizeof(float), Ah.data(), Ah.size() * sizeof(float),
-                           ACL_MEMCPY_HOST_TO_DEVICE));
-    const aclsolverStatus_t st = aclsolverSorgqr(handle, m, n, 0, reinterpret_cast<float *>(buf.A), m, nullptr,
-                                                 reinterpret_cast<float *>(buf.ws), lwork,
-                                                 reinterpret_cast<int *>(buf.info));
+    TEST_CHECK(
+        aclrtMemcpy(buf.A, Ah.size() * sizeof(float), Ah.data(), Ah.size() * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
+    const aclsolverStatus_t st =
+        aclsolverSorgqr(handle, m, n, 0, reinterpret_cast<float *>(buf.A), m, nullptr,
+                        reinterpret_cast<float *>(buf.ws), lwork, reinterpret_cast<int *>(buf.info));
     bool ok = (st == ACLSOLVER_STATUS_SUCCESS);
     if (ok)
     {
@@ -342,13 +350,16 @@ bool RunKZero(aclsolverHandle_t handle, aclrtStream stream, int m, int n)
 int RunSweep(aclsolverHandle_t handle, aclrtStream stream, const char *path, int maxCols, int ldaExtra)
 {
     int pass = 0, total = 0;
-    const bool loaded = ForEachCaseRow(path, 4, [&](const std::vector<double> &row, int idx) {
-        const int m = RowInt(row, 0, 0);
-        const int n = RowInt(row, 1, 0);
-        const int k = RowInt(row, 2, 0);
-        const int lda0 = RowInt(row, 3, 0);
-        Tally(RunShape(handle, stream, m, n, k, std::max(lda0, m) + ldaExtra, idx, maxCols, true), &pass, &total);
-    });
+    const bool loaded = ForEachCaseRow(
+        path, 4,
+        [&](const std::vector<double> &row, int idx)
+        {
+            const int m = RowInt(row, 0, 0);
+            const int n = RowInt(row, 1, 0);
+            const int k = RowInt(row, 2, 0);
+            const int lda0 = RowInt(row, 3, 0);
+            Tally(RunShape(handle, stream, m, n, k, std::max(lda0, m) + ldaExtra, idx, maxCols, true), &pass, &total);
+        });
     if (!loaded)
     {
         return 1;
@@ -375,12 +386,14 @@ bool OrgqrTimeOne(aclsolverHandle_t handle, aclrtStream stream, int m, int n, in
         (void)aclrtMemcpy(buf.tau, tau.size() * sizeof(float), tau.data(), tau.size() * sizeof(float),
                           ACL_MEMCPY_HOST_TO_DEVICE);
     }
-    auto once = [&]() {
+    auto once = [&]()
+    {
         return aclsolverSorgqr(handle, m, n, k, reinterpret_cast<float *>(buf.A), lda,
                                reinterpret_cast<const float *>(buf.tau), reinterpret_cast<float *>(buf.ws), lwork,
                                reinterpret_cast<int *>(buf.info));
     };
-    auto reload = [&]() {
+    auto reload = [&]()
+    {
         (void)aclrtMemcpy(buf.A, fac.size() * sizeof(float), fac.data(), fac.size() * sizeof(float),
                           ACL_MEMCPY_HOST_TO_DEVICE);
     };
@@ -435,8 +448,7 @@ int RunPerfSweep(aclsolverHandle_t handle, aclrtStream stream, const char *path,
             continue;
         }
         ++total;
-        const std::string label =
-            "m=" + std::to_string(m) + " n=" + std::to_string(n) + " k=" + std::to_string(k);
+        const std::string label = "m=" + std::to_string(m) + " n=" + std::to_string(n) + " k=" + std::to_string(k);
         double times = 0.0;
         pass += ExpectPerf(label.c_str(), best, gpuUs, &times) ? 1 : 0;
         if (times < worst)
@@ -447,8 +459,8 @@ int RunPerfSweep(aclsolverHandle_t handle, aclrtStream stream, const char *path,
             worstK = k;
         }
     }
-    printf("\n性能扫描：%d / %d PASS（判据 >= 0.35x GPU）；最差 %5.2fx 于 m=%d n=%d k=%d\n", pass, total, worst,
-           worstM, worstN, worstK);
+    printf("\n性能扫描：%d / %d PASS（判据 >= 0.35x GPU）；最差 %5.2fx 于 m=%d n=%d k=%d\n", pass, total, worst, worstM,
+           worstN, worstK);
     return (pass == total) ? 0 : 1;
 }
 
@@ -488,8 +500,8 @@ void RunShapeCases(aclsolverHandle_t handle, aclrtStream stream, int *pass, int 
         int m, n, k, pad;
     };
     const Shape shapes[] = {
-        {2, 2, 2, 0},     {4, 4, 4, 0},     {8, 8, 8, 0},      {16, 16, 8, 0},   {18, 8, 8, 0},
-        {37, 29, 11, 3},  {57, 57, 57, 0},  {64, 64, 64, 0},   {88, 88, 44, 0},  {128, 64, 64, 7},
+        {2, 2, 2, 0},       {4, 4, 4, 0},       {8, 8, 8, 0},       {16, 16, 8, 0},     {18, 8, 8, 0},
+        {37, 29, 11, 3},    {57, 57, 57, 0},    {64, 64, 64, 0},    {88, 88, 44, 0},    {128, 64, 64, 7},
         {129, 129, 129, 7}, {256, 128, 128, 0}, {256, 128, 64, 32}, {512, 512, 512, 0},
     };
     for (int i = 0; i < static_cast<int>(sizeof(shapes) / sizeof(shapes[0])); ++i)
@@ -499,7 +511,7 @@ void RunShapeCases(aclsolverHandle_t handle, aclrtStream stream, int *pass, int 
     }
 }
 
-} // namespace
+}  // namespace
 
 int main(int argc, char **argv)
 {
