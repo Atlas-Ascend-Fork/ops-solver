@@ -11,6 +11,13 @@
 # 参考 ops-blas scripts/util/gen_version_info.sh 实现
 # 生成 version.info 文件，供 run 包使用
 
+set -euo pipefail
+
+if [ "$#" -ne 3 ] || [ -z "$2" ] || [ -z "$3" ]; then
+    echo "Usage: $0 <ascend_install_dir> <gen_file_dir> <run_pkg_version>" >&2
+    exit 1
+fi
+
 ascend_install_dir=$1
 gen_file_dir=$2
 run_pkg_version=$3
@@ -25,6 +32,6 @@ echo "Version=${run_pkg_version}" > "${gen_file_dir}/version.info" || exit $?
 
 # custom_opp_compiler_version: 从 Ascend compiler 读取
 if [ -f "${ascend_install_dir}/compiler/version.info" ]; then
-  compiler_version=$(grep "Version" -w "${ascend_install_dir}/compiler/version.info" | awk -F = '{print $2}')
+  compiler_version=$(grep "Version" -w "${ascend_install_dir}/compiler/version.info" | awk -F = '{print $2}' || true)
   echo "custom_opp_compiler_version=${compiler_version}" >> "${gen_file_dir}/version.info" || exit $?
 fi
