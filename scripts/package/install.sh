@@ -69,9 +69,9 @@ check_install_path() {
     exitlog
     exit 1
   fi
-  # 展开 ~ 必须先于绝对路径转换（issue #198）：若先转成 $(pwd)/<path>，
-  # 结果恒以 / 开头，~ 分支永不成立，~/xxx 会被安装成字面 $PWD/~/xxx 目录
-  if [[ "${TARGET_INSTALL_PATH}" == ~* ]]; then
+  # 展开 ~ 必须先于绝对路径转换（issue #198）：仅展开当前用户的 ~ 或 ~/...，
+  # 避免把 ~foo 拼成 ${HOME}foo
+  if [[ "${TARGET_INSTALL_PATH}" == "~" || "${TARGET_INSTALL_PATH}" == "~/"* ]]; then
     TARGET_INSTALL_PATH="${TARGET_INSTALL_PATH/#\~/$HOME}"
   fi
   # 转换为绝对路径
