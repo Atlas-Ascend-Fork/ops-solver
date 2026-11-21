@@ -90,12 +90,12 @@
     <tr>
         <td align="center">m</td>
         <td align="center">输入</td>
-        <td align="left">矩阵A的行数</td>
+        <td align="left">矩阵A的行数，必须满足 `1 &lt;= m &lt;= INT32_MAX`；m不满足此范围时返回 `ACL_ERROR_INVALID_PARAM`</td>
     </tr>
     <tr>
         <td align="center">n</td>
         <td align="center">输入</td>
-        <td align="left">矩阵A的列数</td>
+        <td align="left">矩阵A的列数，必须满足 `1 &lt;= n &lt;= INT32_MAX`；n不满足此范围时返回 `ACL_ERROR_INVALID_PARAM`</td>
     </tr>
     <tr>
         <td align="center">A</td>
@@ -120,8 +120,11 @@
     </table>
 
 - 算子约束：
-  - info参数在当前版本实际未启用。
+  - `m`和`n`必须大于0且不超过`INT32_MAX`；不支持空矩阵，m或n为0时返回`ACL_ERROR_INVALID_PARAM`。
+  - `A`、`tau`和`info`必须为非空Host指针；其中`info`参数在当前版本实际未启用，不会写入分解结果。
   - 输入矩阵A按列主序存储。
+
+- 返回值：参数校验通过且分解成功时返回`ACL_SUCCESS`；参数不合法时返回`ACL_ERROR_INVALID_PARAM`。其他运行时或流错误按实际错误码返回。
 
 - 调用实现
 
