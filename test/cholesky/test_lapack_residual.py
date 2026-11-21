@@ -8,8 +8,9 @@
 """Independent checks for acceptance arithmetic and fail-closed batch coverage."""
 
 import unittest
+from itertools import product
 import numpy as np
-from lapack_residual import EPS, evaluate, finalize, residual
+from lapack_residual import EPS, evaluate, finalize, paired, residual
 
 
 class ResidualTests(unittest.TestCase):
@@ -19,6 +20,23 @@ class ResidualTests(unittest.TestCase):
         self.assertEqual(residual("spotrf", a, u, True), 0)
         self.assertEqual(residual("spotrf", a, u.T, False), 0)
         self.assertGreater(residual("spotrf", a, u.T, True), 1)
+
+    def test_factor_with_flipped_sign_fails_final_verdict(self):
+        a = np.array([[4, 2], [2, 10]], dtype=np.float32)
+        u = np.array([[2, 1], [0, 3]], dtype=np.float32)
+        signed_u = u.copy()
+        signed_u[0] *= -1
+        operators = ("spotrf", "spotrfbatched")
+        factors = ((u, True), (signed_u, False))
+        for op, upper, (factor, expected) in product(operators, (False, True), factors):
+            output = factor if upper else factor.T
+            check = paired(op, a, output, upper)
+            if op.endswith("batched"):
+                check["ratio_cpu_mean"] = check["ratio_cpu"]
+            rows = [{"purpose": "accuracy", "lapack_residual": [check]}]
+            finalize(rows, op, True)
+            with self.subTest(op=op, upper=upper, valid=expected):
+                self.assertEqual(rows[0]["final_precision_pass"], expected)
 
     def test_vector_one_norm_multiple_rhs(self):
         a = np.diag(np.array([2, 4], dtype=np.float32))

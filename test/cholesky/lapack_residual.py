@@ -36,6 +36,9 @@ def residual(op, a32, output, upper=False, b32=None):
         raise ValueError("Invalid matrix order or zero matrix norm")
     if op.startswith("spotrf"):
         f = np.triu(out) if upper else np.tril(out)
+        # The product also matches factors with a flipped row or column sign.
+        if np.any(np.diag(f) <= 0):
+            return float("inf")
         error = f.T @ f - a if upper else f @ f.T - a
         return float(np.linalg.norm(error, 1) / (n * anorm * EPS))
     if op.startswith("spotrs"):
