@@ -11,7 +11,6 @@
 #include "../../utils/complex_qr/arch35/complex_qr_finite.h"
 #include "../../utils/complex_qr/arch35/complex_qr_launch.h"
 #include "../../utils/complex_qr/arch35/complex_qr_transfer.h"
-#include "ccgels_device_helpers.h"
 #include "ccgels_internal.h"
 #include "kernel_operator.h"
 
@@ -40,60 +39,13 @@ void CcgelsValidate(const float* a, const float* tau, const float* b, int* info,
     LaunchFinalizeInfoKernel(1, stream, info);
 }
 
-namespace
-{
-__simt_vf__ __aicore__ LAUNCH_BOUND(32) void SolveVf(__gm__ const float* a, __gm__ const float* y, __gm__ float* x,
-                                                     uint32_t n, uint64_t lda, uint64_t ldy, uint64_t ldx, uint32_t col,
-                                                     __gm__ int* info)
-{
-    uint32_t zero = ZeroDiagonal(a, n, lda);
-    if (col == 0 && threadIdx.x == 0)
-    {
-        *info = static_cast<int>(zero);
-    }
-    if (zero)
-    {
-        return;
-    }
-    for (int64_t r = int64_t(n) - 1; r >= 0; --r)
-    {
-        Complex sum = {0, 0};
-        for (uint32_t c = r + 1 + threadIdx.x; c < n; c += 32)
-        {
-            sum = Add(sum, Mul(Load(a, r + uint64_t(c) * lda), Load(x, c + uint64_t(col) * ldx)));
-        }
-        sum = {Sum(sum.r), Sum(sum.i)};
-        if (threadIdx.x == 0)
-        {
-            Store(x, r + uint64_t(col) * ldx,
-                  Divide(Sub(Load(y, r + uint64_t(col) * ldy), sum), Load(a, r + uint64_t(r) * lda)));
-        }
-        asc_syncthreads();
-    }
-}
-
-__global__ __aicore__ void SolveKernel(__gm__ const float* a, __gm__ const float* y, __gm__ float* x, __gm__ int* info,
-                                       ComplexQrShape s)
-{
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    // n <= 8192 的调用在 LaunchSolveKernel 已全部路由 SolveSimdKernel，
-    // 此处只会以 n > 8192 进入，恒假分支与对应的缓存路径已删除（issue #335）。
-    for (uint32_t c = AscendC::GetBlockIdx(); c < s.rhs; c += AscendC::GetBlockNum())
-    {
-        asc_vf_call<SolveVf>(dim3{32, 1, 1}, a, y, x, s.n, s.lda, s.m, s.ldx, c, info);
-    }
-}
-}  // namespace
-
 void LaunchSolveKernel(uint32_t blocks, void* stream, const float* a, const float* y, float* x, int* info,
                        ComplexQrShape s)
 {
-    if (s.n <= 8192)
-    {
-        LaunchSolveSimdKernel(blocks, stream, a, y, x, info, s);
-        return;
-    }
-    SolveKernel<<<blocks, nullptr, stream>>>(a, y, x, info, s);
+    // host 侧 CheckLeastSquaresAliasAndRange 强制 m/n <= CC_GELS_MAX_ORDER(4096)
+    // （ccgels_host.cpp），合法调用恒走 SIMD 回代；n > 8192 才可达的 SIMT 备选
+    // 路径（SolveVf/SolveKernel）不可达，已按 #335 先例删除（issue #533）。
+    LaunchSolveSimdKernel(blocks, stream, a, y, x, info, s);
 }
 
 using namespace AscendC;
