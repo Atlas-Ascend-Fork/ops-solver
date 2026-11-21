@@ -69,7 +69,7 @@ aclsolverStatus_t aclsolverCgetri(
 | `ACLSOLVER_STATUS_INTERNAL_ERROR` | 平台 AIV 核数查询失败，或 `DevicePointer`/`DeviceSpan` 的指针属性/区间查询失败（complex_solver_host.h:77/:105） |
 | `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（InvalidShape、无效主元写 devInfo=-4 等）；查询入口不写状态缓冲 |
 | `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误（CompleteGetri 内 LaunchStatus；`_bufferSize` 只走 Context 与 Reject，不下发 kernel） |
-| `ACLSOLVER_STATUS_ALLOC_FAILED` | 仅主入口：CompleteGetri 的 info 元数据 Host 回读分配失败（aclrtMallocHost，complex_solver_host.h:119-143） |
+| `ACLSOLVER_STATUS_ALLOC_FAILED` | 仅主入口：CompleteGetri 的 info 元数据 Host 回读分配失败（aclrtMallocHost，complex_solver_host.h:130-164） |
 
 ## 调用与边界
 

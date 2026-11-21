@@ -140,7 +140,7 @@
 | `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误 |
 | `ACLSOLVER_STATUS_MAPPING_ERROR` | 仅主入口：WriteInfo 写 device info 失败 |
 
-`_bufferSize` 显式 `(void)handle`（尺寸查询与 handle/stream 无关，sorgqr_host.cpp:120），handle 为空仍可查询成功；其无 devInfo 参数，参数错误仅以返回码表达。
+`_bufferSize` 显式 `(void)handle`（尺寸查询与 handle/stream 无关，sorgqr_host.cpp:146），handle 为空仍可查询成功；其无 devInfo 参数，参数错误仅以返回码表达。
 
 ## 调用示例
 - 完整代码示例：[aclsolverSorgqr示例](../../test/sorgqr/sorgqr_test.cpp)

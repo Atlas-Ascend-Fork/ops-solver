@@ -175,7 +175,7 @@
 
 ## 返回值
 
-两个入口均返回 `aclsolverStatus_t`；本接口**没有 devInfo 输出**，参数错误只通过返回值上报。`_bufferSize` 显式 `(void)handle`（尺寸查询与 handle/stream 无关，xlarft_host.cpp:116），handle 为空仍可查询成功；其 workspace/buffer 检查仅在主入口（INVALID_VALUE 差异项见上表）：
+两个入口均返回 `aclsolverStatus_t`；本接口**没有 devInfo 输出**，参数错误只通过返回值上报。`_bufferSize` 显式 `(void)handle`（尺寸查询与 handle/stream 无关，xlarft_host.cpp:123），handle 为空仍可查询成功；其 workspace/buffer 检查仅在主入口（INVALID_VALUE 差异项见上表）：
 
 | 返回值 | 触发条件 |
 |---|---|

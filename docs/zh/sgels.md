@@ -168,12 +168,12 @@
 | 返回值 | 触发条件 |
 |---|---|
 | `ACLSOLVER_STATUS_SUCCESS` | 查询返回 lwork_bytes 或求解已提交；不代表异步数值一定成功（dinfo 须同步后读取） |
-| `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | handle 为 nullptr（两入口均检查，sgels_host.cpp:159/:249） |
+| `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR` | handle 为 nullptr（两入口均检查，sgels_host.cpp:161/:292） |
 | `ACLSOLVER_STATUS_INVALID_VALUE` | 参数非法（`dinfo`/`lwork_bytes` 为 nullptr、`CheckShape` 形状不满足、dX 与 dA/dB 重叠、workspace 不足等；主入口另写 `dinfo = -i`，handle 不计入编号） |
 | `ACLSOLVER_STATUS_INTERNAL_ERROR` | 仅主入口：平台资源查询失败（AIC 核数为 0 等） |
 | `ACLSOLVER_STATUS_EXECUTION_FAILED` | 仅主入口：kernel 下发后线程级错误 |
 
-与同族 sgeqrf/sorgqr/sormqr 不同：`_bufferSize` 也检查 handle 非空（sgels_host.cpp:159，其内部 PlanWorkspace 透传子查询）；其无 dinfo 参数，参数错误仅以返回码表达。
+与同族 sgeqrf/sorgqr/sormqr 不同：`_bufferSize` 也检查 handle 非空（sgels_host.cpp:161，其内部 PlanWorkspace 透传子查询）；其无 dinfo 参数，参数错误仅以返回码表达。
 
 ## 调用示例
 - 完整代码示例：[aclsolverSSgels示例](../../test/sgels/sgels_test.cpp)
