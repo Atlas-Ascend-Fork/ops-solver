@@ -357,4 +357,6 @@ main() {
   exitlog
 }
 
+trap restore_permissions EXIT
+
 main "$@"
