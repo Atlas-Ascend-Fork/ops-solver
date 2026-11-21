@@ -177,11 +177,17 @@ class Runtime:
 def lu_residual(a, lu, pivots):
     m, n = a.shape
     k = min(m, n)
+    if len(pivots) != k:
+        raise ValueError(f"invalid pivot length: {len(pivots)}, expected {k}")
     lower = np.tril(lu[:, :k].astype(np.complex128), -1) + np.eye(m, k)
     upper = np.triu(lu[:k, :].astype(np.complex128))
     restored = lower @ upper
     for row in range(k - 1, -1, -1):
         pivot = int(pivots[row])
+        if not (row <= pivot < m):
+            raise ValueError(
+                f"invalid pivot at row {row}: {pivot}, expected [{row}, {m - 1}]"
+            )
         restored[[row, pivot]] = restored[[pivot, row]]
     return float(np.linalg.norm(restored - a, 1) / (n * np.linalg.norm(a, 1) * EPS))
 
