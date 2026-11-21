@@ -71,8 +71,9 @@ option(ENABLE_PACKAGE "Enable build package" OFF)
 
 # ========= 构建动态库 =========
 find_package(ASC REQUIRED)
-set(CMAKE_SHARED_LIBRARY_RUNTIME_ASC_FLAG "-Wl,-rpath,")
-set(CMAKE_SHARED_LIBRARY_RUNTIME_ASC_FLAG_SEP ":")
+# 安全编译要求：产物动态库禁止携带 RPATH/RUNPATH，不再向 ASC 目标注入 -Wl,-rpath。
+set(CMAKE_SHARED_LIBRARY_RUNTIME_ASC_FLAG "")
+set(CMAKE_SHARED_LIBRARY_RUNTIME_ASC_FLAG_SEP "")
 
 # solver
 set(ALL_SOLVER_SRC_FILES "")
@@ -88,16 +89,20 @@ if(SOC_VERSION_LOWER MATCHES "^ascend950")
   list(FILTER ALL_SOLVER_SRC_FILES EXCLUDE REGEX "/cholesky/arch35/cholesky_simt.cpp$")
   add_library(cholesky_simt SHARED src/cholesky/arch35/cholesky_simt.cpp)
   set_source_files_properties(src/cholesky/arch35/cholesky_simt.cpp PROPERTIES LANGUAGE ASC)
-  set_target_properties(cholesky_simt PROPERTIES LINKER_LANGUAGE ASC BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+  # 安全编译要求：产物不携带 RPATH/RUNPATH（原 $ORIGIN 注入会触发扫描告警）
+  set_target_properties(cholesky_simt PROPERTIES LINKER_LANGUAGE ASC SKIP_BUILD_RPATH TRUE)
   target_include_directories(cholesky_simt PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include ${ASCEND_CANN_PACKAGE_PATH}/include)
+  # 安全编译：链接期加 BIND_NOW/RELRO 与 strip（-ftrapv 按需求变更不启用）。
   target_compile_options(cholesky_simt PRIVATE --npu-arch=${NPU_ARCH} --enable-simt -O2)
-  target_link_options(cholesky_simt PRIVATE --npu-arch=${NPU_ARCH} --enable-simt)
+  target_link_options(cholesky_simt PRIVATE --npu-arch=${NPU_ARCH} --enable-simt
+      -Wl,-z,relro -Wl,-z,now -Wl,-s)
   target_link_directories(cholesky_simt PRIVATE ${ASCEND_CANN_PACKAGE_PATH}/lib64)
   target_link_libraries(cholesky_simt PRIVATE ascendcl)
 endif()
 
 add_library(${OPS_SOLVER} SHARED ${ALL_SOLVER_SRC_FILES})
-set_target_properties(${OPS_SOLVER} PROPERTIES LINKER_LANGUAGE ASC BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+# 安全编译要求：产物不携带 RPATH/RUNPATH（原 $ORIGIN 注入会触发扫描告警），构建期同样不注入
+set_target_properties(${OPS_SOLVER} PROPERTIES LINKER_LANGUAGE ASC SKIP_BUILD_RPATH TRUE)
 
 set_source_files_properties(
     ${ALL_SOLVER_SRC_FILES}
@@ -167,6 +172,16 @@ target_compile_options(${OPS_SOLVER} PRIVATE
     $<$<COMPILE_LANGUAGE:ASC>:-iquote${CMAKE_CURRENT_LIST_DIR}/include>
 )
 target_link_options(${OPS_SOLVER} PRIVATE --npu-arch=${NPU_ARCH})
+
+# ===== 安全编译选项（二进制安全扫描项：strip / no RPATH / BIND_NOW）=====
+#  abort 语义，需经 -Xhost-start/-Xhost-end 仅转发给 host 编译；CXX 文件由 g++ 直接加。）
+# BIND_NOW：-Wl,-z,now 使 GOT 重定位在启动时即完成绑定（配合 -Wl,-z,relro 为 Full RELRO）；
+# strip：-Wl,-s 在链接期剥离符号表；RPATH/RUNPATH：见上方 SKIP_BUILD_RPATH，产物不携带。
+target_link_options(${OPS_SOLVER} PRIVATE
+    -Wl,-z,relro
+    -Wl,-z,now
+    -Wl,-s
+)
 
 if(SOC_VERSION_LOWER MATCHES "^ascend950")
   target_link_libraries(${OPS_SOLVER} PRIVATE cholesky_simt)
