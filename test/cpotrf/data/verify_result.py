@@ -113,6 +113,8 @@ def check_complex_matrix(uplo, n):
 
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 128
+    if n <= 0:
+        raise ValueError(f"n must be positive, got {n}")
     u_success = check_complex_matrix('U', n)
     l_success = check_complex_matrix('L', n)
     return u_success and l_success
