@@ -63,12 +63,16 @@ def normalize_kind(value):
 
 
 def write_complex64_column_major(path, matrix):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     np.asarray(matrix, dtype=np.complex64).ravel(order="F").tofile(path)
 
 
 def write_float32(path, vector):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     np.asarray(vector, dtype=np.float32).tofile(path)
 
 
@@ -303,6 +307,8 @@ def main():
     write_float32(GOLDEN_W_PATH, eigenvalues)
     if jobz == "V" and eigenvectors is not None:
         write_complex64_column_major(GOLDEN_V_PATH, eigenvectors)
+    elif os.path.exists(GOLDEN_V_PATH):
+        os.remove(GOLDEN_V_PATH)
 
     LOGGER.info(
         f"Generated cheevj data: n={n}, jobz={jobz}, uplo={uplo}, seed={seed}, kind={kind}"
