@@ -12,6 +12,7 @@
 set -e
 
 BUILD_OPS=""
+OPS_EXPLICIT=FALSE
 RUN_TEST=OFF
 ENABLE_PACKAGE=FALSE
 
@@ -73,6 +74,7 @@ for arg in "$@"; do
     case $arg in
         --ops=*)
             BUILD_OPS="${arg#*=}"
+            OPS_EXPLICIT=TRUE
             ;;
         --run)
             RUN_TEST=ON
@@ -99,6 +101,30 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# 规范化并去重 --ops 列表：去除空项、保留首次出现顺序，非法空列表在清理 build/ 前退出
+if [ "${OPS_EXPLICIT}" == "TRUE" ]; then
+    IFS=',' read -ra _RAW_OPS <<< "${BUILD_OPS}"
+    _UNIQUE_OPS=()
+    for _op in "${_RAW_OPS[@]}"; do
+        [ -n "${_op}" ] || continue
+        _seen=0
+        for _existing in "${_UNIQUE_OPS[@]}"; do
+            if [ "${_existing}" == "${_op}" ]; then
+                _seen=1
+                break
+            fi
+        done
+        if [ "${_seen}" -eq 0 ]; then
+            _UNIQUE_OPS+=("${_op}")
+        fi
+    done
+    if [ ${#_UNIQUE_OPS[@]} -eq 0 ]; then
+        print_error "Invalid --ops value '${BUILD_OPS}': expected at least one operator name."
+        exit 1
+    fi
+    BUILD_OPS=$(IFS=','; echo "${_UNIQUE_OPS[*]}")
+fi
 
 # 校验 --run 和 --pkg 不能同时使用
 if [ "${RUN_TEST}" == "ON" ] && [ "${ENABLE_PACKAGE}" == "TRUE" ]; then
