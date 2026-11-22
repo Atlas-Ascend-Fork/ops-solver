@@ -52,6 +52,8 @@ def verify_inverse(input_path, inv_path, order, dtype, format_mismatch):
     差异元素由 format_mismatch(index, expected, actual) 负责格式化记录，
     最多记录 MAX_PRINTED_MISMATCHES 条；返回是否满足误差容限。
     """
+    if order <= 0:
+        raise ValueError(f"matrix order must be positive, got {order}")
     a = read_binary_strict(input_path, dtype).reshape(order, order)
     inv_a = read_binary_strict(inv_path, dtype).reshape(order, order)
     if not np.isfinite(a).all() or not np.isfinite(inv_a).all():
