@@ -265,15 +265,19 @@ def make_matrix(n, seed, kind):
 def parse_seed_and_kind(argv):
     seed = 42
     kind = "random_hermitian"
-    if len(argv) > 4:
+    if len(argv) > 6:
+        raise ValueError("usage: gen_data.py [n] [jobz] [uplo] [seed] [matrix_kind]")
+    if len(argv) == 5:
         try:
             seed = int(argv[4])
         except ValueError:
             kind = argv[4]
-    if len(argv) > 5:
+    elif len(argv) == 6:
+        try:
+            seed = int(argv[4])
+        except ValueError as exc:
+            raise ValueError(f"seed must be an integer, got: {argv[4]}") from exc
         kind = argv[5]
-    if len(argv) > 6:
-        raise ValueError("usage: gen_data.py [n] [jobz] [uplo] [seed] [matrix_kind]")
     return seed, normalize_kind(kind)
 
 
