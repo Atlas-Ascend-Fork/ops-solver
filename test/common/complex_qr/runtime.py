@@ -64,6 +64,8 @@ class Runtime:
         self.observed = []
 
     def alloc(self, nbytes):
+        if nbytes < 0:
+            raise ValueError(f"nbytes must be non-negative, got {nbytes}")
         ptr = ct.c_void_p()
         check(self.acl.aclrtMalloc(ct.byref(ptr), max(nbytes, 32), 0))
         self.allocations.append(ptr)
@@ -88,9 +90,16 @@ class Runtime:
         return out
 
     def free_all(self):
-        for ptr in reversed(self.allocations):
-            check(self.acl.aclrtFree(ptr))
-        self.allocations.clear()
+        first_error = None
+        while self.allocations:
+            ptr = self.allocations.pop()
+            try:
+                check(self.acl.aclrtFree(ptr))
+            except RuntimeError as err:
+                if first_error is None:
+                    first_error = err
+        if first_error is not None:
+            raise first_error
 
     def close(self):
         self.free_all()
