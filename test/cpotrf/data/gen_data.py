@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 import argparse
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -62,8 +63,8 @@ def generate_positive_definite_matrix(
     if n <= 0:
         raise ValueError("n 必须是正整数")
 
-    if diagonal_shift <= 0:
-        raise ValueError("diagonal_shift 必须大于 0，以保证矩阵严格正定")
+    if not math.isfinite(diagonal_shift) or diagonal_shift <= 0:
+        raise ValueError("diagonal_shift 必须是大于 0 的有限浮点数，以保证矩阵严格正定")
 
     rng = np.random.default_rng(seed)
 
@@ -84,18 +85,51 @@ def generate_positive_definite_matrix(
 
 def parse_arguments():
     """解析命令行参数并返回解析结果"""
-    parser = argparse.ArgumentParser(description="生成 n*n Hermitian 正定复数矩阵，并输出矩阵和 Cholesky 标准结果。")
-    parser.add_argument("n", nargs="?", type=int, default=128, help="矩阵阶数，默认值为 128")
-    parser.add_argument("--seed", type=int, default=2026, help="随机数种子，默认值为 2026")
-    parser.add_argument("--shift", type=float, default=1.0, help="添加到矩阵对角线上的正数，默认值为 1.0")
-    parser.add_argument("--dtype", choices=["complex64", "complex128"], default="complex64", help="输出复数类型，默认值为 complex64")
-    parser.add_argument("--input-file", type=Path, default=Path("./test/cpotrf/data/input/A_gm.bin"), help="原始矩阵输出路径，默认 ./test/cpotrf/data/input/A_gm.bin")
-    parser.add_argument("--u-file", type=Path, default=Path("./test/cpotrf/data/output/U_std.bin"), help="上三角矩阵输出路径，默认 ./test/cpotrf/data/output/U_std.bin")
-    parser.add_argument("--l-file", type=Path, default=Path("./test/cpotrf/data/output/L_std.bin"), help="下三角矩阵输出路径，默认 ./test/cpotrf/data/output/L_std.bin")
+    parser = argparse.ArgumentParser(
+        description="生成 n*n Hermitian 正定复数矩阵，并输出矩阵和 Cholesky 标准结果。"
+    )
+    parser.add_argument(
+        "n", nargs="?", type=int, default=128, help="矩阵阶数，默认值为 128"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=2026, help="随机数种子，默认值为 2026"
+    )
+    parser.add_argument(
+        "--shift",
+        type=float,
+        default=1.0,
+        help="添加到矩阵对角线上的正数，默认值为 1.0",
+    )
+    parser.add_argument(
+        "--dtype",
+        choices=["complex64", "complex128"],
+        default="complex64",
+        help="输出复数类型，默认值为 complex64",
+    )
+    parser.add_argument(
+        "--input-file",
+        type=Path,
+        default=Path("./test/cpotrf/data/input/A_gm.bin"),
+        help="原始矩阵输出路径，默认 ./test/cpotrf/data/input/A_gm.bin",
+    )
+    parser.add_argument(
+        "--u-file",
+        type=Path,
+        default=Path("./test/cpotrf/data/output/U_std.bin"),
+        help="上三角矩阵输出路径，默认 ./test/cpotrf/data/output/U_std.bin",
+    )
+    parser.add_argument(
+        "--l-file",
+        type=Path,
+        default=Path("./test/cpotrf/data/output/L_std.bin"),
+        help="下三角矩阵输出路径，默认 ./test/cpotrf/data/output/L_std.bin",
+    )
 
     args = parser.parse_args()
     if args.n <= 0:
         parser.error("n 必须是正整数")
+    if not math.isfinite(args.shift) or args.shift <= 0:
+        parser.error("--shift 必须是大于 0 的有限浮点数")
     return args
 
 
