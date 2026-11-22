@@ -10,7 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import sys, os
+import os
+import sys
 import logging
 import numpy as np
 import scipy.linalg
@@ -29,9 +30,12 @@ nrhs = int(sys.argv[2]) if len(sys.argv) > 2 else 32
 if nrhs <= 0:
     raise ValueError(f"nrhs 必须是正整数, got {nrhs}")
 
-# 创建输出目录
-os.makedirs("./test/sgetrs/data/input", exist_ok=True)
-os.makedirs("./test/sgetrs/data/output", exist_ok=True)
+# 创建输出目录（相对脚本所在目录解析，避免受调用工作目录影响）
+data_dir = os.path.dirname(os.path.abspath(__file__))
+input_dir = os.path.join(data_dir, "input")
+output_dir = os.path.join(data_dir, "output")
+os.makedirs(input_dir, exist_ok=True)
+os.makedirs(output_dir, exist_ok=True)
 
 # 1. 生成随机可逆的 n×n 矩阵 A (float32)
 np.random.seed(149)  # 与 sgetrf 使用相同种子以保证一致性
@@ -62,28 +66,34 @@ X_ref = scipy.linalg.lu_solve((lu, piv), B).astype(np.float32)
 
 # --- 保存输入数据 ---
 # 保存 LU 分解后的矩阵 (sgetrs 的输入 A)
-with open("./test/sgetrs/data/input/A_gm.bin", "wb") as f:
+with open(os.path.join(input_dir, "A_gm.bin"), "wb") as f:
     f.write(LU.tobytes())
 
 # 保存主元索引数组 (sgetrs 的输入 IPIV) - 1-based
-with open("./test/sgetrs/data/input/W_gm.bin", "wb") as f:
+with open(os.path.join(input_dir, "W_gm.bin"), "wb") as f:
     f.write(IPIV.tobytes())
 
 # 保存右侧向量 B (sgetrs 的输入 B)
-with open("./test/sgetrs/data/input/B_gm.bin", "wb") as f:
+with open(os.path.join(input_dir, "B_gm.bin"), "wb") as f:
     f.write(B.tobytes())
 
 # --- 保存输出数据 (golden) ---
 # 保存参考解向量 X (sgetrs 的输出，通常会覆盖 B)
-with open("./test/sgetrs/data/output/golden.bin", "wb") as f:
+with open(os.path.join(output_dir, "golden.bin"), "wb") as f:
     f.write(X_ref.tobytes())
 
 # 打印信息用于验证
 logging.info(f"Generated SGETRS test data for {n}x{n} matrix with {nrhs} RHS vectors")
 logging.info(f"Input LU matrix (first 3x3):\n{LU[:3, :3]}")
-logging.info(f"Input IPIV array (first 10 elements, 1-based):\n{IPIV[:10] if len(IPIV) > 10 else IPIV}")
-logging.info(f"Input vector B (first 3 rows, first 3 columns):\n{B[:3, :3] if nrhs >= 3 else B[:3, :]}")
-logging.info(f"Reference solution X (first 3 rows, first 3 columns):\n{X_ref[:3, :3] if nrhs >= 3 else X_ref[:3, :]}")
+logging.info(
+    f"Input IPIV array (first 10 elements, 1-based):\n{IPIV[:10] if len(IPIV) > 10 else IPIV}"
+)
+logging.info(
+    f"Input vector B (first 3 rows, first 3 columns):\n{B[:3, :3] if nrhs >= 3 else B[:3, :]}"
+)
+logging.info(
+    f"Reference solution X (first 3 rows, first 3 columns):\n{X_ref[:3, :3] if nrhs >= 3 else X_ref[:3, :]}"
+)
 
 # 验证: 计算 A * X 应该等于 B
 AX = np.matmul(A, X_ref)
