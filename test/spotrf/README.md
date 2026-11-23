@@ -124,7 +124,9 @@ Solver Spotrf算子实现。
   ./build/test/spotrf/spotrf_test 0 7 7 U
   python3 test/spotrf/data/verify_result.py --n 7 --uplo U
   ```
-  执行结果如下，说明精度对比成功。
+  > **运行前提**：测试二进制以 `./test/<op>/data/...` 相对路径读写数据文件，须在**仓库根目录**下执行（`gen_data.py` 已改为按脚本所在目录产出；`verify_result.py` 仍以 cwd 相对路径读取，与二进制同依赖仓库根目录）。
+
+执行结果如下，说明精度对比成功。
   ```bash
   [Success] Cholesky reconstruction matches the input
   ```

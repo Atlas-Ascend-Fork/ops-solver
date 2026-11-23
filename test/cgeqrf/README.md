@@ -173,7 +173,9 @@ Solver Cgeqrf算子实现。
   bash build.sh --soc=ascend910b --ops=cgeqrf --run # 请按实际机型替换 --soc：Atlas A2 用 ascend910b，Atlas A3 用 ascend910_93；--run 可选，用于执行测试样例
   ```
 
-  执行结果如下，说明精度对比成功。
+  > **运行前提**：测试二进制以 `./test/<op>/data/...` 相对路径读写数据文件，须在**仓库根目录**下执行（`gen_data.py` 已改为按脚本所在目录产出；`verify_result.py` 仍以 cwd 相对路径读取，与二进制同依赖仓库根目录）。
+
+执行结果如下，说明精度对比成功。
 
   ```text
   [Success] Case accuracy verification passed.
