@@ -62,12 +62,15 @@
     ./test/cgeqrf/data/output/tau.bin    (min(m, n), complex64)
 """
 
+import os
 import logging
 import sys
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.linalg import lapack
+
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
@@ -87,9 +90,9 @@ DQRT01_RATIO_CAP = 30.0
 # ----------------------------------------------------------------
 
 # 数据文件路径（相对仓库根目录，与既有约定一致）
-INPUT_PATH = "./test/cgeqrf/data/input/A_gm.bin"
-R_PATH = "./test/cgeqrf/data/output/R_gm.bin"
-TAU_PATH = "./test/cgeqrf/data/output/tau.bin"
+INPUT_PATH = f"{_D}input/A_gm.bin"
+R_PATH = f"{_D}output/R_gm.bin"
+TAU_PATH = f"{_D}output/tau.bin"
 
 # 默认矩阵维度（须与 cgeqrf_test.cpp 的默认 M / N 保持一致）
 DEFAULT_M = 1024

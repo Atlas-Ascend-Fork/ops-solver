@@ -10,10 +10,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
 import logging
 import sys
 
 import numpy as np
+
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
@@ -21,9 +24,9 @@ eps = 1e-3
 error_tol = 1e-4
 
 
-def forward_substitution(LU, b, piv):
+def forward_substitution(lu, b, piv):
     """Ly = Pb (前向替换)"""
-    n = LU.shape[0]
+    n = lu.shape[0]
     y = b.copy()
 
     # 应用 pivot
@@ -33,28 +36,28 @@ def forward_substitution(LU, b, piv):
     # 解 Ly = Pb
     for i in range(n):
         for j in range(i):
-            y[i] -= LU[i, j] * y[j]
+            y[i] -= lu[i, j] * y[j]
 
     return y
 
 
-def backward_substitution(LU, y):
+def backward_substitution(lu, y):
     """Ux = y (后向替换)"""
-    n = LU.shape[0]
+    n = lu.shape[0]
     x = y.copy()
 
     for i in reversed(range(n)):
         for j in range(i + 1, n):
-            x[i] -= LU[i, j] * x[j]
-        x[i] /= LU[i, i]
+            x[i] -= lu[i, j] * x[j]
+        x[i] /= lu[i, i]
 
     return x
 
 
-def solve_lu(LU, b, piv):
-    """通过 LU 分解求解 Ax=b"""
-    y = forward_substitution(LU, b, piv)
-    x = backward_substitution(LU, y)
+def solve_lu(lu, b, piv):
+    """通过 lu 分解求解 Ax=b"""
+    y = forward_substitution(lu, b, piv)
+    x = backward_substitution(lu, y)
     return x
 
 
@@ -68,18 +71,18 @@ def main():
     nrhs = int(sys.argv[2]) if len(sys.argv) > 2 else 32
 
     # 读取数据
-    lu = np.fromfile("./test/cgetrs/data/input/A_gm.bin", dtype=np.complex64).reshape(
+    lu = np.fromfile(f"{_D}input/A_gm.bin", dtype=np.complex64).reshape(
         n, n
     )
 
-    rhs = np.fromfile("./test/cgetrs/data/input/B_gm.bin", dtype=np.complex64).reshape(
+    rhs = np.fromfile(f"{_D}input/B_gm.bin", dtype=np.complex64).reshape(
         n, nrhs
     )
 
     # W_gm.bin 为 1-based 主元契约（issue #344 对齐后），还原 0-based 供本脚本交换使用。
     # 内容校验对齐同族 sgetrs verify 形态（issue #460）：越界值此前抛裸 IndexError，
     # 0 值经 -1 后为合法负索引静默回绕交换末行、以错误基准误判结果（issue #482）
-    raw_piv = np.fromfile("./test/cgetrs/data/input/W_gm.bin", dtype=np.int32).reshape(
+    raw_piv = np.fromfile(f"{_D}input/W_gm.bin", dtype=np.int32).reshape(
         n
     )
     for i, pivot in enumerate(raw_piv):
@@ -90,7 +93,7 @@ def main():
     piv = raw_piv - 1
 
     solution = np.fromfile(
-        "./test/cgetrs/data/output/X_gm.bin", dtype=np.complex64
+        f"{_D}output/X_gm.bin", dtype=np.complex64
     ).reshape(n, nrhs)
 
     if not all(np.isfinite(array).all() for array in (lu, rhs, solution)):
