@@ -171,6 +171,8 @@ Solver Cpotrf算子实现。
 
   > **运行前提**：测试二进制以 `./test/<op>/data/...` 相对路径读写数据文件，须在**仓库根目录**下执行（`gen_data.py` 已改为按脚本所在目录产出；`verify_result.py` 仍以 cwd 相对路径读取，与二进制同依赖仓库根目录）。
 
+> **精度判定口径**：`verify_result.py` 以 `TOLERANCE = 1e-4`（绝对误差阈值）与 `ERROR_TOL = 1e-4`（错误元素占比 ≤ 0.01% 判通过）双重判据，LOWER/UPPER 双三角均须通过。
+
 执行结果如下，说明精度对比成功。
 
   ```bash
