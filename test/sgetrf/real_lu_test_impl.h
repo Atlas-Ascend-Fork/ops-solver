@@ -136,8 +136,10 @@ inline void ExecuteRepeat(Runtime& runtime, AdapterState& state, TestData& t)
                                     t.pivots.size(), nullptr, 0) == 0,
             "adapter reset failed");
     int status = -99;
-    Require(solver_adapter_execute(state.value, &status) == 0 && status == ACLSOLVER_STATUS_SUCCESS,
-            "operator execution failed");
+    const int adapterStatus = solver_adapter_execute(state.value, &status);
+    Require(adapterStatus == 0 && status == ACLSOLVER_STATUS_SUCCESS,
+            "operator execution failed: adapter_status=" + std::to_string(adapterStatus) +
+                ", solver_status=" + std::to_string(status));
     Require(aclrtSynchronizeStream(runtime.stream) == ACL_SUCCESS, "stream synchronization failed");
     Require(solver_adapter_readback_v2(state.value, t.output.data(), t.c.base.out_bytes, t.info.data(), t.info.size(),
                                        t.outPivots.data(), t.outPivots.size(), nullptr, 0) == 0,

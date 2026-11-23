@@ -267,6 +267,10 @@ if [ "${RUN_TEST}" == "ON" ]; then
             # 测试目录 CMakeLists 自带 SoC 门控（configure 期 message "... skipping on <soc>"
             # 后 return()）时，二进制缺失属构建期已知跳过：计入 SKIPPED 而非 FAILED，与下方
             # 数据脚本缺失的处理对称（issue #351）；其余缺失仍视为失败，不掩盖真实构建问题。
+            # 门控文案有两种合法形式：950 专属 "<op> tests require Ascend950, ..." 与
+            # A2/A3 legacy "<op> tests require Atlas A2/A3 ..."；中段用 .* 匹配，不要收紧为
+            # 只认 "require Ascend950"，否则 legacy 门控会被误判为 "Test binary not found"。
+            # 文案需保持单行：CMake 折行后 grep 逐行匹配会失配。
             if grep -Eq "${op} tests require .* skipping on ${soc_lower}" <<< "${CMAKE_CONFIGURE_OUTPUT}"; then
                 echo "[INFO] ${op}: 当前 SOC 不满足该测试的构建条件（见 configure WARNING），跳过运行"
                 SKIPPED_OPS+=("${op}")

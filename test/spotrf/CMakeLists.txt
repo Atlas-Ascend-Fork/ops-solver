@@ -8,6 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
+# A2/A3 legacy 接口（test/spotrf/README.md「支持的产品」仅 Atlas A2/A3，
+# 接口文档产品表 950 为 ×；950 的 Spotrf 接口由 test/cholesky 覆盖）。
+# 950 构建不生成测试，按 build.sh 的 configure WARNING 约定计入 SKIPPED。
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+    message(WARNING "spotrf tests require Atlas A2/A3, skipping on ${SOC_VERSION_LOWER}")
+    return()
+endif()
+
 add_executable(spotrf_test
     spotrf_test.cpp
 )

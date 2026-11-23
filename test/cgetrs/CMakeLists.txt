@@ -8,6 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
+# A2/A3 legacy 接口（test/cgetrs/README.md「支持的产品」仅 Atlas A2/A3，
+# 接口文档产品表 950 为 ×）。950 构建不生成测试，按 build.sh 的 configure
+# WARNING 约定计入 SKIPPED，避免在 950 上误报算子执行失败。
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+    message(WARNING "cgetrs tests require Atlas A2/A3, skipping on ${SOC_VERSION_LOWER}")
+    return()
+endif()
+
 add_executable(cgetrs_test
     cgetrs_test.cpp
 )

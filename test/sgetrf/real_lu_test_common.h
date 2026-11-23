@@ -27,7 +27,7 @@ namespace
 {
 namespace real_lu_test
 {
-void Require(bool condition, const char* message)
+void Require(bool condition, const std::string& message)
 {
     if (!condition)
     {

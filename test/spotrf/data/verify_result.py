@@ -40,12 +40,17 @@ def main():
     # The legacy A2/A3 interface stores L^T in the upper triangle for uplo=L.
     factor = np.triu(result) if args.uplo == "L" else np.tril(result)
     reconstructed = factor.T @ factor if args.uplo == "L" else factor @ factor.T
+    residual = np.abs(reconstructed - matrix)
+    max_residual = float(np.max(residual)) if np.isfinite(residual).all() else float("inf")
     if (
         not np.isfinite(result).all()
         or np.any(np.diag(factor) <= 0)
         or not np.allclose(reconstructed, matrix, rtol=5e-3, atol=5e-3)
     ):
-        logging.error("[Failed] Cholesky reconstruction does not match the input")
+        logging.error(
+            "[Failed] Cholesky reconstruction does not match the input (max abs residual %.3e, rtol=atol=5e-3)",
+            max_residual,
+        )
         return 1
     logging.info("[Success] Cholesky reconstruction matches the input")
     return 0

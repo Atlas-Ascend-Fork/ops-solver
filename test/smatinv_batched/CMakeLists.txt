@@ -10,6 +10,15 @@
 
 cmake_minimum_required(VERSION 3.18)
 
+# 实数 LU 为 950 专属实现（test/smatinv_batched/README.md「支持的产品」仅 Ascend 950PR，
+# 接口文档产品表 A2/A3 为待验证）。非 950 构建下 kernel 不可执行，测试断言
+# SUCCESS 必失败：对齐 #488/#491 的门控口径，configure 期告警后计入 SKIPPED。
+# 独立构建（未定义 SOC_VERSION_LOWER）不门控，由调用方提供匹配架构的固定库。
+if(DEFINED SOC_VERSION_LOWER AND NOT SOC_VERSION_LOWER MATCHES "^ascend950")
+    message(WARNING "smatinv_batched tests require Ascend950, skipping on ${SOC_VERSION_LOWER}")
+    return()
+endif()
+
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(smatinv_batched_tests LANGUAGES CXX)
     set(OPS_SOLVER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "ops-solver source root")

@@ -8,20 +8,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
-add_executable(cheevj_test
-    cheevj_test.cpp
-)
-
-add_executable(cheevj_benchmark
-    cheevj_benchmark.cpp
-)
-
-add_executable(cheevj_contract_test
-    cheevj_contract_test.cpp
-)
+# A2/A3 接口（test/cheevj/README.md「支持的产品」仅 Atlas A2/A3，
+# 接口文档产品表 950 为 ×）。950 构建不生成依赖设备的测试目标，
+# 按 build.sh 的 configure WARNING 约定把 cheevj_test 计入 SKIPPED；
+# OPS_SOLVER 库源码编译选项与设备无关的 cheevj_small_scale_host_test
+# 在所有 SoC 构建中保留。
 
 # TARGET_DIRECTORY makes source properties visible in the directory where
 # ops_solver is defined. It is optional here because CMake added it in 3.18.
+# 该配置作用于库目标 OPS_SOLVER，不是测试配置；必须留在 SoC 门控之外，
+# 避免 950 构建丢失 -O2/-O3。
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
     set_property(SOURCE
         ${CMAKE_SOURCE_DIR}/src/cheevj/cheevj_panel_kernel.cpp
@@ -34,6 +30,22 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
         PROPERTY COMPILE_OPTIONS "-O3"
     )
 endif()
+
+if(SOC_VERSION_LOWER MATCHES "^ascend950")
+    message(WARNING "cheevj tests require Atlas A2/A3, skipping on ${SOC_VERSION_LOWER}")
+else()
+
+add_executable(cheevj_test
+    cheevj_test.cpp
+)
+
+add_executable(cheevj_benchmark
+    cheevj_benchmark.cpp
+)
+
+add_executable(cheevj_contract_test
+    cheevj_contract_test.cpp
+)
 
 target_include_directories(cheevj_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -64,7 +76,11 @@ target_link_libraries(cheevj_contract_test PRIVATE
     ${OPS_SOLVER}
     $ENV{EAGER_LIBRARY_PATH}/libascendcl.so
 )
+endif()
 
+# README: the test calls the public API with a null handle and does not
+# initialize an ACL device. It is a host-only regression and must build on all
+# SoCs, including 950.
 add_executable(cheevj_small_scale_host_test
     cheevj_small_scale_host_test.cpp
 )
