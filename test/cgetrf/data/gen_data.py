@@ -13,6 +13,8 @@ import numpy as np
 import sys
 import os
 
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+
 # 仅使用 numpy 的随机种子（与 C++ mt19937 rng(149); 一致）
 np.random.seed(149)
 
@@ -37,7 +39,7 @@ def main():
     a = generate_data(m, n)
 
     # 确保输出目录存在
-    output_dir = "./test/cgetrf/data/input"
+    output_dir = f"{_D}input"
     os.makedirs(output_dir, exist_ok=True)
 
     # 写入二进制文件

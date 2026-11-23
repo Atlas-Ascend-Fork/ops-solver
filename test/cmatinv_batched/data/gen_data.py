@@ -13,6 +13,8 @@
 import sys, os
 import numpy as np
 
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+
 np.random.seed(42)
 
 # 从命令行读取矩阵维度 n 和 batchSize
@@ -43,15 +45,15 @@ inv_a = np.zeros((batchSize, n, n), dtype=np.complex64)
 for b in range(batchSize):
     inv_a[b] = np.linalg.inv(a[b]).astype(np.complex64)
 
-os.makedirs(os.path.dirname("./test/cmatinv_batched/data/input/A_gm.bin"), exist_ok=True)
-os.makedirs(os.path.dirname("./test/cmatinv_batched/data/golden/Ainv_gm.bin"), exist_ok=True)
+os.makedirs(os.path.dirname(f"{_D}input/A_gm.bin"), exist_ok=True)
+os.makedirs(os.path.dirname(f"{_D}golden/Ainv_gm.bin"), exist_ok=True)
 
 # 写入输入数据 (原始矩阵)
-with open("./test/cmatinv_batched/data/input/A_gm.bin", "wb") as f:
+with open(f"{_D}input/A_gm.bin", "wb") as f:
     f.write(a.tobytes())
 
 # 写入输出数据 (逆矩阵)
-with open("./test/cmatinv_batched/data/golden/Ainv_gm.bin", "wb") as f:
+with open(f"{_D}golden/Ainv_gm.bin", "wb") as f:
     f.write(inv_a.tobytes())
 
 print(f"Generated batch {batchSize} of {n}x{n} complex matrices and their inverses")
