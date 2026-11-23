@@ -16,6 +16,29 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _acl_include(toolkit_roots):
+    configured = os.environ.get("ACL_INCLUDE_PATH")
+    if configured:
+        include = Path(configured)
+        assert (include / "acl/acl.h").is_file(), (
+            f"ACL_INCLUDE_PATH={configured} does not contain acl/acl.h"
+        )
+        return str(include)
+    suffixes = (
+        "aarch64-linux/include",
+        "x86_64-linux/include",
+        "include",
+        "runtime/include",
+        "runtime/include/external",
+    )
+    for root in toolkit_roots:
+        for suffix in suffixes:
+            include = root / suffix
+            if (include / "acl/acl.h").is_file():
+                return str(include)
+    return None
+
+
 def scalar_source():
     kernel = (ROOT / "src/utils/complex_solver_kernel.hpp").read_text()
     register = (ROOT / "src/utils/complex_solver_register.hpp").read_text()
@@ -51,10 +74,14 @@ def scalar_source():
 
 
 @pytest.mark.parametrize("optimization", ("-O0", "-O2"))
-def test_divide_and_prepared_divide_range(optimization, tmp_path):
+def test_divide_and_prepared_divide_range(optimization, tmp_path, toolkit_roots):
     # Use actual SDK ABI header types. ACL_INCLUDE_PATH may point to an SDK or runtime/include/external.
-    acl_include = os.environ.get("ACL_INCLUDE_PATH")
-    assert acl_include and (Path(acl_include) / "acl/acl.h").is_file()
+    acl_include = _acl_include(toolkit_roots)
+    if acl_include is None:
+        pytest.skip(
+            "acl/acl.h not found; set ACL_INCLUDE_PATH to a CANN include directory "
+            "that contains acl/acl.h"
+        )
     (tmp_path / "production.inc").write_text(scalar_source())
     binary = tmp_path / "range"
     command = [

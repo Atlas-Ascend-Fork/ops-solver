@@ -36,6 +36,23 @@ python3 -m pytest -q tests/host/test_build_path_arguments.py
 pre-commit run build-driver-contract-tests --all-files
 ```
 
+## 环境前置
+
+`tests/host/` 默认不依赖 NPU 设备，但以下两个用例需要 Host 侧工具链。未显式设置环境变量时，测试会自动探测本机 CANN 与 `PATH`；探测不到则以 `skip` 结束，不会把环境缺失误报为功能失败。显式设置但路径无效时仍会失败，并提示缺少的文件。
+
+| 依赖 | 使用方 | 显式配置 | 自动探测 |
+|---|---|---|---|
+| `acl/acl.h` | `test_complex_divide_range.py` 使用真实 ACL ABI 类型编译 Host 回归 | `ACL_INCLUDE_PATH` 指向包含 `acl/acl.h` 的目录 | `ASCEND_HOME_PATH` / `ASCEND_TOOLKIT_HOME` 下的 `aarch64-linux/include`、`x86_64-linux/include`、`include`、`runtime/include`、`runtime/include/external`，以及 `/usr/local/Ascend/ascend-toolkit/latest`、`~/Ascend/ascend-toolkit/latest` 和 `cann-*` 版本目录 |
+| makeself 2.5.x | `test_cpack_run_registration.py` 通过仓库 `cmake/makeself.cmake` 生成 `.run` | `SOLVER_MAKESELF_PATH` 指向包含 `makeself.sh` 的目录 | 仓库 `build/third_party/makeself`，以及 CANN 自带的 `.../tikcpp/ascendc_kernel_cmake/fwk_modules/util/makeself`、`.../op_project_tmpl/cmake/util/makeself` |
+
+```bash
+# 以本机 CANN 为例，路径按实际安装替换
+export ACL_INCLUDE_PATH=/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/include
+export SOLVER_MAKESELF_PATH=/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/tikcpp/ascendc_kernel_cmake/fwk_modules/util/makeself
+```
+
+`cmake` / `cpack` 优先使用 `requirements.txt` 安装的 `cmake` 包，缺失时回退到 `PATH` 中同一目录下的二进制。`cpack-run-registration-tests` hook 会下载固定版本的 makeself 并自动设置 `SOLVER_MAKESELF_PATH`，因此提交门禁不依赖本机 CANN。
+
 ## 挂接策略（新增测试的指引）
 
 1. **纯 Python / fake 外部命令的测试优先挂**：无 numpy/scipy、无设备依赖（如 build/uninstall/cmake-repo 三类）；
