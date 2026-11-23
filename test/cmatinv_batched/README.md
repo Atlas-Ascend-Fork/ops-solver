@@ -137,14 +137,17 @@ Solver CmatinvBatched算子实现。
   ```
   执行结果如下，说明精度对比成功。
   ```bash
-  [Success] Case accuracy verification passed.
+
+[Success] Case accuracy verification passed.
   ```
 
 > **运行前提**：直接运行测试二进制须在**仓库根目录**下执行（二进制以 `./test/<op>/data/...` 相对路径读取数据）。
 
 直接运行前需重新生成数据（参数与测试一致）：
+```
 
-```bash
+  > **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（A·A⁻¹ 与单位阵逐元素比较，错误元素占比 ≤ 0.01% 判通过（即 error_tol = 1e-4，万分之一））。
+bash
 python3 test/cmatinv_batched/data/gen_data.py 3 2   # 参数：n、batchSize
 ./build/test/cmatinv_batched/cmatinv_batched_test 0 3 2
 python3 test/cmatinv_batched/data/verify_result.py 3 2
