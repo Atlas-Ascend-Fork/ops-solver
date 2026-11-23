@@ -155,7 +155,8 @@ Solver Sgetrs算子实现。
   ```bash
   bash build.sh --soc=ascend910b --ops=sgetrs --run # 请按实际机型替换 --soc：Atlas A2 用 ascend910b，Atlas A3 用 ascend910_93；--run 可选，用于执行测试样例
   ```
-  执行结果如下，说明精度对比成功。
+
+执行结果如下，说明精度对比成功。
   ```bash
   [Success] Case accuracy verification passed.
   ```
@@ -165,5 +166,7 @@ Solver Sgetrs算子实现。
 ```bash
 python3 test/sgetrs/data/gen_data.py 32 32   # 参数：矩阵阶数 n、右端项列数 nrhs
 ./build/test/sgetrs/sgetrs_test 0 32 32        # 参数：设备号、n、nrhs
-python3 test/sgetrs/data/verify_result.py 32 32 # 参数：n、nrhs
+python3 test/sgetrs/data/verify_result.py 32 32 # 
+> **路径对称性**：`gen_data.py` 与 `verify_result.py` 已按脚本所在目录解析路径（从任意 cwd 可正确产出/读取）；测试二进制仍以 `./test/sgetrs/data/...` cwd 相对路径读取——单步运行 binary 须在仓库根目录执行（`build.sh --run` 主流程不受影响）。
+参数：n、nrhs
 ```
