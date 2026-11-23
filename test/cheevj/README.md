@@ -10,6 +10,9 @@
 
 （详见 [接口说明](../../docs/zh/cheevj.md) 的产品支持情况）
 
+
+> **运行前提**：测试二进制与 gen/verify 脚本须在**仓库根目录**下执行（binary 以 `./test/cheevj/data/...` 相对路径读写数据文件）。
+
 ## Build
 
 ```bash
