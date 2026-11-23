@@ -211,6 +211,9 @@ LD_LIBRARY_PATH="$PWD/build:$LD_LIBRARY_PATH" ./build/test/sgetrf/sgetrf_subnorm
 
 > **CMake 版本要求**：本测试目录的 `CMakeLists.txt` 使用 `TARGET_DIRECTORY` 源属性（CMake 3.18 新增），构建包含本测试的 `bash build.sh --run` 时需要 cmake >= 3.18（见 [快速安装](../../docs/zh/install/quick_install.md) 的依赖清单）。
 
+
+> **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（LU 重构后与参考逐元素比较，超差元素占比 ≤ 0.01% 判通过（即 error_tol = 1e-4，万分之一）；非有限值直接拒绝）。
+
 ## 官方测试协议接入
 
 `solver_adapter.h` 保持官方固定v2协议定义。descriptor声明 `sgetrf`、`float32`、
