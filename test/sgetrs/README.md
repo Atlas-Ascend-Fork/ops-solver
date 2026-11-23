@@ -158,6 +158,8 @@ Solver Sgetrs算子实现。
 
 > **运行前提**：测试二进制以 `./test/<op>/data/...` 相对路径读写数据文件，须在**仓库根目录**下执行（`gen_data.py` 已改为按脚本所在目录产出；`verify_result.py` 仍以 cwd 相对路径读取，与二进制同依赖仓库根目录）。
 
+> **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（参考解与实际解逐元素比较，绝对误差和相对误差同时超 eps（eps = 1e-3）的元素占比 ≤ 0.01% 判通过，即万分之一）。
+
 执行结果如下，说明精度对比成功。
   ```bash
   [Success] Case accuracy verification passed.
