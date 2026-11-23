@@ -15,10 +15,12 @@ import os
 import sys
 import numpy as np
 
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
 
-INPUT_A_PATH = "./test/cheevj/data/input/A_gm.bin"
-GOLDEN_W_PATH = "./test/cheevj/data/golden/W_golden.bin"
-GOLDEN_V_PATH = "./test/cheevj/data/golden/V_golden.bin"
+
+INPUT_A_PATH = f"{_D}input/A_gm.bin"
+GOLDEN_W_PATH = f"{_D}golden/W_golden.bin"
+GOLDEN_V_PATH = f"{_D}golden/V_golden.bin"
 EXACT_EIGH_LIMIT = 128
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 
@@ -109,19 +111,19 @@ def parse_arguments():
     parser.add_argument(
         "--input-file",
         type=Path,
-        default=Path("./test/cpotrf/data/input/A_gm.bin"),
+        default=Path(f"{_D}input/A_gm.bin"),
         help="原始矩阵输出路径，默认 ./test/cpotrf/data/input/A_gm.bin",
     )
     parser.add_argument(
         "--u-file",
         type=Path,
-        default=Path("./test/cpotrf/data/output/U_std.bin"),
+        default=Path(f"{_D}output/U_std.bin"),
         help="上三角矩阵输出路径，默认 ./test/cpotrf/data/output/U_std.bin",
     )
     parser.add_argument(
         "--l-file",
         type=Path,
-        default=Path("./test/cpotrf/data/output/L_std.bin"),
+        default=Path(f"{_D}output/L_std.bin"),
         help="下三角矩阵输出路径，默认 ./test/cpotrf/data/output/L_std.bin",
     )
 
