@@ -28,10 +28,13 @@ if n <= 0:
 # 生成随机实数矩阵 (float32)
 a = np.random.randint(1, 11, size=(m, n)).astype(np.float32)
 
-os.makedirs(os.path.dirname("./test/sgetrf/data/input/A_gm.bin"), exist_ok=True)
+# 输出路径相对脚本所在目录解析，避免受调用工作目录影响（issue #571，
+# 对齐 sgetrs/cgetrs 已合入的 5810f1e/ea7ead4 修复口径）。
+data_dir = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(os.path.join(data_dir, "input"), exist_ok=True)
 
 # 写入输入数据
-with open("./test/sgetrf/data/input/A_gm.bin", "wb") as f:
+with open(os.path.join(data_dir, "input/A_gm.bin"), "wb") as f:
     f.write(a.tobytes())
 
 print(f"Generated {m}x{n} float matrix")
