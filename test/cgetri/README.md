@@ -132,7 +132,9 @@ Solver Cgetri算子实现。
   ```bash
   bash build.sh --soc=ascend950 --ops=cgetri --run # --ops=<算子名> --run可选参数，执行测试样例
   ```
-  执行结果如下，说明精度对比成功。
+  > **精度判定口径**：`verify_result.py` 以共享 `verify_utils` 的两层判据：逐元素 `np.isclose(rtol=atol=5e-3)` 判定超差元素，超差占比 ≤ `error_tol = 1e-4`（0.01%）判通过。
+
+执行结果如下，说明精度对比成功。
   ```bash
   [Success] Case accuracy verification passed.
   ```
