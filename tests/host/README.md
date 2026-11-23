@@ -65,3 +65,14 @@ export SOLVER_MAKESELF_PATH=/usr/local/Ascend/ascend-toolkit/latest/aarch64-linu
 
 - 挂接历史与各 hook 的动机：见各合入 PR（#273/#435/#440/#446/#449/#450 等）；
 - `test/` 下设备测试与 CLI 脚本的运行：各目录 README 与 `build.sh --run`。
+
+## conftest.py（共享 fixture）
+
+`tests/host/conftest.py` 提供 Host 测试的共享 pytest fixture：
+
+| fixture | 功能 | 使用方 |
+|---|---|---|
+| `toolkit_roots` | 自动探测 ACL 头文件与 makeself 位置（环境变量优先，无则 fallback 到常用安装路径） | test_cpack_run_registration.py 等 |
+
+新增需要探测外部工具路径的 Host 测试时优先复用 `toolkit_roots`，不要在各测试文件内重复探测逻辑。
+
