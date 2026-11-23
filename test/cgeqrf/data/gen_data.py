@@ -40,6 +40,12 @@ import os
 
 import numpy as np
 
+# 注意（issue #573 检视整改）：本脚本产物按脚本所在目录落盘（__file__ 相对解析），
+# 而测试二进制 cgeqrf_test.cpp 与 verify_result.py 此前按 cwd 相对读取 ./test/...。
+# verify_result.py 已由配套 PR 同步改为 __file__ 解析；测试二进制仍需从仓根运行
+# （build.sh --run 形态从仓根执行，README 单步引导也是仓根 cwd——当前不影响主流程）。
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 
@@ -100,7 +106,7 @@ def main():
         raise ValueError(f"zero_ratio 必须在 [0, 1] 区间, got {zero_ratio}")
 
     # 确保输出目录存在
-    output_dir = "./test/cgeqrf/data/input"
+    output_dir = f"{_D}input"
     os.makedirs(output_dir, exist_ok=True)
 
     # 生成测试数据
@@ -114,7 +120,7 @@ def main():
 
     # 保存数据到文件（强制列主序）
     input_matrix.astype(np.complex64).ravel(order="F").tofile(
-        "./test/cgeqrf/data/input/A_gm.bin"
+        f"{_D}input/A_gm.bin"
     )
 
     logging.info(
