@@ -140,6 +140,8 @@ Solver CmatinvBatched算子实现。
   [Success] Case accuracy verification passed.
   ```
 
+> **运行前提**：直接运行测试二进制须在**仓库根目录**下执行（二进制以 `./test/<op>/data/...` 相对路径读取数据）。
+
 直接运行前需重新生成数据（参数与测试一致）：
 
 ```bash
