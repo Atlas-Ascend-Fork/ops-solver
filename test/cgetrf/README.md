@@ -133,7 +133,7 @@ Solver Cgetrf算子实现。
   ```bash
   bash build.sh --soc=ascend950 --ops=cgetrf --run # --ops=<算子名> --run可选参数，执行测试样例
   ```
-  > **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（LU 重构后与参考逐元素比较，超差元素占比 ≤ 0.01% 判通过（即 error_tol = 1e-4，万分之一）；非有限值直接拒绝）。
+  > **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（LU 重构后与参考逐元素比较，相对误差 `ratio = |a−b|/|a| > eps（eps = 1e-3）` 的元素计入超差，占比 ≤ 0.01% 判通过（即 error_tol = 1e-4，万分之一）；非有限值直接拒绝）。
 
 执行结果如下，说明精度对比成功。
   ```bash
