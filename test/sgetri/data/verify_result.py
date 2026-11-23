@@ -24,6 +24,7 @@ def format_mismatch(index, expected, actual):
     return f"data index: {index:08d}, expected: {expected:.9f}, actual: {actual:.9f}, rdiff: {rdiff:.6f}"
 
 
+# 数据定位保持 cwd 相对路径（host 测试以 tmp_path 为 cwd 构造数据并运行，issue #448 口径）。
 if __name__ == "__main__":
     sys.exit(
         run_verification(

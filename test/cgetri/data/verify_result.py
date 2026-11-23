@@ -28,9 +28,12 @@ def format_mismatch(index, expected, actual):
 
 
 if __name__ == "__main__":
-    # 数据定位对齐全仓契约：按 cwd 相对路径（其余 17 个 verify_result.py 同款），
-    # 此前按 __file__ 定位是全仓唯一特例，host 测试被迫为 cgetri 单拷整套模块
-    # （issue #448）。sys.path 的 utils 推导保留 __file__（模块导入，非数据定位）。
+    # 数据定位保持 cwd 相对路径（issue #448 口径）：host 测试
+    # （tests/host/test_nonfinite_accuracy_verdict.py）以 tmp_path 为 cwd 构造数据
+    # 并运行本脚本——若按 __file__ 解析会去脚本所在目录找 tmp_path 写的 input/（不存在）。
+    # 本算子与其余 OPERATORS 算子、cheevj basis-verdict 均因 host 测试
+    # cwd 数据流而保持 cwd 相对（host 测试以 tmp_path 为 cwd 构造数据）。
+    # sys.path 的 utils 推导保留 __file__（模块导入，非数据定位）。
     sys.exit(
         run_verification(
             "./test/cgetri/data/input/A_gm.bin",

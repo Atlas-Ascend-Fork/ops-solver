@@ -74,6 +74,7 @@ def verify_result(A, invA, batchSize, N):
     return error_ratio <= error_tol
 
 
+# 数据定位保持 cwd 相对路径（host 测试以 tmp_path 为 cwd 构造数据并运行，issue #448 口径）。
 if __name__ == "__main__":
     try:
         # 参数序与同目录 gen_data.py 及 cgetri_batched_test 保持一致：(n, batchSize)
