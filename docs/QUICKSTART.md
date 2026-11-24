@@ -159,15 +159,17 @@ bash build.sh --soc=ascend950 --ops=cmatinv_batched --run
 | Ascend 950 系列（型号如 Ascend950PR_/Ascend950DT_） | `ascend950` |
 | Atlas 200I/500 A2 推理产品（Ascend 310P） | `ascend310p` |
 
-> **各 SoC 的算子覆盖概览**（详细口径以各算子文档的「产品支持情况」为准）：
->
-> | --soc | 算子覆盖 |
-> | --- | --- |
-> | `ascend950` | 950 契约算子（复数 Cholesky/LU/QR、实数 LU/QR、`test/cholesky` 覆盖的 Spotrf 950 接口等）；A2/A3 legacy 算子（sgetrs、cgetrs、`test/spotrf` 的 legacy 接口、cheevj）的**测试**经 configure 门控在 `--run` 时记 Skipped（这些 legacy 接口在 950 上不受支持） |
-> | `ascend910b` / `ascend910_93` | A2/A3 契约算子（sgetrs、cgetrs、spotrf A2/A3 legacy 接口、cheevj 等）；950 专属算子的**测试**经 configure 门控在 `--run` 时记 Skipped（库中的算子 API 构建为 unsupported 桩，直接调用返回 `ARCH_MISMATCH`） |
-> | `ascend310p` | 同 A2/A3 契约算子（Atlas 200I/500 A2 推理）；其余同上（测试 Skipped、API 返回 `ARCH_MISMATCH`） |
->
-> **说明**：初代 Ascend 910A（Ascend910A/PremiumA/ProA 等）不在当前支持列表中；完整支持列表见 `build.sh` 中 `SUPPORT_COMPUTE_UNIT_SHORT`。若 `npu-smi info` 显示的型号不在上表覆盖范围内，可在 [CANN 官网下载中心](https://www.hiascend.com/cann/download) 的产品列表中确认产品系列，再对照 `build.sh` 的支持前缀选择 `--soc` 取值。
+### 各 SoC 的算子覆盖概览
+
+（详细口径以各算子文档的「产品支持情况」为准）
+
+| --soc | 算子覆盖 |
+| --- | --- |
+| `ascend950` | 950 契约算子（复数 Cholesky/LU/QR、实数 LU/QR、`test/cholesky` 覆盖的 Spotrf 950 接口等）；A2/A3 legacy 算子（sgetrs、cgetrs、`test/spotrf` 的 legacy 接口、cheevj）的**测试**经 configure 门控在 `--run` 时记 Skipped（这些 legacy 接口在 950 上不受支持） |
+| `ascend910b` / `ascend910_93` | A2/A3 契约算子（sgetrs、cgetrs、spotrf A2/A3 legacy 接口、cheevj 等）；950 专属算子的**测试**经 configure 门控在 `--run` 时记 Skipped（库中的算子 API 构建为 unsupported 桩，直接调用返回 `ARCH_MISMATCH`） |
+| `ascend310p` | 同 A2/A3 契约算子（Atlas 200I/500 A2 推理）；其余同上（测试 Skipped、API 返回 `ARCH_MISMATCH`） |
+
+**说明**：初代 Ascend 910A（Ascend910A/PremiumA/ProA 等）不在当前支持列表中；完整支持列表见 `build.sh` 中 `SUPPORT_COMPUTE_UNIT_SHORT`。若 `npu-smi info` 显示的型号不在上表覆盖范围内，可在 [CANN 官网下载中心](https://www.hiascend.com/cann/download) 的产品列表中确认产品系列，再对照 `build.sh` 的支持前缀选择 `--soc` 取值。
 
 ### 3. 打开 CANN 日志
 
