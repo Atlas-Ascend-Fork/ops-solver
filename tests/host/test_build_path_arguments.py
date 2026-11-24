@@ -32,6 +32,10 @@ def driver(tmp_path):
         original = Path(__file__).resolve().parents[2]
         for filename in ["build.sh", "CMakeLists.txt"]:
             shutil.copyfile(original / filename, repo / filename)
+        for operator in ("sgetrf", "cgetrf"):
+            test_dir = repo / "test" / operator
+            test_dir.mkdir(parents=True)
+            (test_dir / "CMakeLists.txt").touch()
         sdk = tmp_path / ("sdk with spaces" if kind in {"sdk", "prefix"} else "sdk")
         sdk.mkdir()
         prefix = sdk / "lib64/cmake"
@@ -44,7 +48,7 @@ def driver(tmp_path):
         tools.mkdir()
         recorder = tools / "cmake"
         recorder.write_text(
-            "#!" + sys.executable + "\nimport json,os,sys\n"
+            "#!" + str(Path(sys.executable).resolve()) + "\nimport json,os,sys\n"
             'with open(os.environ["ARGV_LOG"], "a") as handle: '
             'handle.write(json.dumps(sys.argv[1:])+"\\n")\n'
             'sys.exit(int(os.environ.get("BOUNDARY_FAILURE", "0")) '
@@ -128,3 +132,19 @@ def test_cmake_failure_still_stops_driver(driver, stage, expected_calls):
     )
     assert run.returncode == 17
     assert len(recorded_calls(env)) == expected_calls
+
+
+@pytest.mark.parametrize("ops", ["unknown_operator", "sgetrf,unknown_operator"])
+def test_rejects_unknown_operator_before_cleaning_build(driver, ops):
+    repo, _, _, env = driver("plain")
+    build_dir = repo / "build"
+    build_dir.mkdir()
+    marker = build_dir / "existing-artifact"
+    marker.touch()
+    command = [bash_executable(), str(repo / "build.sh"), f"--ops={ops}"]
+    run = subprocess.run(command, cwd=repo.parent, env=env, text=True,
+                         capture_output=True, check=False)
+    assert marker.is_file()
+    assert run.returncode == 1
+    assert "TEST directory not found: unknown_operator" in run.stdout
+    assert recorded_calls(env) == []

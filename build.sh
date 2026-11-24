@@ -123,6 +123,12 @@ if [ "${OPS_EXPLICIT}" == "TRUE" ]; then
         print_error "Invalid --ops value '${BUILD_OPS}': expected at least one operator name."
         exit 1
     fi
+    for _op in "${_UNIQUE_OPS[@]}"; do
+        if [ ! -f "${BASE_PATH}/test/${_op}/CMakeLists.txt" ]; then
+            print_error "TEST directory not found: ${_op}"
+            exit 1
+        fi
+    done
     BUILD_OPS=$(IFS=','; echo "${_UNIQUE_OPS[*]}")
 fi
 
