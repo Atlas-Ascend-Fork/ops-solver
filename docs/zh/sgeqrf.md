@@ -16,6 +16,10 @@
 的架构目录机制），其他产品不提供该接口的实现。实现与验证在<term>Ascend 950PR</term>上完成，
 同架构的<term>Ascend 950DT</term>复用同一份 arch35 代码。
 
+## 上下游接口
+
+分解结果（Q 的 Householder 反射器 + R 因子）可用于 [Sorgqr 构造显式 Q](sorgqr.md)、[Sormqr 应用 Q](sormqr.md)与 [Sgels 最小二乘求解](sgels.md)；辅助接口见 [Xlarft](xlarft.md)。
+
 ## 功能说明
 
 - 接口功能\

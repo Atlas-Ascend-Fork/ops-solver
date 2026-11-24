@@ -16,6 +16,10 @@
 的架构目录机制），其他产品不提供该接口的实现。实现与验证在<term>Ascend 950PR</term>上完成，
 同架构的<term>Ascend 950DT</term>复用同一份 arch35 代码。
 
+## 上下游接口
+
+输入反射器来自 [Sgeqrf 分解](sgeqrf.md)；应用 Q 到矩阵见 [Sormqr](sormqr.md)；最小二乘直接求解见 [Sgels](sgels.md)。
+
 ## 功能说明
 
 - 接口功能\

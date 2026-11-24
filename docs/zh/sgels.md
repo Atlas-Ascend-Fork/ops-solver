@@ -16,6 +16,10 @@
 的架构目录机制），其他产品不提供该接口的实现。实现与验证在<term>Ascend 950PR</term>上完成，
 同架构的<term>Ascend 950DT</term>复用同一份 arch35 代码。
 
+## 上下游接口
+
+内部经 [Sgeqrf 分解](sgeqrf.md)+[Sormqr 应用 Q](sormqr.md)+回代实现；复数版见 [CCgels](ccgels.md)。
+
 ## 功能说明
 
 - 接口功能\
