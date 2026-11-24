@@ -10,6 +10,10 @@
 | Ascend 950PR | √ |
 | Ascend 950DT | √ |
 
+## 上下游接口
+
+输入因子来自 [Spotrf 分解](spotrf.md)；基于因子求解见 [Spotrs](spotrs.md)；复数版见 [Cpotri](cpotri.md)。
+
 ## 功能说明
 
 `aclsolverSpotri` 根据 Cholesky 因子计算原始对称正定矩阵的逆矩阵：

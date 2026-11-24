@@ -7,6 +7,10 @@
 | <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | 其他架构 | 本实现未提供 |
 
+## 上下游接口
+
+输入因子来自 [Cpotrf 分解](cpotrf.md)；求逆见 [Cpotri](cpotri.md)；实数版见 [Spotrs](spotrs.md)。
+
 ## 功能说明
 
 输入已经分解的三角因子，保持 A 不变，原地将 B 更新为 X。调用前需完成 Cholesky 分解；本接口不包含前置分解。

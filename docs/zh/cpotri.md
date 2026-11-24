@@ -7,6 +7,10 @@
 | <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | 其他架构 | 本实现未提供 |
 
+## 上下游接口
+
+输入因子来自 [Cpotrf 分解](cpotrf.md)；基于因子求解见 [Cpotrs](cpotrs.md)；实数版见 [Spotri](spotri.md)。
+
 ## 功能说明
 
 输入已经分解的三角因子，原地生成原矩阵逆的所选三角。

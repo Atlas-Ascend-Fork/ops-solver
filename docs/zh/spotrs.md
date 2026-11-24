@@ -10,6 +10,10 @@
 | Ascend 950PR | √ |
 | Ascend 950DT | √ |
 
+## 上下游接口
+
+输入因子来自 [Spotrf 分解](spotrf.md)；求逆见 [Spotri](spotri.md)；复数版见 [Cpotrs](cpotrs.md)。
+
 ## 功能说明
 
 `aclsolverSpotrs` 使用已成功分解的 Cholesky 因子求解实数线性方程组：
