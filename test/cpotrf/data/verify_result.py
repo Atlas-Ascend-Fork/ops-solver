@@ -23,6 +23,8 @@ ERROR_TOL = 1e-4
 
 def load_complex_matrix(filepath, n):
     """从二进制文件加载复数矩阵 (实虚 float32 交错)"""
+    if n <= 0:
+        raise ValueError(f"n must be positive, got {n}")
     # 大小不符即损坏（追加脏字节/截断），对齐 #202 read_binary_strict 口径直接
     # 失败（issue #465）：此前仅 warning，超量文件随后触发误导性的「数据量不足」。
     expected_size = n * n * 2 * 4  # 两个 float32 每个 4 字节
@@ -33,16 +35,38 @@ def load_complex_matrix(filepath, n):
         )
     data = np.fromfile(filepath, dtype=np.float32)
     if data.size != n * n * 2:
-        raise ValueError(f"文件 {filepath} 数据量不足: 需要 {n*n*2} 个 float32，实际 {data.size}")
+        raise ValueError(
+            f"文件 {filepath} 数据量不足: 需要 {n * n * 2} 个 float32，实际 {data.size}"
+        )
     # 交错读取：每两个 float 组成一个复数
     real = data[0::2].reshape(n, n)
     imag = data[1::2].reshape(n, n)
     return real + 1j * imag
 
 
+def log_failed_samples(diff, abs_diff, failed_indices, num_failed):
+    logging.info("\n不合格元素示例 (最多显示10个):")
+    logging.info("  行  列      实部误差        虚部误差        误差模")
+    for count, (i, j) in enumerate(failed_indices):
+        if count >= 10:
+            break
+        re_diff = diff[i, j].real
+        im_diff = diff[i, j].imag
+        mod = abs_diff[i, j]
+        logging.info(
+            f"  {i + 1:3d} {j + 1:3d}   {re_diff:12.6e}   {im_diff:12.6e}   {mod:12.6e}"
+        )
+    if num_failed > 10:
+        logging.info(f"  ... 还有 {num_failed - 10} 个不合格元素未显示")
+
+
 def check_complex_matrix(uplo, n):
+    if uplo not in ("U", "L"):
+        raise ValueError(f"uplo must be 'U' or 'L', got {uplo!r}")
+    if n <= 0:
+        raise ValueError(f"n must be positive, got {n}")
     # 选择文件名
-    if uplo == 'U':
+    if uplo == "U":
         file_gm = "test/cpotrf/data/output/U_gm.bin"
         file_std = "test/cpotrf/data/output/U_std.bin"
     else:
@@ -62,11 +86,13 @@ def check_complex_matrix(uplo, n):
 
     # 非有限的输出或参考值不参与误差比较，也不受错配占比稀释（issue #347）
     if not (np.isfinite(A).all() and np.isfinite(B).all()):
-        logging.info("Non-finite output or reference cannot pass accuracy verification.")
+        logging.info(
+            "Non-finite output or reference cannot pass accuracy verification."
+        )
         return False
 
     # 定义三角掩码
-    if uplo == 'U':
+    if uplo == "U":
         mask = np.triu(np.ones((n, n), dtype=bool))
     else:
         mask = np.tril(np.ones((n, n), dtype=bool))
@@ -86,26 +112,12 @@ def check_complex_matrix(uplo, n):
 
     logging.info(f"\n比较结果 (uplo={uplo}):")
     logging.info(f"三角部分元素总数: {total}")
-    logging.info(f"合格元素数: {num_qualified} ({num_qualified/total*100:.2f}%)")
-    logging.info(f"不合格元素数: {num_failed} ({num_failed/total*100:.2f}%)")
+    logging.info(f"合格元素数: {num_qualified} ({num_qualified / total * 100:.2f}%)")
+    logging.info(f"不合格元素数: {num_failed} ({num_failed / total * 100:.2f}%)")
 
     # 打印不合格示例（最多10个）
     if num_failed > 0:
-        failed_indices = indices[~qualified]
-        logging.info("\n不合格元素示例 (最多显示10个):")
-        logging.info("  行  列      实部误差        虚部误差        误差模")
-        count = 0
-        for i, j in failed_indices:
-            if count >= 10:
-                break
-            re_diff = diff[i, j].real
-            im_diff = diff[i, j].imag
-            mod = abs_diff[i, j]
-            # 使用 1-indexed 位置
-            logging.info(f"  {i+1:3d} {j+1:3d}   {re_diff:12.6e}   {im_diff:12.6e}   {mod:12.6e}")
-            count += 1
-        if num_failed > 10:
-            logging.info(f"  ... 还有 {num_failed - 10} 个不合格元素未显示")
+        log_failed_samples(diff, abs_diff, indices[~qualified], num_failed)
     else:
         logging.info("\n所有三角元素误差均在容忍范围内！")
     return num_failed / total <= ERROR_TOL
@@ -115,8 +127,8 @@ def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 128
     if n <= 0:
         raise ValueError(f"n must be positive, got {n}")
-    u_success = check_complex_matrix('U', n)
-    l_success = check_complex_matrix('L', n)
+    u_success = check_complex_matrix("U", n)
+    l_success = check_complex_matrix("L", n)
     return u_success and l_success
 
 
