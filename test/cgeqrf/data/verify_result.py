@@ -62,17 +62,27 @@
     ./test/cgeqrf/data/output/tau.bin    (min(m, n), complex64)
 """
 
-import os
 import logging
+import os
 import sys
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.linalg import lapack
 
-_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
-
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
+)
+from verify_utils import read_binary_strict  # noqa: E402
+
+_CWD_DATA_DIR = os.path.join("test", "cgeqrf", "data")
+_D = (
+    os.path.join(_CWD_DATA_DIR, "")
+    if os.path.isdir(_CWD_DATA_DIR)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+)
 
 
 # -------------------- 全局参数设置（官方口径） --------------------
@@ -121,7 +131,7 @@ DEFAULT_VERIFY_CONFIG = VerifyConfig()
 
 def load_binary(file_path, shape, dtype=DTYPE, fortran_order=False):
     """从二进制文件读取数据并重塑为指定形状。"""
-    data = np.fromfile(file_path, dtype=dtype)
+    data = read_binary_strict(file_path, dtype)
     expected_size = np.prod(shape)
 
     if data.size != expected_size:
@@ -462,7 +472,7 @@ def main():
     # 2. 读取按 Fortran 列主序存储的原始矩阵与算子输出。
     a_original = load_binary(INPUT_PATH, (m, n), fortran_order=True)
     qr_compact = load_binary(R_PATH, (m, n), fortran_order=True)
-    tau = np.fromfile(TAU_PATH, dtype=DTYPE)
+    tau = read_binary_strict(TAU_PATH, DTYPE)
 
     # tau 文件长度与 min(m,n) 不符即数据链完整性缺陷（kernel 少写/未写/截断），
     # 对齐 #202 read_binary_strict 口径直接失败（issue #464）：此前警告后零填充

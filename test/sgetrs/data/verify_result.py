@@ -10,14 +10,25 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import logging
 import os
 import sys
-import logging
+
 import numpy as np
 
-_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
-
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
+)
+from verify_utils import read_binary_strict  # noqa: E402
+
+_CWD_DATA_DIR = os.path.join("test", "sgetrs", "data")
+_D = (
+    os.path.join(_CWD_DATA_DIR, "")
+    if os.path.isdir(_CWD_DATA_DIR)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+)
 
 eps = 1e-3
 error_tol = 1e-4
@@ -70,19 +81,19 @@ def main():
     nrhs = int(sys.argv[2]) if len(sys.argv) > 2 else 32
 
     # 读取数据
-    lu = np.fromfile(f"{_D}input/A_gm.bin", dtype=np.float32).reshape(n, n)
-    b = np.fromfile(f"{_D}input/B_gm.bin", dtype=np.float32).reshape(n, nrhs)
+    lu = read_binary_strict(f"{_D}input/A_gm.bin", np.float32).reshape(n, n)
+    b = read_binary_strict(f"{_D}input/B_gm.bin", np.float32).reshape(n, nrhs)
     # W_gm.bin 为 1-based 主元契约（issue #344 对齐后），还原 0-based 供本脚本交换使用；
     # 内容校验对齐同族 cgetrf verify 形态（issue #460）：越界值此前抛裸 IndexError，
     # 0 值经 -1 后为合法负索引静默回绕交换末行、以错误基准误判。
-    raw_piv = np.fromfile(f"{_D}input/W_gm.bin", dtype=np.int32).reshape(n)
+    raw_piv = read_binary_strict(f"{_D}input/W_gm.bin", np.int32).reshape(n)
     for i, pivot in enumerate(raw_piv):
         if not (i + 1 <= pivot <= n):
             raise ValueError(
                 f"invalid pivot at index {i}: {pivot}, expected [{i + 1}, {n}]"
             )
     piv = raw_piv - 1
-    x = np.fromfile(f"{_D}output/X_gm.bin", dtype=np.float32).reshape(n, nrhs)
+    x = read_binary_strict(f"{_D}output/X_gm.bin", np.float32).reshape(n, nrhs)
 
     if not all(np.isfinite(array).all() for array in (lu, b, x)):
         logging.info("Non-finite input or solution cannot pass accuracy verification.")

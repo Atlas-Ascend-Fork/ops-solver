@@ -422,3 +422,36 @@ def test_cpotrf_finite_large_error_still_fails(tmp_path):
     run = run_cpotrf_cli(tmp_path, True, gm, factor, n)
     assert run.returncode == 1, run.stdout + run.stderr
     assert "[Failed]" in run.stdout
+
+
+@pytest.mark.parametrize("operator", ("sgetrs", "cgetrs"))
+@pytest.mark.parametrize(
+    "location",
+    ("input/A_gm.bin", "input/B_gm.bin", "input/W_gm.bin", "output/X_gm.bin"),
+)
+def test_getrs_rejects_partial_binary_elements(tmp_path, operator, location):
+    dtype = np.float32 if operator == "sgetrs" else np.complex64
+    arrays = identity_inputs(dtype=dtype)
+    data = tmp_path / f"test/{operator}/data"
+    (data / "input").mkdir(parents=True)
+    (data / "output").mkdir()
+    for name, target in {
+        "LU": "input/A_gm.bin",
+        "B": "input/B_gm.bin",
+        "X": "output/X_gm.bin",
+        "piv": "input/W_gm.bin",
+    }.items():
+        arrays[name].tofile(data / target)
+    corrupted = data / location
+    corrupted.write_bytes(corrupted.read_bytes() + b"\x00")
+    script = SGETRS_SCRIPT if operator == "sgetrs" else CGETRS_SCRIPT
+    run = subprocess.run(
+        [sys.executable, str(script), "2", "1"],
+        cwd=tmp_path,
+        env=dict(os.environ, OPENBLAS_NUM_THREADS="1"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "corrupted binary file" in run.stdout
