@@ -134,6 +134,8 @@ Solver Cgetri算子实现。
   ```
   > **精度判定口径**：`verify_result.py` 以共享 `verify_utils` 的两层判据：逐元素 `np.isclose(rtol=atol=5e-3)` 判定超差元素，超差占比 ≤ `error_tol = 1e-4`（0.01%）判通过。
 
+> **路径解析不对称说明**：`gen_data.py` 按脚本所在目录产出数据（`__file__` 相对），`verify_result.py` 按 cwd 相对读取——`build.sh --run` 从仓根执行两端均可正确定位；单步运行 `verify_result.py` 时须以仓库根目录为 cwd（与测试二进制同前提）。
+
 执行结果如下，说明精度对比成功。
   ```bash
   [Success] Case accuracy verification passed.

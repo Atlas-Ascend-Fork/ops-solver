@@ -135,6 +135,8 @@ Solver Cgetrf算子实现。
   ```
   > **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（LU 重构后与参考逐元素比较，相对误差 `ratio = |a−b|/|a| > eps（eps = 1e-3）` 的元素计入超差，占比 ≤ 0.01% 判通过（即 error_tol = 1e-4，万分之一）；非有限值直接拒绝）。
 
+> **路径解析不对称说明**：`gen_data.py` 按脚本所在目录产出数据（`__file__` 相对），`verify_result.py` 按 cwd 相对读取——`build.sh --run` 从仓根执行两端均可正确定位；单步运行 `verify_result.py` 时须以仓库根目录为 cwd（与测试二进制同前提）。
+
 执行结果如下，说明精度对比成功。
   ```bash
   [Success] Case accuracy verification passed.

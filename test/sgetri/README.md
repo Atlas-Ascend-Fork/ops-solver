@@ -134,6 +134,8 @@ Solver Sgetri算子实现。
 
     完整函数原型、内存容量和返回码见[Sgetri接口说明](../../docs/zh/sgetri.md)。
 
+> **路径解析不对称说明**：`gen_data.py` 按脚本所在目录产出数据（`__file__` 相对），`verify_result.py` 按 cwd 相对读取——`build.sh --run` 从仓根执行两端均可正确定位；单步运行 `verify_result.py` 时须以仓库根目录为 cwd（与测试二进制同前提）。
+
 ## 编译运行
 
 在仓库根目录下执行如下步骤，编译并执行算子。
