@@ -118,6 +118,8 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 - make
 - patch
 
+> **SoC 覆盖概览**：`--soc` 取值必须带 `ascend` 前缀（`ascend910b`/`ascend910_93`/`ascend950`/`ascend310p`），各取值对应的算子族覆盖见 [QuickStart 的 --soc 说明](../../QUICKSTART.md#2---soc-应该填什么)。
+
 上述依赖请按以下步骤准备：
 
 1. 下载源码。
