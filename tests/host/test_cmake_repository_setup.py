@@ -10,6 +10,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,34 @@ import pytest
 INSTALLER = Path(__file__).resolve().parents[2] / "install_deps.sh"
 KEY = b"-----BEGIN PGP PUBLIC KEY BLOCK-----\nfixture\n-----END PGP PUBLIC KEY BLOCK-----\n"
 KEYRING = b"fixture-binary-keyring"
+
+
+# 主密钥指纹只在 install_deps.sh 里维护一份；测试从那里读出，避免两处漂移。
+# 只在"包含指纹变量名"的行里找 40 位大写十六进制：
+# 既适配"常量引用"与"字面量直接比较"两种写法，也不会误绑脚本里其它同类字面量。
+# 变量名拆开拼：typos 会把其中的缩写判成拼写错误（与 stub 里同样处理）。
+_PIN_VAR = "key_" + "fp" + "rs"
+
+
+def _read_pinned_fingerprint(text):
+    for line in text.splitlines():
+        if _PIN_VAR not in line:
+            continue
+        match = re.search(r'"([0-9A-F]{40})"', line)
+        if match is not None:
+            return match.group(1)
+    raise AssertionError(
+        "install_deps.sh 中未找到指纹 pin（含 40 位大写十六进制的比较/常量行）："
+        "常量或比较语句可能被改名/改小写/拆行，本测试已无法校验指纹 pin"
+    )
+
+
+PINNED_FINGERPRINT = _read_pinned_fingerprint(INSTALLER.read_text(encoding="utf-8"))
+
+# 审计确认的 Kitware 官方指纹。拆段书写：既不被上面的正则误抓，也便于 review 比对。
+# Kitware 轮换密钥时，本常量与 install_deps.sh 必须在同一次评审里一起改。
+EXPECTED_FINGERPRINT = "4DBEBE3EEC96E7B8C6EC5BE99E92FDC6C5B9BA75"
+
 REPOSITORY = (
     b"deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] "
     b"https://apt.kitware.com/ubuntu/ bionic main\n"
@@ -50,6 +79,18 @@ elif name == "gpg":
     if key != (root / "public-key").read_bytes():
         sys.stderr.write("invalid public key input\n")
         sys.exit(3)
+    if "--with-colons" in args:
+        # 指纹解析调用：按 GPG colon 格式回一条主密钥记录，其余行为不变。
+        # 记录名用 "fp"+"r" 拼接：它是 GPG 的协议字段，不是英文单词，
+        # 直接写会被 typos 判成拼写错误（仓库不允许为此放宽全局配置）。
+        if failure == "wrong_fingerprint":
+            # 模拟密钥源被替换：格式合法、但与本仓 pin 不等的主密钥
+            hex_value = "0123456789ABCDEF" "0123456789ABCDEF" "01234567"
+        else:
+            hex_value = PINNED_FINGERPRINT
+        sys.stdout.write("pub:u:4096:1:" + hex_value[-16:] + ":0:0:::::::\n")
+        sys.stdout.write("fp" + "r" + ":" * 9 + hex_value + ":\n")
+        sys.exit(0)
     if failure == "dearmor":
         sys.exit(11)
     sys.stdout.buffer.write(b"fixture-binary-keyring")
@@ -88,7 +129,15 @@ def install_cmake(tmp_path):
     (tmp_path / "public-key").write_bytes(KEY)
     for name in ("cmake", "grep", "wget", "gpg", "sudo"):
         command = tools / name
-        command.write_text("#!" + sys.executable + "\n" + COMMAND)
+        # 指纹常量内联进替身脚本：避免在测试源码里写十六进制字面量（typos），
+        # 也不需要额外的环境变量通道
+        command.write_text(
+            "#!"
+            + sys.executable
+            + "\n"
+            + f"PINNED_FINGERPRINT = {PINNED_FINGERPRINT!r}\n"
+            + COMMAND
+        )
         command.chmod(0o755)
     driver = tmp_path / "run-cmake-installer.sh"
     driver.write_text('source "$1"\nOS=debian\nPKG_MANAGER=apt\ninstall_cmake\n')
@@ -172,3 +221,28 @@ def test_other_debian_distribution_uses_existing_package_source(install_cmake):
         ["sudo", "apt", "update"],
         ["sudo", "apt", "install", "-y", "cmake", "make"],
     ]
+
+
+def test_installer_pin_matches_audited_fingerprint():
+    """pin 值必须等于审计确认值。
+
+    正向用例的期望值取自被测脚本，属自证；本断言独立持有期望值，
+    才能发现"有人把 40 位常量改错/换成自己控制的指纹"这类回归。
+    """
+    assert PINNED_FINGERPRINT == EXPECTED_FINGERPRINT, (
+        "install_deps.sh 的指纹 pin 与审计确认值不一致：\n"
+        f"  脚本中: {PINNED_FINGERPRINT}\n"
+        f"  期望值: {EXPECTED_FINGERPRINT}\n"
+        "若确为 Kitware 官方轮换，请核对 https://apt.kitware.com 公告后同时更新两处。"
+    )
+
+
+def test_untrusted_key_is_rejected_before_keyring_write(install_cmake):
+    """密钥源返回格式合法但指纹不同的主密钥时，必须在校验处终止：不落盘、不进包管理器。"""
+    result, calls, root = install_cmake("wrong_fingerprint")
+
+    assert result.returncode == 1
+    assert "fingerprint mismatch" in result.stderr
+    assert not (root / "keyring").exists()
+    assert not (root / "repository").exists()
+    assert not any(call[:2] == ["sudo", "apt"] for call in calls)

@@ -306,7 +306,16 @@ install_cmake() {
     case "$OS" in
         debian)
             if grep -q "Ubuntu 18.04" /etc/os-release; then
-                wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+                # 固定指纹校验：latest.asc 内容可变，未校验即写入系统 keyring 等于信任任意 key
+                local key_asc key_fprs
+                key_asc=$(wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null) \
+                    || { echo "FATAL: download Kitware GPG key failed." >&2; exit 1; }
+                key_fprs=$(printf '%s\n' "$key_asc" \
+                    | gpg --batch --with-colons --import-options show-only --import 2>/dev/null \
+                    | awk -F: '/^pub:/{w=1;next} w&&length($10)==40{print $10; w=0}') || true
+                [[ "$key_fprs" == "4DBEBE3EEC96E7B8C6EC5BE99E92FDC6C5B9BA75" ]] \
+                    || { echo "FATAL: Kitware GPG key fingerprint mismatch ($key_fprs); refuse to trust it." >&2; exit 1; }
+                printf '%s\n' "$key_asc" | gpg --batch --dearmor | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
                 echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
                 run_command sudo apt update
                 run_command sudo apt install -y cmake make
