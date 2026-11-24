@@ -12,6 +12,10 @@
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
 
 
+## 上下游接口
+
+分解结果可用于 [Cungqr 构造显式 Q](cungqr.md)、[Cunmqr 应用 Q](cunmqr.md)与 [CCgels 最小二乘求解](ccgels.md)；实数版见 [Sgeqrf](sgeqrf.md)。
+
 ## 功能说明
 
 - 接口功能\

@@ -15,6 +15,10 @@
 使用仓库 README 中配套的 CANN Toolkit。其他架构保留公开接口，非空 handle
 返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`，空 handle 返回 `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR`，不访问输入或输出。
 
+## 上下游接口
+
+内部经 [Cgeqrf 分解](cgeqrf.md)+[Cunmqr 应用 Q](cunmqr.md)+回代实现；实数版见 [Sgels](sgels.md)。
+
 ## 功能说明
 
 以 COMPLEX64 主精度分解并求解 `min ||A X - B||_F`，要求 `m >= n`。

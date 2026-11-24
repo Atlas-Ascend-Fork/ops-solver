@@ -15,6 +15,10 @@
 使用仓库 README 中配套的 CANN Toolkit。其他架构保留公开接口，非空 handle
 返回 `ACLSOLVER_STATUS_ARCH_MISMATCH`，空 handle 返回 `ACLSOLVER_STATUS_HANDLE_IS_NULLPTR`，不访问输入或输出。
 
+## 上下游接口
+
+输入反射器来自 [Cgeqrf 分解](cgeqrf.md)；构造显式 Q 见 [Cungqr](cungqr.md)；最小二乘见 [CCgels](ccgels.md)；实数版见 [Sormqr](sormqr.md)。
+
 ## 功能说明
 
 使用 [Cgeqrf](cgeqrf.md) 返回的 Householder 反射器对矩阵 C 施加酉变换：
