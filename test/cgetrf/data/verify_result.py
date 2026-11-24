@@ -55,6 +55,8 @@ def main():
     x = read_binary_strict("./test/cgetrf/data/output/A_gm.bin", np.complex64).reshape(
         m, n
     )
+    # 主元 dtype：本脚本按 uint32 读取（1-based 正值域 [1, m] 下 uint32/int32 等价），
+    # 同族 sgetrs/cgetrs verify 按 int32 读取——跨测试 dtype 差异属设计等价（issue #601）。
     w = read_binary_strict("./test/cgetrf/data/output/W_gm.bin", np.uint32).reshape(t)
 
     if not np.isfinite(a).all() or not np.isfinite(x).all():
