@@ -29,12 +29,14 @@ DTYPE_FLOAT32 = np.float32
 DTYPE_COMPLEX64 = np.complex64
 
 
-def read_binary_strict(path, dtype):
+def read_binary_strict(path, dtype, expected_count=None):
     """按 dtype 读取二进制文件，尾部不足一个完整元素时直接报错（issue #202）。
 
     numpy.fromfile 会静默丢弃末尾不组成完整元素的字节，损坏文件（截断或
     追加脏字节）会被后续 reshape/数量校验误判为成功。这里显式校验文件
-    字节数必须是元素大小的整数倍。
+    字节数必须是元素大小的整数倍。expected_count 非空时额外校验实际
+    元素数等于期望值——截断文件丢失部分元素时不再依赖调用方 reshape
+    报裸错（issue #598）。
     """
     file_size = os.path.getsize(path)
     element_size = np.dtype(dtype).itemsize
@@ -43,7 +45,13 @@ def read_binary_strict(path, dtype):
             f"corrupted binary file {path}: size {file_size} is not a multiple of "
             f"element size {element_size} for dtype {np.dtype(dtype).name}"
         )
-    return np.fromfile(path, dtype=dtype)
+    data = np.fromfile(path, dtype=dtype)
+    if expected_count is not None and data.size != expected_count:
+        raise ValueError(
+            f"corrupted binary file {path}: expected {expected_count} elements, "
+            f"got {data.size} (truncated or extended)"
+        )
+    return data
 
 
 def verify_inverse(input_path, inv_path, order, dtype, format_mismatch):
@@ -54,8 +62,8 @@ def verify_inverse(input_path, inv_path, order, dtype, format_mismatch):
     """
     if order <= 0:
         raise ValueError(f"matrix order must be positive, got {order}")
-    a = read_binary_strict(input_path, dtype).reshape(order, order)
-    inv_a = read_binary_strict(inv_path, dtype).reshape(order, order)
+    a = read_binary_strict(input_path, dtype, order * order).reshape(order, order)
+    inv_a = read_binary_strict(inv_path, dtype, order * order).reshape(order, order)
     if not np.isfinite(a).all() or not np.isfinite(inv_a).all():
         logging.info(
             "Non-finite input or inverse output cannot pass accuracy verification."
