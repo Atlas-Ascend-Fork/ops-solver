@@ -343,3 +343,5 @@ ops-solver提供类似cuSolver风格的C API接口，通过handle管理上下文
 | `ACLSOLVER_STATUS_UNKNOWN` | 11 | 后端返回了不支持的状态码 |
 
 > 注意：`aclsolverCheevj` 与 `aclsolverSgetrs`/`Cgetrs` 等 Legacy 接口返回 `aclError`（ACL 错误域，如 `ACL_SUCCESS`/`ACL_ERROR_INVALID_PARAM`），与本表不同域。
+
+> **开发参考**：[AscendC UB 向量原语对齐与整块写语义（Ascend 950 真机实测）](./zh/ascendc_ub_primitive_alignment_arch35.md)——32B 对齐静默重定位与整块写两类无告警静默写坏数据的原语行为。

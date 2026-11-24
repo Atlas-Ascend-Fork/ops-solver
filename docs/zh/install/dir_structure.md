@@ -35,6 +35,7 @@
 │       ├── install
 │       │   ├── quick_install.md                        # 环境部署
 │       │   └── dir_structure.md                        # 本文档
+│       ├── ascendc_ub_primitive_alignment_arch35.md   # AscendC UB 原语对齐语义（950 真机实测）
 │       └── ${api_doc}.md                               # 各接口中文说明（随算子扩展）
 ├── scripts                                             # 辅助脚本（打包、版本信息、检查等）
 │   ├── package
