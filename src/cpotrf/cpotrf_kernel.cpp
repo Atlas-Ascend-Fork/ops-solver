@@ -46,7 +46,7 @@ class LLCustom
     __aicore__ inline void CopyIn(int MatAOffset, int realM, int p, int offset, int N, LocalTensor<T>& srcLocalReal,
                                   LocalTensor<T>& srcLocalImag)
     {
-        int lenth = (p + 1) * realM;
+        int length = (p + 1) * realM;
         int blockSize = realM * ((realM + p * realM + 7) / 8 * 8);
 
         srcLocalReal = inQueueSrc1.AllocTensor<T>();
@@ -64,26 +64,26 @@ class LLCustom
         inQueueSrc1.EnQue(srcLocalReal);
     }
 
-    __aicore__ inline void Compute(int realM, int lenth, LocalTensor<T>& srcLocalReal, LocalTensor<T>& srcLocalImag)
+    __aicore__ inline void Compute(int realM, int length, LocalTensor<T>& srcLocalReal, LocalTensor<T>& srcLocalImag)
     {
         srcLocalReal = inQueueSrc1.DeQue<T>();
-        int blockSize = realM * ((realM + (lenth / realM - 1) * realM + 7) / 8 * 8);
+        int blockSize = realM * ((realM + (length / realM - 1) * realM + 7) / 8 * 8);
         srcLocalImag = srcLocalReal[blockSize];
 
         LocalTensor<T> tmpLocalRealNeg = inQueueSrc2.AllocTensor<T>();
         LocalTensor<T> tmpLocalImag = tmpLocalRealNeg[8 * realM];
         LocalTensor<T> tmpLocalImagNeg = tmpLocalImag[8 * realM];
 
-        for (int j = 0, offset3 = 0; j < realM; ++j, offset3 += lenth)
+        for (int j = 0, offset3 = 0; j < realM; ++j, offset3 += length)
         {
-            FactorizeColumn(j, offset3, realM, lenth, srcLocalReal, srcLocalImag, tmpLocalRealNeg, tmpLocalImag,
+            FactorizeColumn(j, offset3, realM, length, srcLocalReal, srcLocalImag, tmpLocalRealNeg, tmpLocalImag,
                             tmpLocalImagNeg);
         }
         inQueueSrc2.FreeTensor(tmpLocalRealNeg);
     }
 
     // 单列 Cholesky：先按主元归一化该列，再对其右侧各列做秩一更新
-    __aicore__ inline void FactorizeColumn(int j, int offset3, int realM, int lenth, LocalTensor<T>& srcLocalReal,
+    __aicore__ inline void FactorizeColumn(int j, int offset3, int realM, int length, LocalTensor<T>& srcLocalReal,
                                            LocalTensor<T>& srcLocalImag, LocalTensor<T>& tmpLocalRealNeg,
                                            const LocalTensor<T>& tmpLocalImag, LocalTensor<T>& tmpLocalImagNeg)
     {
@@ -94,8 +94,8 @@ class LLCustom
         }
         ljj = sqrt(ljj);
         T colScalar = 1 / ljj;
-        AscendC::Muls(srcLocalReal[offset3], srcLocalReal[offset3], colScalar, lenth);
-        AscendC::Muls(srcLocalImag[offset3], srcLocalImag[offset3], colScalar, lenth);
+        AscendC::Muls(srcLocalReal[offset3], srcLocalReal[offset3], colScalar, length);
+        AscendC::Muls(srcLocalImag[offset3], srcLocalImag[offset3], colScalar, length);
         srcLocalReal.SetValue(offset3 + j, ljj);
         srcLocalImag.SetValue(offset3 + j, 0);
 
@@ -103,43 +103,43 @@ class LLCustom
         AscendC::Brcb(tmpLocalImag, srcLocalImag[offset3], realM / 8, {1, 8});
         AscendC::Muls(tmpLocalRealNeg, tmpLocalRealNeg, T(-1), 8 * realM);
         AscendC::Muls(tmpLocalImagNeg, tmpLocalImag, T(-1), 8 * realM);
-        UpdateTrailing(j, offset3, realM, lenth, srcLocalReal, srcLocalImag, tmpLocalRealNeg, tmpLocalImag,
+        UpdateTrailing(j, offset3, realM, length, srcLocalReal, srcLocalImag, tmpLocalRealNeg, tmpLocalImag,
                        tmpLocalImagNeg);
     }
 
     // 秩一更新：按 64 列一段滚动，末尾不足 64 列的余量单独处理
-    __aicore__ inline void UpdateTrailing(int j, int offset3, int realM, int lenth, LocalTensor<T>& srcLocalReal,
+    __aicore__ inline void UpdateTrailing(int j, int offset3, int realM, int length, LocalTensor<T>& srcLocalReal,
                                           LocalTensor<T>& srcLocalImag, const LocalTensor<T>& tmpLocalRealNeg,
                                           const LocalTensor<T>& tmpLocalImag, const LocalTensor<T>& tmpLocalImagNeg)
     {
-        int q = lenth / 64;
-        int rem = lenth % 64;
+        int q = length / 64;
+        int rem = length % 64;
         for (int i = 0; i < q; i++)
         {
-            MulAddQuad(offset3 + lenth + i * 64, offset3 + i * 64, 64, j, realM, lenth, srcLocalReal, srcLocalImag,
+            MulAddQuad(offset3 + length + i * 64, offset3 + i * 64, 64, j, realM, length, srcLocalReal, srcLocalImag,
                        tmpLocalRealNeg, tmpLocalImag, tmpLocalImagNeg);
         }
         if (rem)
         {
-            MulAddQuad(offset3 + 2 * lenth - rem, offset3 + lenth - rem, rem, j, realM, lenth, srcLocalReal,
+            MulAddQuad(offset3 + 2 * length - rem, offset3 + length - rem, rem, j, realM, length, srcLocalReal,
                        srcLocalImag, tmpLocalRealNeg, tmpLocalImag, tmpLocalImagNeg);
         }
     }
 
     // 一段列上的复数乘加：(a+bi) -= (v+wi)*ljj，实虚交叉共 4 次 MulAddDst
-    __aicore__ inline void MulAddQuad(int dstOffset, int srcOffset, int count, int j, int realM, int lenth,
+    __aicore__ inline void MulAddQuad(int dstOffset, int srcOffset, int count, int j, int realM, int length,
                                       LocalTensor<T>& srcLocalReal, LocalTensor<T>& srcLocalImag,
                                       const LocalTensor<T>& tmpLocalRealNeg, const LocalTensor<T>& tmpLocalImag,
                                       const LocalTensor<T>& tmpLocalImagNeg)
     {
         int repeat = realM - j - 1;
-        uint8_t srcStride = static_cast<uint8_t>(lenth / 8);
+        uint8_t srcStride = static_cast<uint8_t>(length / 8);
         AscendC::MulAddDst(srcLocalReal[dstOffset], srcLocalReal[srcOffset], tmpLocalRealNeg[8 * (j + 1)], count,
                            repeat, {1, 1, 0, srcStride, 0, 1});
         AscendC::MulAddDst(srcLocalReal[dstOffset], srcLocalImag[srcOffset], tmpLocalImagNeg[8 * (j + 1)], count,
                            repeat, {1, 1, 0, srcStride, 0, 1});
-        AscendC::MulAddDst(srcLocalImag[dstOffset], srcLocalReal[srcOffset], tmpLocalImag[8 * (j + 1)], count,
-                           repeat, {1, 1, 0, srcStride, 0, 1});
+        AscendC::MulAddDst(srcLocalImag[dstOffset], srcLocalReal[srcOffset], tmpLocalImag[8 * (j + 1)], count, repeat,
+                           {1, 1, 0, srcStride, 0, 1});
         AscendC::MulAddDst(srcLocalImag[dstOffset], srcLocalImag[srcOffset], tmpLocalRealNeg[8 * (j + 1)], count,
                            repeat, {1, 1, 0, srcStride, 0, 1});
     }
@@ -147,7 +147,7 @@ class LLCustom
     __aicore__ inline void CopyOut(int MatAOffset, int offset, int realM, int p, int Idx, LocalTensor<T>& srcLocalReal,
                                    LocalTensor<T>& srcLocalImag)
     {
-        int lenth = (p + 1) * realM;
+        int length = (p + 1) * realM;
         int blockSize = realM * ((realM + p * realM + 7) / 8 * 8);
 
         DataCopyParams copyOutParams1{static_cast<uint16_t>(realM), static_cast<uint16_t>(realM / 8),
@@ -208,32 +208,17 @@ class LLCustom
         this->N = N;
     }
 
-    __aicore__ inline void Process3(int MatAOffset, int offsetM, int offsetN, int realM, int realN, int batch)
+    // batch 恒为 1（全部调用点原样），batch 分核泛化已删除（issue #611）：
+    // batchIdx 恒为 0、Idx 即 blockIdx，消除潜伏的 batch>blockNum 分核歧义
+    __aicore__ inline void Process3(int MatAOffset, int offsetM, int offsetN, int realM, int realN)
     {
         // ---- 一次性计算所有索引 ----
         realN = (realN + realM - 1) / realM * realM;
         int count = realN / realM - 1;
 
-        int batch_block_num = blockNum / batch;
-        int r = blockNum % batch;
-        int Idx;
-        int batchIdx;
-        if (blockIdx < (batch_block_num + 1) * r)
-        {
-            batch_block_num++;
-            batchIdx = blockIdx / batch_block_num;
-            Idx = blockIdx % batch_block_num;
-        }
-        else
-        {
-            batchIdx = r + (blockIdx - (batch_block_num + 1) * r) / batch_block_num;
-            Idx = (blockIdx - (batch_block_num + 1) * r) % batch_block_num;
-        }
-        int sizeA = N * N;
-        MatAOffset += batchIdx * sizeA;
-
-        int p = count / batch_block_num;
-        r = count % batch_block_num;
+        int Idx = blockIdx;
+        int p = count / blockNum;
+        int r = count % blockNum;
         int offset = 0;
         if (Idx < r)
         {
@@ -254,11 +239,11 @@ class LLCustom
         {
             return;
         }
-        int lenth = (p + 1) * realM;
+        int length = (p + 1) * realM;
 
         LocalTensor<T> srcLocalReal, srcLocalImag;
         CopyIn(MatAOffset, realM, p, offset, N, srcLocalReal, srcLocalImag);
-        Compute(realM, lenth, srcLocalReal, srcLocalImag);
+        Compute(realM, length, srcLocalReal, srcLocalImag);
         CopyOut(MatAOffset, offset, realM, p, Idx, srcLocalReal, srcLocalImag);
     }
 };
@@ -442,8 +427,8 @@ __aicore__ inline void BindCpotrfTensors(CpotrfTensors& t, int strideS, GM_ADDR 
 
 // 复数矩阵拆成实部/虚部两块（转置与非转置两种搬运方式）
 template <bool trans>
-__aicore__ inline void CpotrfSplitStage(CpotrfTensors& t, TBufPool<TPosition::VECCALC, 16>& tbufPool, int orgN,
-                                        int lda, int strideN, int blockNum, int blockIdx)
+__aicore__ inline void CpotrfSplitStage(CpotrfTensors& t, TBufPool<TPosition::VECCALC, 16>& tbufPool, int orgN, int lda,
+                                        int strideN, int blockNum, int blockIdx)
 {
     if constexpr (trans)
     {
@@ -477,7 +462,7 @@ __aicore__ inline void CpotrfCholeskyStage(CpotrfTensors& t, TBufPool<TPosition:
     CrossCoreWaitFlag(0x0);
 
     opLL.Init(inQueueSrc1, inQueueSrc2, t.aReal, t.aImag, t.aRealNeg, t.aImagNeg, orgN, strideN, blockNum, strideN);
-    opLL.Process3(0, 0, 0, CPOTRF_BLOCK_N, orgN, 1);
+    opLL.Process3(0, 0, 0, CPOTRF_BLOCK_N, orgN);
     for (int offset = CPOTRF_BLOCK_N; offset < orgN; offset += CPOTRF_BLOCK_N)
     {
         CrossCoreSetFlag<0x0, PIPE_MTE3>(0x0);
@@ -489,7 +474,7 @@ __aicore__ inline void CpotrfCholeskyStage(CpotrfTensors& t, TBufPool<TPosition:
         CrossCoreSetFlag<0x0, PIPE_MTE3>(0x0);
         CrossCoreWaitFlag(0x0);
 
-        opLL.Process3(offset * strideN + offset, offset, offset, CPOTRF_BLOCK_N, orgN - offset, 1);
+        opLL.Process3(offset * strideN + offset, offset, offset, CPOTRF_BLOCK_N, orgN - offset);
     }
     tbufPool.Reset();
 }
