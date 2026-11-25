@@ -43,7 +43,7 @@ def load_pivots(path: str, n: int) -> np.ndarray:
     内容校验对齐同族 getrf verify 形态（issue #460）：越界值此前抛裸 IndexError，
     0 值经 -1 后为合法负索引静默回绕交换末行、以错误基准误判结果（issue #482）。
     """
-    raw_piv = read_binary_strict(path, np.int32).reshape(n)
+    raw_piv = read_binary_strict(path, np.int32, n).reshape(n)
     for i, pivot in enumerate(raw_piv):
         if not (i + 1 <= pivot <= n):
             raise ValueError(
