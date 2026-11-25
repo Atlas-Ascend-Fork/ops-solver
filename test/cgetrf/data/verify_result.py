@@ -49,15 +49,15 @@ def main():
     t = min(m, n)
 
     # 读取输入文件（尾部不完整元素直接报错，issue #202）
-    a = read_binary_strict("./test/cgetrf/data/input/A_gm.bin", np.complex64).reshape(
+    a = read_binary_strict("./test/cgetrf/data/input/A_gm.bin", np.complex64, m * n).reshape(
         m, n
     )
-    x = read_binary_strict("./test/cgetrf/data/output/A_gm.bin", np.complex64).reshape(
+    x = read_binary_strict("./test/cgetrf/data/output/A_gm.bin", np.complex64, m * n).reshape(
         m, n
     )
     # 主元 dtype：本脚本按 uint32 读取（1-based 正值域 [1, m] 下 uint32/int32 等价），
     # 同族 sgetrs/cgetrs verify 按 int32 读取——跨测试 dtype 差异属设计等价（issue #601）。
-    w = read_binary_strict("./test/cgetrf/data/output/W_gm.bin", np.uint32).reshape(t)
+    w = read_binary_strict("./test/cgetrf/data/output/W_gm.bin", np.uint32, t).reshape(t)
 
     if not np.isfinite(a).all() or not np.isfinite(x).all():
         print("Non-finite input or LU output cannot pass accuracy verification.")
