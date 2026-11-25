@@ -9,14 +9,13 @@
 
 import argparse
 import logging
-from pathlib import Path
 import sys
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "utils"))
 from verify_utils import read_binary_strict  # noqa: E402
-
-import numpy as np
 
 
 def read_matrix(path, n):
