@@ -11,15 +11,16 @@ import argparse
 import logging
 from pathlib import Path
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "utils"))
+from verify_utils import read_binary_strict  # noqa: E402
 
 import numpy as np
 
 
 def read_matrix(path, n):
-    expected_bytes = n * n * np.dtype(np.float32).itemsize
-    if path.stat().st_size != expected_bytes:
-        raise ValueError("Unexpected matrix file size: {}".format(path))
-    return np.fromfile(path, dtype=np.float32).reshape(n, n)
+    return read_binary_strict(path, np.float32, n * n).reshape(n, n)
 
 
 def main():
