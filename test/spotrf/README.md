@@ -128,6 +128,8 @@ Solver Spotrf算子实现。
 
 > **精度判定口径**：`verify_result.py` 以 `np.allclose(rtol=5e-3, atol=5e-3)` 重构比对为判据（附加对角正值与有限值三重检查）。
 
+> **确定性**：`gen_data.py` 固定 `np.random.RandomState(42)`——产物逐字节可复现。
+
 执行结果如下，说明精度对比成功。
   ```bash
   [Success] Cholesky reconstruction matches the input

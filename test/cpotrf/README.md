@@ -173,6 +173,8 @@ Solver Cpotrf算子实现。
 
 > **精度判定口径**：`verify_result.py` 以 `TOLERANCE = 1e-4`（绝对误差阈值）与 `ERROR_TOL = 1e-4`（错误元素占比 ≤ 0.01% 判通过）双重判据，LOWER/UPPER 双三角均须通过。
 
+> **确定性**：`gen_data.py` 支持 `--seed` 参数（默认 2026）——同 seed 下产物逐字节可复现；未显式传 seed 时以默认值保证 CI 稳定性。
+
 执行结果如下，说明精度对比成功。
 
   ```bash
