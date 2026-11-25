@@ -160,6 +160,8 @@ Solver Sgetrs算子实现。
 
 > **精度判定口径**：`verify_result.py` 以 `error_tol = 1e-4` 为判据（参考解与实际解逐元素比较，绝对误差和相对误差同时超 eps（eps = 1e-3）的元素占比 ≤ 0.01% 判通过，即万分之一）。
 
+> **确定性**：`gen_data.py` 固定 `np.random.seed(149)`（与 sgetrf/cgetrf 同种子保证 LU 因子一致性）——产物逐字节可复现。
+
 执行结果如下，说明精度对比成功。
   ```bash
   [Success] Case accuracy verification passed.
