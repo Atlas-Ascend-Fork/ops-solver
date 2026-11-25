@@ -10,10 +10,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import logging
-import sys
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "utils"))
+from verify_utils import read_binary_strict  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
@@ -27,17 +31,7 @@ def load_complex_matrix(filepath, n):
         raise ValueError(f"n must be positive, got {n}")
     # 大小不符即损坏（追加脏字节/截断），对齐 #202 read_binary_strict 口径直接
     # 失败（issue #465）：此前仅 warning，超量文件随后触发误导性的「数据量不足」。
-    expected_size = n * n * 2 * 4  # 两个 float32 每个 4 字节
-    actual_size = os.path.getsize(filepath)
-    if actual_size != expected_size:
-        raise ValueError(
-            f"corrupted binary file {filepath}: size {actual_size}, expected {expected_size}"
-        )
-    data = np.fromfile(filepath, dtype=np.float32)
-    if data.size != n * n * 2:
-        raise ValueError(
-            f"文件 {filepath} 数据量不足: 需要 {n * n * 2} 个 float32，实际 {data.size}"
-        )
+    data = read_binary_strict(filepath, np.float32, n * n * 2)
     # 交错读取：每两个 float 组成一个复数
     real = data[0::2].reshape(n, n)
     imag = data[1::2].reshape(n, n)
