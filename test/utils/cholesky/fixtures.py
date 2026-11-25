@@ -541,16 +541,16 @@ def read_case(root, op, spec):
     )
     solve = unbatch_op(op) == "cpotrs"
     a_input = read_binary_strict(
-        root / "input" / f"{index}-A.bin", np.complex64
+        root / "input" / f"{index}-A.bin", np.complex64, batch * n * lda
     ).reshape(batch, n, lda)
     a_output = read_binary_strict(
-        root / "output" / f"{index}-A.bin", np.complex64
+        root / "output" / f"{index}-A.bin", np.complex64, batch * n * lda
     ).reshape(batch, n, lda)
     b_input = read_binary_strict(
-        root / "input" / f"{index}-B.bin", np.complex64
+        root / "input" / f"{index}-B.bin", np.complex64, batch * nrhs * ldb
     ).reshape(batch, nrhs, ldb)
     b_output = read_binary_strict(
-        root / "output" / f"{index}-B.bin", np.complex64
+        root / "output" / f"{index}-B.bin", np.complex64, batch * nrhs * ldb
     ).reshape(batch, nrhs, ldb)
     info = read_binary_strict(root / "output" / f"{index}-info.bin", np.int32)
     expected_info = read_binary_strict(root / "input" / f"{index}-info.bin", np.int32)
