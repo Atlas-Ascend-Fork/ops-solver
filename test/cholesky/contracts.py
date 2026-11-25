@@ -350,7 +350,7 @@ def check_queries(solver, record, buffers):
         query = "aclsolver" + name + "_bufferSize"
         check(
             query + "/null-handle",
-            lambda query=query: status_call(
+            lambda query=query, lw=lw: status_call(
                 query, [None, 0, 17, ap, 17, C.byref(lw)], 9
             ),
         )
@@ -362,7 +362,7 @@ def check_queries(solver, record, buffers):
         )
         check(
             query + "/above-max",
-            lambda query=query: status_call(
+            lambda query=query, lw=lw: status_call(
                 query, [solver.handle, 0, 4097, ap, 4097, C.byref(lw)], 3
             ),
         )
