@@ -13,6 +13,8 @@
 
 > **运行前提**：测试二进制与 gen/verify 脚本须在**仓库根目录**下执行（binary 以 `./test/cheevj/data/...` 相对路径读写数据文件）。
 
+> **确定性**：`gen_data.py` 的 RNG seed 默认 42（可经第 5 个位置参数覆盖）；矩阵类型通过第 6 个参数指定（random_hermitian/diagonal/clustered 等）——同参数组合下产物逐字节可复现。
+
 ## Build
 
 ```bash
