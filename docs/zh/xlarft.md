@@ -16,6 +16,10 @@
 的架构目录机制），其他产品不提供该接口的实现。实现与验证在<term>Ascend 950PR</term>上完成，
 同架构的<term>Ascend 950DT</term>复用同一份 arch35 代码。
 
+## 上下游接口
+
+本接口是 QR 分解族的辅助接口——从 [Sgeqrf](sgeqrf.md) 输出的 Householder 反射器构造分块 T 矩阵，供 [Sormqr](sormqr.md) 分块应用 Q 时使用。
+
 ## 功能说明
 
 - 接口功能\
