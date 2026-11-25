@@ -124,6 +124,18 @@ aclError aclsolverCgeqrf(aclsolverHandle_t handle, const int64_t m, const int64_
     padM = ((M + 127) / 128) * 128;
     padN = ((N + 127) / 128) * 128;
 
+    // A2/A3 内核全程按 int32 运算寻址：判空乘积 N*align(M,64) 与虚实平面/工作区偏移
+    // padM*padN 系列均为 int32 乘法，乘积回绕会把非空 shape 误判为空 shape 静默空跑、
+    // 或把平面偏移回绕为负值造成越界读写（issue #609）；host 侧各缓冲尺寸亦以
+    // padM*padN 为上界因子，该守卫同时杜绝尺寸回绕后"分配成功"（issue #610）。
+    // padM/padN 已按 128 对齐，max(padM,padN)*128+4160 系列工作区子偏移随之仍落在
+    // int32 正域；口径与 arch35 同族实现的显式溢出拒绝一致。
+    const int64_t padPlane = padM * padN;
+    SOLVER_ECHECK(padPlane <= INT32_MAX,
+                  "aclsolverCgeqrf invalid param: align128(m) * align128(n) exceeds int32 range, "
+                  "not supported by the A2/A3 kernel.",
+                  ACL_ERROR_INVALID_PARAM);
+
     constexpr int MAX_PANEL_SIZE = 128;
     size_t aSize = M * N * sizeof(complex64);
     size_t aPadSize = padM * padN * sizeof(float) * 2;

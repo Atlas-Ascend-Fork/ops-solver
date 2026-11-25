@@ -125,6 +125,8 @@
 
 - 算子约束：
   - `m`和`n`必须大于0且不超过`INT32_MAX`；不支持空矩阵，m或n为0时返回`ACL_ERROR_INVALID_PARAM`。
+  - A2/A3 内核内部按 int32 计算判空与平面偏移等乘积，`align128(m) * align128(n)` 超过
+    `INT32_MAX` 的组合在入口确定性返回 `ACL_ERROR_INVALID_PARAM`；范围内的行为不变。
   - `A`、`tau`和`info`必须为非空Host指针；其中`info`参数在当前版本实际未启用，不会写入分解结果。
   - 输入矩阵A按列主序存储。
 

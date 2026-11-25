@@ -45,6 +45,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <string>
 
 #include "../utils/test_utils.h"
 #include "acl/acl.h"
@@ -88,10 +89,47 @@ int main(int argc, char** argv)
     int deviceId, M, N;
     deviceId = (argc > 1) ? std::atoi(argv[1]) : 0;
     M = (argc > 2) ? std::atoi(argv[2]) : 1024;
-    N = (argc > 3) ? std::atoi(argv[3]) : 256;
+    bool negCase = (argc > 3 && std::string(argv[3]) == "neg");
+    N = negCase ? 1 : ((argc > 3) ? std::atoi(argv[3]) : 256);
     int minMN = std::min(M, N);
     size_t aMatrixFileSize = M * N * sizeof(complex64);
     size_t tauFileSize = minMN * sizeof(complex64);
+
+    if (negCase)
+    {
+        // 负向用例（issue #609/#610）：超出 A2/A3 内核 int32 安全域的组合须在 host 入口
+        // 被 ACL_ERROR_INVALID_PARAM 确定性拒绝；入口守卫先于任何分配与读写，
+        // 传入占位指针即可验证，不产生设备侧行为。
+        std::cout << "negative case: align128(m) * align128(n) > INT32_MAX" << std::endl;
+        CHECK_ACL(aclInit(nullptr));
+        CHECK_ACL(aclrtSetDevice(deviceId));
+        aclrtStream stream = nullptr;
+        CHECK_ACL(aclrtCreateStream(&stream));
+        aclsolverHandle_t handle = nullptr;
+        CHECK_ACL(aclsolverCreate(&handle));
+        CHECK_ACL(aclsolverSetStream(handle, stream));
+
+        complex64 dummy = {};
+        int32_t negInfo = 0;
+        auto ret1 = aclsolverCgeqrf(handle, static_cast<int64_t>(1) << 24, 128, &dummy, static_cast<int64_t>(1) << 24,
+                                    &dummy, &negInfo);
+        std::cout << "m=2^24, n=128 -> ret=" << ret1 << std::endl;
+        auto ret2 = aclsolverCgeqrf(handle, INT32_MAX, 1, &dummy, INT32_MAX, &dummy, &negInfo);
+        std::cout << "m=INT32_MAX, n=1 -> ret=" << ret2 << std::endl;
+        auto ret3 = aclsolverCgeqrf(handle, 128, INT32_MAX, &dummy, 128, &dummy, &negInfo);
+        std::cout << "m=128, n=INT32_MAX -> ret=" << ret3 << std::endl;
+
+        bool negPass =
+            (ret1 == ACL_ERROR_INVALID_PARAM) && (ret2 == ACL_ERROR_INVALID_PARAM) && (ret3 == ACL_ERROR_INVALID_PARAM);
+        std::cout << (negPass ? "[Success] negative cases rejected as expected."
+                              : "[Failed] negative cases not rejected.")
+                  << std::endl;
+        CHECK_ACL(aclrtDestroyStream(stream));
+        CHECK_ACL(aclsolverDestroy(handle));
+        CHECK_ACL(aclrtResetDevice(deviceId));
+        CHECK_ACL(aclFinalize());
+        return negPass ? 0 : 1;
+    }
 
     if (M <= 0 || N <= 0)
     {
