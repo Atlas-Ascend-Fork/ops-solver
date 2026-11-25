@@ -135,8 +135,11 @@ Solver CgetriBatched算子实现。
   ```bash
   bash build.sh --soc=ascend950 --ops=cgetri_batched --run # --ops=<算子名> --run可选参数，执行测试样例
   ```
-  执行结果如下，说明精度对比成功。
+  > **确定性**：`gen_data.py` 固定 `np.random.seed(42)`——产物逐字节可复现。
+
+执行结果如下，说明精度对比成功。
   ```bash
+
 
 [Success] Case accuracy verification passed.
   ```
