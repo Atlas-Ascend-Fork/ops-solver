@@ -2,6 +2,12 @@
 
 对 Hermitian 正定复数矩阵进行 Cholesky 分解。按产品选择对应接口，本页分别说明 A2/A3 C++ 接口和 Ascend950 C API 的参数、约束及调用示例。
 
+## 上下游接口
+
+分解结果（L 或 U 因子）可直接用于 [Cpotrs 求解](cpotrs.md)与 [Cpotri 求逆](cpotri.md)；实数版见 [Spotrf](spotrf.md)。
+
+（注意：本页 A2/A3 接口产出 Host 行主序因子，Cpotrs/Cpotri 为 950 Device 列主序接口——跨平台使用时须转换存储约定。）
+
 ## 产品支持情况
 
 | 产品 | 是否支持 | 适用接口 |
