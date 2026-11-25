@@ -139,6 +139,8 @@ Solver Sgetrf算子实现。
 
 > **路径解析不对称说明**：`gen_data.py` 按脚本所在目录产出数据（`__file__` 相对），`verify_result.py` 按 cwd 相对读取——`build.sh --run` 从仓根执行两端均可正确定位；单步运行 `verify_result.py` 时须以仓库根目录为 cwd（与测试二进制同前提）。
 
+> **确定性**：`gen_data.py` 固定 `np.random.seed(149)`——产物逐字节可复现（CI 稳定性与排障比对前提）；修改生成逻辑时须保持 seed 不变或同步更新验证基线。
+
 ## 编译运行
 
 在仓库根目录下执行如下步骤，编译并执行算子。
