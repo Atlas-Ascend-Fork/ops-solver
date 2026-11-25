@@ -14,7 +14,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "utils"))
 from lapack_residual import paired
+from verify_utils import read_binary_strict
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 root = Path(__file__).resolve().parent
@@ -23,9 +25,7 @@ n, ld = 17, 20
 
 def read(name, columns):
     path = root / name
-    if path.stat().st_size != columns * ld * 4:
-        raise ValueError(f"Corrupted binary size: {path}")
-    values = np.fromfile(path, dtype=np.float32).reshape(columns, ld)
+    values = read_binary_strict(path, np.float32, columns * ld).reshape(columns, ld)
     if not np.all(values[:, n:] == -12345.125):
         raise ValueError(f"Padding changed: {path}")
     return values[:, :n].T
