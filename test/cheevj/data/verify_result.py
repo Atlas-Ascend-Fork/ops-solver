@@ -91,19 +91,12 @@ def normalize_uplo(value):
 
 def read_complex64_column_major(path, n):
     # 尾部不完整元素直接报错（issue #202）：fromfile 会静默丢弃末尾脏字节
-    data = read_binary_strict(path, np.complex64)
-    expected_size = n * n
-    if data.size != expected_size:
-        raise ValueError(
-            f"{path} contains {data.size} complex64 values, expected {expected_size}"
-        )
+    data = read_binary_strict(path, np.complex64, n * n)
     return data.reshape((n, n), order="F")
 
 
 def read_float32(path, n):
-    data = read_binary_strict(path, np.float32)
-    if data.size != n:
-        raise ValueError(f"{path} contains {data.size} float32 values, expected {n}")
+    data = read_binary_strict(path, np.float32, n)
     return data
 
 
