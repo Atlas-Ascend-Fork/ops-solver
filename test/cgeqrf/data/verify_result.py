@@ -131,14 +131,8 @@ DEFAULT_VERIFY_CONFIG = VerifyConfig()
 
 def load_binary(file_path, shape, dtype=DTYPE, fortran_order=False):
     """从二进制文件读取数据并重塑为指定形状。"""
-    data = read_binary_strict(file_path, dtype)
-    expected_size = np.prod(shape)
-
-    if data.size != expected_size:
-        raise ValueError(
-            f"文件 {file_path} 的数据量 {data.size} 与预期 {expected_size} 不符"
-        )
-
+    expected_size = int(np.prod(shape))
+    data = read_binary_strict(file_path, dtype, expected_size)
     return data.reshape(shape, order="F" if fortran_order else "C")
 
 
