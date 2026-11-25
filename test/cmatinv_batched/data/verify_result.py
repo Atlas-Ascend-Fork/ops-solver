@@ -27,8 +27,8 @@ error_tol = 1e-4
 
 
 def verify_result(A, invA, batchSize, N):
-    A = read_binary_strict(A, np.complex64).reshape(batchSize, N, N)
-    invA = read_binary_strict(invA, np.complex64).reshape(batchSize, N, N)
+    A = read_binary_strict(A, np.complex64, batchSize * N * N).reshape(batchSize, N, N)
+    invA = read_binary_strict(invA, np.complex64, batchSize * N * N).reshape(batchSize, N, N)
 
     if not np.isfinite(A).all() or not np.isfinite(invA).all():
         print("Non-finite input or inverse output cannot pass accuracy verification.")
