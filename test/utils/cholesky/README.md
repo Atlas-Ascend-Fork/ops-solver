@@ -50,3 +50,7 @@ CATLASS 仅作编译期头文件依赖，由 `cmake/third_party/catlass-fetch.cm
 离线构建时，将同一官方归档原样保存为
 `third_party/cache/catlass-e420328d38945dea53ac8ee56795215db20b943b.tar.gz`，再运行上述 build.sh；
 本地归档仍执行同一 SHA256 校验，不接受重新打包的头文件快照。运行 solver 库不需要 CATLASS 源码。
+
+## 用例确定性（seed 机制）
+
+`fixtures.py` 的 `RANDOM_SEED = 950`——每个用例的 RNG seed 由 `RANDOM_SEED + case index` 偏移决定，**追加新用例不影响既有索引的 seed**（`case_specs` 的注释要求追加放尾部）。产物逐字节可复现。
