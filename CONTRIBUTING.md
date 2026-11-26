@@ -97,7 +97,7 @@
    
      ```txt
      /**
-      * Copyright (c) 2026 [Name of the copyright owner] All rights reserved.
+      * Copyright (c) 2026 [Name of the copyright owner].
       * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
       * CANN Open Software License Agreement Version 2.0 (the "License").
       * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@
      请在新建的py、sh等文件头部增加如下声明：
      
      ```txt
-     # Copyright (c) 2026 [Name of the copyright owner] All rights reserved.
+     # Copyright (c) 2026 [Name of the copyright owner].
      # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
      # CANN Open Software License Agreement Version 2.0 (the "License").
      # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -127,7 +127,19 @@
       
     - 第一行中`2026`为您创建或修改该文件的年份，请根据实际时间修改。
 
-3. 代码下载与贡献流程
+3. 提交前本地质量门禁（pre-commit）
+
+   仓库通过 pre-commit 挂接本地质量门禁（见 [.pre-commit-config.yaml](./.pre-commit-config.yaml)），覆盖代码格式（clang-format、ruff）、拼写（codespell、typos）与 `tests/host/` 的 Host 回归测试族（覆盖面与运行方式见 [tests/host/README.md](./tests/host/README.md)）。提交 Pull-Request 前建议在仓库根目录执行：
+
+   ```bash
+   pip install -r requirements.txt
+   pip install pre-commit
+   pre-commit run --all-files
+   ```
+
+   本地门禁与远端流水线检查项一致，先在本地通过可避免 PR 触发编译后才暴露格式或回归问题。
+
+4. 代码下载与贡献流程
  
    (1) 进行代码开发前，请先将需要ops-solver仓库fork到个人仓库，然后将个人仓库下载到本地。并在本地分支进行代码修改。    
    (2) 代码验证满足贡献要求后，提交Pull-Request，将代码贡献到ops-solver，在[Pull-Request列表](https://gitcode.com/cann/ops-solver/pulls)，可以找到提交的Pull-Request。  
