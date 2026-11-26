@@ -131,6 +131,13 @@ repos:
         additional_dependencies: [numpy, pytest]
         pass_filenames: false
         files: ^test/utils/verify_utils\.py$|^tests/host/test_read_binary_strict\.py$
+      - id: lu-verify-utils-tests
+        name: lu_verify_utils Host tests
+        entry: python -m pytest -q tests/host/test_solve_lu.py tests/host/test_load_pivots.py tests/host/test_verify_inverse.py tests/host/test_contract_warning.py tests/host/test_compare_and_report.py
+        language: python
+        additional_dependencies: [numpy, scipy, pytest]
+        pass_filenames: false
+        files: ^test/utils/lu_verify_utils\.py$|^tests/host/test_(solve_lu|load_pivots|verify_inverse|contract_warning|compare_and_report)\.py$
       - id: build-driver-contract-tests
         name: build.sh driver contract Host tests
         entry: python -m pytest -q tests/host/test_build_path_arguments.py
