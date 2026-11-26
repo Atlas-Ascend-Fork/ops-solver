@@ -124,6 +124,13 @@ repos:
         additional_dependencies: [pytest]
         pass_filenames: false
         files: ^scripts/package/install\.sh$|^tests/host/test_uninstall_deletion_status\.py$
+      - id: read-binary-strict-tests
+        name: read_binary_strict Host tests
+        entry: python -m pytest -q tests/host/test_read_binary_strict.py
+        language: python
+        additional_dependencies: [numpy, pytest]
+        pass_filenames: false
+        files: ^test/utils/verify_utils\.py$|^tests/host/test_read_binary_strict\.py$
       - id: build-driver-contract-tests
         name: build.sh driver contract Host tests
         entry: python -m pytest -q tests/host/test_build_path_arguments.py
