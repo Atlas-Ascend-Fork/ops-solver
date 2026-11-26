@@ -22,17 +22,17 @@
 | test_nonfinite_accuracy_verdict.py | 9 算子 verify 脚本的非有限值不被精度容差稀释（#347 口径，含 sgetrs/cgetrs/cpotrf 判定用例）；qr_ulp 子集锚 cgeqrf 的 ULP 硬限 | qr-ulp-host-tests（ULP 子集）+ nonfinite-verdict-tests（全量，#484） | qr-ulp 锚 cgeqrf verify；nonfinite-verdict 锚 9 个 getrf/getri/getrs/cpotrf 族 verify 脚本与测试自身 |
 | test_require_diagnostic_location.py | test/common/complex_qr 共享 require() 的诊断定位 | complex-qr-require-tests | test/common/complex_qr/*.py、测试自身 |
 | test_uninstall_deletion_status.py | scripts/package/install.sh 卸载的删除完整性与失败边界 | uninstall-deletion-tests | scripts/package/install.sh、测试自身 |
-
-> 注：test_run_cli / test_l1norm / test_contract_warning 三行暂时注释，待 !473（run_cli/l1norm 测试文件）与 !478（lu-verify-utils-tests hook）合入后 uncomment。
-
 | test_read_binary_strict.py | read_binary_strict 的字节对齐 + expected_count 校验 | read-binary-strict-tests | test/utils/verify_utils.py、测试自身 |
-| test_compare_and_report.py | compare_and_report 的 eps 双条件整体比对（#612 向量化语义） | — | — |
-| test_solve_lu.py | forward/backward/solve_lu 的 LU 参考解计算 | — | — |
-| test_load_pivots.py | load_pivots 的 1-based 主元校验 | — | — |
-| test_verify_inverse.py | verify_inverse 的 A·A⁻¹ ≈ I 判定 | — | — |
-<!-- | test_run_cli.py | run_cli 的退出码语义（True→0 / False/异常→1） | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 | -->
-<!-- | test_l1norm.py | l1norm 列绝对值和最大值 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 | -->
+| test_verify_inverse.py | verify_inverse 的 A·A⁻¹ ≈ I 判定 | read-binary-strict-tests | test/utils/verify_utils.py、测试自身 |
+| test_compare_and_report.py | compare_and_report 的 eps 双条件整体比对（#612 向量化语义） | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
+| test_solve_lu.py | forward/backward/solve_lu 的 LU 参考解计算 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
+| test_load_pivots.py | load_pivots 的 1-based 主元校验 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
 | test_contract_warning.py | contract_warning 超限提示 + resolve_data_dir 双布局 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
+| test_run_cli.py | run_cli 的退出码语义（True→0 / False/异常→1） | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
+| test_l1norm.py | l1norm 列绝对值和最大值 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
+| test_complex_divide_range.py | complex_solver_kernel/register 与 cgetrf kernel 的复数除法值域在 Host 逐字执行（需 CANN 头文件，环境缺失自动 skip） | —（未挂接，手动运行） | — |
+| test_getrs_cleanup.py | getrs Host 源码全量故障注入：copy/memset/enqueue/sync 失败路径逐一独占回收（需 Host g++，环境缺失自动 skip） | —（未挂接，手动运行） | — |
+| test_sgels_accuracy_verdict.py | SSgels 测试 TU 整体编译：非有限解/残差必须判 FAILED（-O0/-O2 双档，需 Host g++，环境缺失自动 skip） | —（未挂接，手动运行） | — |
 
 ## 运行方式
 

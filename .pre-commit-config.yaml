@@ -126,18 +126,18 @@ repos:
         files: ^scripts/package/install\.sh$|^tests/host/test_uninstall_deletion_status\.py$
       - id: read-binary-strict-tests
         name: read_binary_strict Host tests
-        entry: python -m pytest -q tests/host/test_read_binary_strict.py
+        entry: python -m pytest -q tests/host/test_read_binary_strict.py tests/host/test_verify_inverse.py
         language: python
         additional_dependencies: [numpy, pytest]
         pass_filenames: false
-        files: ^test/utils/verify_utils\.py$|^tests/host/test_read_binary_strict\.py$
+        files: ^test/utils/verify_utils\.py$|^tests/host/test_(read_binary_strict|verify_inverse)\.py$
       - id: lu-verify-utils-tests
         name: lu_verify_utils Host tests
-        entry: python -m pytest -q tests/host/test_solve_lu.py tests/host/test_load_pivots.py tests/host/test_verify_inverse.py tests/host/test_contract_warning.py tests/host/test_compare_and_report.py
+        entry: python -m pytest -q tests/host/test_solve_lu.py tests/host/test_load_pivots.py tests/host/test_contract_warning.py tests/host/test_compare_and_report.py tests/host/test_run_cli.py tests/host/test_l1norm.py
         language: python
         additional_dependencies: [numpy, scipy, pytest]
         pass_filenames: false
-        files: ^test/utils/lu_verify_utils\.py$|^tests/host/test_(solve_lu|load_pivots|verify_inverse|contract_warning|compare_and_report)\.py$
+        files: ^test/utils/lu_verify_utils\.py$|^tests/host/test_(solve_lu|load_pivots|contract_warning|compare_and_report|run_cli|l1norm)\.py$
       - id: build-driver-contract-tests
         name: build.sh driver contract Host tests
         entry: python -m pytest -q tests/host/test_build_path_arguments.py
