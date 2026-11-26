@@ -113,12 +113,10 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 - cmake >= 3.16.0；运行包含 sgetrf、sgetri、sgetri_batched、smatinv_batched 测试的 `bash build.sh --run` 时，需要 cmake >= 3.18（这四个测试目录的 CMakeLists 使用 TARGET_DIRECTORY 源属性并显式声明了 cmake_minimum_required(3.18)；cheevj 的同款使用有 CMAKE_VERSION 守卫，3.16 即可配置，仅损失 -O2/-O3 源级优化）。
 - pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
 - dos2unix
-
-> **SoC 覆盖概览**：各 `--soc` 取值（ascend910b/910_93/950/310p）对应的算子族覆盖见 [QuickStart 的 SoC 覆盖概览](../../QUICKSTART.md#各-soc-的算子覆盖概览)。
 - make
 - patch
 
-> **SoC 覆盖概览**：`--soc` 取值必须带 `ascend` 前缀（`ascend910b`/`ascend910_93`/`ascend950`/`ascend310p`），各取值对应的算子族覆盖见 [QuickStart 的 --soc 说明](../../QUICKSTART.md#2---soc-应该填什么)。
+> **SoC 覆盖概览**：`--soc` 取值必须带 `ascend` 前缀（`ascend910b`/`ascend910_93`/`ascend950`/`ascend310p`），各取值对应的算子族覆盖见 [QuickStart 的 --soc 说明](../../QUICKSTART.md#2---soc-应该填什么) 与 [SoC 覆盖概览](../../QUICKSTART.md#各-soc-的算子覆盖概览)。
 
 上述依赖请按以下步骤准备：
 
