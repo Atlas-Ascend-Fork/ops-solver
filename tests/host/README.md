@@ -23,6 +23,17 @@
 | test_require_diagnostic_location.py | test/common/complex_qr 共享 require() 的诊断定位 | complex-qr-require-tests | test/common/complex_qr/*.py、测试自身 |
 | test_uninstall_deletion_status.py | scripts/package/install.sh 卸载的删除完整性与失败边界 | uninstall-deletion-tests | scripts/package/install.sh、测试自身 |
 
+> 注：test_run_cli / test_l1norm / test_contract_warning 三行暂时注释，待 !473（run_cli/l1norm 测试文件）与 !478（lu-verify-utils-tests hook）合入后 uncomment。
+
+| test_read_binary_strict.py | read_binary_strict 的字节对齐 + expected_count 校验 | read-binary-strict-tests | test/utils/verify_utils.py、测试自身 |
+| test_compare_and_report.py | compare_and_report 的 eps 双条件整体比对（#612 向量化语义） | — | — |
+| test_solve_lu.py | forward/backward/solve_lu 的 LU 参考解计算 | — | — |
+| test_load_pivots.py | load_pivots 的 1-based 主元校验 | — | — |
+| test_verify_inverse.py | verify_inverse 的 A·A⁻¹ ≈ I 判定 | — | — |
+<!-- | test_run_cli.py | run_cli 的退出码语义（True→0 / False/异常→1） | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 | -->
+<!-- | test_l1norm.py | l1norm 列绝对值和最大值 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 | -->
+| test_contract_warning.py | contract_warning 超限提示 + resolve_data_dir 双布局 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
+
 ## 运行方式
 
 ```bash
