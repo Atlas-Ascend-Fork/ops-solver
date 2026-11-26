@@ -81,6 +81,7 @@ for arg in "$@"; do
             ;;
         --soc=*)
             SOC_VERSION="${arg#*=}"
+            SOC_EXPLICIT=TRUE
             ;;
         --pkg)
             ENABLE_PACKAGE=TRUE
@@ -101,6 +102,11 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if [ "${SOC_EXPLICIT:-FALSE}" == "TRUE" ] && [ -z "${SOC_VERSION}" ]; then
+    print_error "Invalid --soc value: expected a non-empty SoC version."
+    exit 1
+fi
 
 # 规范化并去重 --ops 列表：去除空项、保留首次出现顺序，非法空列表在清理 build/ 前退出
 if [ "${OPS_EXPLICIT}" == "TRUE" ]; then
