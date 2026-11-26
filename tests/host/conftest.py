@@ -9,6 +9,7 @@
 """Shared fixtures for Host-side tests."""
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,3 +32,10 @@ def toolkit_roots():
     for parent in (Path("/usr/local/Ascend"), Path.home() / "Ascend"):
         roots.extend(sorted(parent.glob("cann-*")))
     return roots
+
+
+# 共享 test/utils 路径（issue #647）：消除各测试文件重复的 sys.path.insert
+# —— 需要消费 test/utils 的测试文件直接 import 即可，无需自行注入。
+_utils_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "test", "utils")
+if _utils_dir not in sys.path:
+    sys.path.insert(0, _utils_dir)
