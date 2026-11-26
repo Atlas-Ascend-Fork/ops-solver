@@ -11,7 +11,7 @@ bash build.sh --soc=ascend950 --ops=cpotrf_950,cpotrs,cpotri,cpotrf_batched,cpot
 `build.sh` 按 `test/<op>/data/gen_data.py`、`<op>_test`、`data/verify_result.py` 的顺序运行。
 `cpotrf_950` 是 950 C API 的标准测试入口；`cpotrf` 保留主线 A2/A3 C++ 接口的样例。
 切换接口时需同时调整调用参数、Host/Device 地址及行列主序，具体区别见 [Cpotrf 接口说明](../../../docs/zh/cpotrf.md)。
-五个接口共 259 条测试，覆盖 LOWER/UPPER、非整块维度、合法 lda/ldb padding、空问题、
+五个接口共 265 条测试，覆盖 LOWER/UPPER、非整块维度、合法 lda/ldb padding、空问题、
 非连续批量设备指针、非默认 stream、info、只读因子和两次输出逐位一致。
 另覆盖病态正定矩阵、非正定分解、批内成功与失败混合、奇异因子求逆的正 info；
 数值失败只检验 LAPACK info 契约，成功矩阵仍逐一参加残差门禁。
@@ -33,7 +33,7 @@ manifest.tsv 前七列为 index/n/nrhs/batch/upper/lda/ldb，第八列 expectedS
 期望 info 沿用各用例的 `*-info.bin`，批量分解只写首槽，其他槽保留初始哨兵。
 非法尺寸使用独立合法的底层存储，不把负维度转换为分配字节数。
 
-Destroy 的十四条 Host 回归使用真实生命周期实现和模拟 Runtime，覆盖默认 stream、同步降级、
+Destroy 的二十条 Host 回归使用真实生命周期实现和模拟 Runtime，覆盖默认 stream、同步降级、
 释放失败后继续回收、首错保留、未完成任务的内存保护及重试，另覆盖实数池回调与复数缓冲区的共存、失败保留和重试释放；不访问设备。加载 CANN 头文件环境后执行：
 
 ```bash
