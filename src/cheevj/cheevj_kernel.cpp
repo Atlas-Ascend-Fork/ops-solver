@@ -281,13 +281,8 @@ __global__ __aicore__ void cheevj_fixed_apply_update_kernel(GM_ADDR packedReal, 
     AscendC::TPipe pipe;
     if (n == kN512)
     {
-        if (computeVectors != 0)
-        {
-            Cheevj::CheevjE2EN512ArchivePanelReflectors archive;
-            archive.Init(&pipe, panelVReal, panelVImag, reflectorReal, reflectorImag, panelStart,
-                         kEpilogueBlocks - kN512PanelSize);
-            archive.Process();
-        }
+        // n=512 的 panel reflectors 归档由独立 cheevj_fixed_archive_kernel 完成，
+        // epilogue 内不做归档（caller 固定传 computeVectors=0，见下方调用点注释）。
         Cheevj::CheevjHer2kEpilogue<kN512> epilogue;
         epilogue.Init(&pipe, packedReal, packedImag, updateReal, updateImag, matrixReal, matrixImag, panelStart,
                       activeN);
@@ -358,6 +353,10 @@ void cheevj_fixed_kernel_do(GM_ADDR matrixReal, GM_ADDR matrixImag, GM_ADDR pack
         }
         cheevj_fixed_build_update_kernel<<<kCubeBlocks, nullptr, stream>>>(
             panelVReal, panelVImag, wHReal, wHImag, wHImagNeg, updateReal, updateImag, n - panelStart, n);
+        // 归档所有权说明：n=512 的 panel reflectors 归档由上方独立 cheevj_fixed_archive_kernel
+        // 完成（computeVectors && n == kN512 时启动）；n=1024/2048 的归档由 apply_update kernel
+        // 的 epilogue 内进行。因此下方调用对 n=512 固定传 computeVectors=0，两条归档路径互不
+        // 重叠，避免双路径并存（issue #667）。
         cheevj_fixed_apply_update_kernel<<<kEpilogueBlocks, nullptr, stream>>>(
             packedReal, packedImag, updateReal, updateImag, panelVReal, panelVImag, reflectorReal, reflectorImag,
             matrixReal, matrixImag, panelStart, computeVectors && n != kN512 ? 1 : 0, n - panelStart, n);
