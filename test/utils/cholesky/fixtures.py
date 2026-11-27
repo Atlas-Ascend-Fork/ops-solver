@@ -79,7 +79,15 @@ INVALID_DIAGONAL_VALUES = {
 OVERRIDDEN_INFO_KINDS = ("negative_diagonal", "nan_diagonal", "inf_diagonal")
 
 
+# issue #658：下划线批量名调用方与驼峰产生完全一致的 spec 列表，
+# 避免批量专属分支（endswith("Batched")/精确比较）静默落空。
+def normalize_op_name(op):
+    """归一化下划线批量名到驼峰（issue #658），两种写法产出一致。"""
+    return op.replace("_batched", "Batched") if op else op
+
+
 def unbatch_op(op):
+    op = normalize_op_name(op)
     return op[: -len("Batched")] if op.endswith("Batched") else op
 
 
@@ -353,6 +361,9 @@ def invalid_specs(op, start_index):
 
 
 def case_specs(op):
+    # 下划线/驼峰名归一化（issue #658）：显式传 op 的调用方传错大小写时，
+    # 批量专属分支不再静默漏 14 条用例，而是生成与驼峰完全一致的数据。
+    op = normalize_op_name(op)
     # Append new coverage so existing case indices and RNG seeds remain stable.
     shapes = base_case_shapes(op) + boundary_case_shapes(op)
     result = [make_spec(op, index, shape) for index, shape in enumerate(shapes)]
@@ -378,7 +389,9 @@ def generate_invalid(root, op, spec):
 
 
 def generate(root, op=None):
+    # 显式 op 也归一化（issue #658）：下划线名不再静默漏算批量分支
     op = op or root.parent.name.replace("_batched", "Batched")
+    op = normalize_op_name(op)
     base = unbatch_op(op)
     for directory in ("input", "output", "golden"):
         (root / directory).mkdir(parents=True, exist_ok=True)

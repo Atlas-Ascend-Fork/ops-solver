@@ -54,3 +54,5 @@ CATLASS 仅作编译期头文件依赖，由 `cmake/third_party/catlass-fetch.cm
 ## 用例确定性（seed 机制）
 
 `fixtures.py` 的 `RANDOM_SEED = 950`——每个用例的 RNG seed 由 `RANDOM_SEED + case index` 偏移决定，**追加新用例不影响既有索引的 seed**（`case_specs` 的注释要求追加放尾部）。产物逐字节可复现。
+
+op 名契约为驼峰（`cpotrfBatched`/`cpotrsBatched`）；`case_specs`/`generate`/`unbatch_op` 会对下划线名自动归一化（issue #658），两种写法产生完全一致的用例数据。

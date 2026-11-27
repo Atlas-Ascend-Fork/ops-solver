@@ -41,6 +41,10 @@ unbatch = fixtures['unbatch_op']
 assert unbatch('cpotrfBatched') == 'cpotrf'
 assert unbatch('cpotrs') == 'cpotrs'
 assert unbatch('BatchedInside') == 'BatchedInside'
+assert unbatch('cpotrs_batched') == 'cpotrs'  # issue #658: 下划线名归一化
+specs = fixtures['case_specs']
+# issue #658: 下划线与驼峰 op 名产生完全一致的 spec 列表
+assert list(specs('cpotrs_batched')) == list(specs('cpotrsBatched'))
 residual = runpy.run_path(sys.argv[2])
 evaluate = residual['evaluate']
 evaluate.__globals__['paired'] = lambda *args: {'ratio': 1.0, 'ratio_cpu': 2.0}
