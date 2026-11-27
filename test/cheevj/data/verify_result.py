@@ -19,6 +19,9 @@ import numpy as np
 sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
 )
+# 日志流配置须先于 verify_utils 导入：后者在模块导入时 basicConfig 装到 stderr，
+# 若顺序颠倒本脚本的 stdout 配置会被静默吞掉（issue #661，同 cpotrf 的 !469 修法）
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 from verify_utils import read_binary_strict  # noqa: E402
 
 
@@ -72,7 +75,6 @@ def normalize_kind(value):
 
 
 LOGGER = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 
 def normalize_jobz(value):

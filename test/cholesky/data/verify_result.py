@@ -13,12 +13,15 @@ import sys
 from pathlib import Path
 import numpy as np
 
+# 日志流配置须先于 verify_utils 导入：后者在模块导入时 basicConfig 装到 stderr，
+# 若顺序颠倒本脚本的 stdout 配置会被静默吞掉（issue #661，同 cpotrf 的 !469 修法）
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "utils"))
 from lapack_residual import paired
 from verify_utils import read_binary_strict
 
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 root = Path(__file__).resolve().parent
 n, ld = 17, 20
 
