@@ -10,10 +10,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import logging
 import os
 import sys
 
 import numpy as np
+
+# 日志流显式声明（issue #662）：verify_utils 不再在导入期 basicConfig，
+# 本脚本的输出流由自身决定（默认 stderr，与既有行为一致）。
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")

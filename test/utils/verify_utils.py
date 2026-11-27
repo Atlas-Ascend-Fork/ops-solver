@@ -17,8 +17,11 @@ import os
 
 import numpy as np
 
-# 输出格式与既有验证脚本保持一致（纯消息文本，无日志级别前缀）
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# 本模块不再在导入期 basicConfig（issue #662）：模块级日志配置是导入副作用，
+# 会把后配置消费方的 stream 声明静默吞掉（basicConfig 在 root 已有 handler 时
+# 为 no-op，cpotrf 13 红与 #661 均由此而来）。日志流由各 verify 脚本自行声明：
+# 无声明的消费方（logging 前无任何 basicConfig）按 Python 默认走 stderr lastResort，
+# 显式声明者（如 stream=sys.stdout）按自身声明生效，与导入顺序无关。
 
 RELATIVE_TOL = 5e-3
 ABSOLUTE_TOL = 5e-3
