@@ -15,8 +15,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import scipy.linalg
 
 ROOT = Path(__file__).resolve().parents[2]
+
+sys.path.insert(0, str(ROOT / "test" / "utils"))
+from lu_verify_utils import solve_lu  # noqa: E402
+
 OPERATORS = (
     "sgetrf",
     "cgetrf",
@@ -197,16 +202,18 @@ def identity_inputs(n=2, nrhs=1, dtype=np.complex64):
 
 def run_cli(directory, arrays, operator="cgetrs"):
     data = directory / f"test/{operator}/data"
-    (data / "input").mkdir(parents=True)
-    (data / "output").mkdir()
+    (data / "input").mkdir(parents=True, exist_ok=True)
+    (data / "output").mkdir(exist_ok=True)
     for name, location in {
         "LU": "input/A_gm.bin",
         "B": "input/B_gm.bin",
         "X": "output/X_gm.bin",
         "piv": "input/W_gm.bin",
     }.items():
-        arrays[name].tofile(data / location)
-    n, nrhs = arrays["X"].shape
+        if arrays.get(name) is not None:
+            arrays[name].tofile(data / location)
+    n = arrays["LU"].shape[0]
+    nrhs = arrays["B"].shape[1]
     script = SGETRS_SCRIPT if operator == "sgetrs" else CGETRS_SCRIPT
     return subprocess.run(
         [sys.executable, str(script), str(n), str(nrhs)],
@@ -455,3 +462,143 @@ def test_getrs_rejects_partial_binary_elements(tmp_path, operator, location):
     )
     assert run.returncode == 1, run.stdout + run.stderr
     assert "corrupted binary file" in run.stdout
+
+
+@pytest.mark.parametrize("dtype", (np.float32, np.complex64))
+def test_solve_lu_transposed_chain_matches_numpy(dtype):
+    """trans≠0 转置链参考解与 numpy 转置方程一致（随机矩阵含主元交换，issue #637）。
+
+    矩阵不做对角占优偏置（检视采纳）：严格对角占优会使部分主元法恒取对角行、
+    piv 恒为单位置换，inverse_permutation 的置换 gather 退化为拷贝而零真实覆盖；
+    此处断言 piv 非单位置换，保证逆序 laswp / P^T 还原解序路径被真实触发。
+    """
+    rng = np.random.RandomState(42)
+    n = 16
+    trans = 1 if dtype is np.float32 else 2
+    if dtype is np.float32:
+        a = rng.rand(n, n).astype(np.float32)
+        b = rng.rand(n, 3).astype(dtype)
+    else:
+        a = (rng.rand(n, n) + 1j * rng.rand(n, n)).astype(np.complex64)
+        b = (rng.rand(n, 3) + 1j * rng.rand(n, 3)).astype(dtype)
+    target = np.complex128 if np.iscomplexobj(a) else np.float64
+    lu, piv = scipy.linalg.lu_factor(a.astype(target))
+    assert not np.array_equal(piv, np.arange(1, n + 1)), (
+        "piv is identity, no real pivot swap"
+    )
+    x = solve_lu(lu.astype(dtype), b, piv.astype(np.int32), trans)
+    lhs = a.T if trans == 1 else a.conj().T
+    expected = np.linalg.solve(lhs.astype(target), b.astype(target))
+    np.testing.assert_allclose(x, expected, rtol=1e-3, atol=1e-4)
+
+
+def make_nontrivial_getrs_case(operator):
+    """构造含真实主元交换的非平凡 getrs 用例（检视采纳），返回 (dtype, a, lu, piv, rhs)。
+
+    [[1, 2], [3, 4]] 实数 / 对角含虚部的复数变体，scipy 部分主元法首列必选
+    第 2 行（piv=[2, 2]），置换路径被真实触发；cgetrs 对角虚部使 trans=2 共轭档非平凡。
+    """
+    dtype = np.float32 if operator == "sgetrs" else np.complex64
+    n = 2
+    if operator == "sgetrs":
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    else:
+        a = np.array([[1 + 1j, 2.0], [3.0, 4 - 0.5j]], dtype=np.complex128)
+    lu_np, piv_np = scipy.linalg.lu_factor(a)
+    lu = lu_np.astype(dtype)
+    # scipy lu_factor 返回 0-based 交换伙伴索引，W_gm.bin 契约为 1-based LAPACK ipiv（与 gen_data 口径一致）
+    piv = (piv_np + 1).astype(np.int32)
+    assert not np.array_equal(piv, np.arange(1, n + 1)), (
+        "piv is identity, no real pivot swap"
+    )
+    rhs = np.array([[1.0], [2.0]], dtype=dtype)
+    return dtype, a, lu, piv, rhs
+
+
+@pytest.mark.parametrize("operator", ("sgetrs", "cgetrs"))
+def test_getrs_trans_outputs_are_verified_per_case(tmp_path, operator):
+    """逐档输出文件与转置链参考解一致（含真实主元交换的非平凡 LU，issue #637）。"""
+    dtype, a, lu, piv, rhs = make_nontrivial_getrs_case(operator)
+    expected = {
+        0: np.linalg.solve(a, rhs),
+        1: np.linalg.solve(a.T, rhs),
+        2: np.linalg.solve(a.conj().T, rhs),
+    }
+    trans_list = (0, 1) if operator == "sgetrs" else (0, 1, 2)
+    arrays = {
+        "LU": lu,
+        "B": rhs,
+        "X": expected[0].astype(dtype),
+        "piv": piv,
+    }
+    # 仅提供 X_gm.bin 的历史 fixture 形态：trans=0 参与比对，非零档缺文件自动跳过
+    run = run_cli(tmp_path, arrays, operator)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "[Success]" in run.stdout
+    assert "not found, skipped" in run.stdout
+    # 逐档补齐输出文件后：全部档位参与比对
+    output_dir = tmp_path / f"test/{operator}/data/output"
+    for trans in trans_list:
+        name = "X_gm.bin" if trans == 0 else f"X_gm_trans{trans}.bin"
+        reference = expected.get(trans)
+        assert reference is not None, f"missing expected reference for trans={trans}"
+        reference.astype(dtype).tofile(output_dir / name)
+    run = run_cli(tmp_path, arrays, operator)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "[Success]" in run.stdout
+    for trans in trans_list:
+        assert f"verify trans={trans}" in run.stdout
+
+
+@pytest.mark.parametrize("operator", ("sgetrs", "cgetrs"))
+def test_getrs_wrong_trans_output_fails(tmp_path, operator):
+    """trans=1 档输出错误必须判失败且失败可归因于该档（issue #637，检视采纳）。
+
+    trans=0 输出提供正确解：失败轮中唯一错误档为 trans=1，[Failed] 可归因于
+    非零档确实被读取比对，而非 trans=0 自身错误混入。
+    """
+    dtype, a, lu, piv, rhs = make_nontrivial_getrs_case(operator)
+    x0 = np.linalg.solve(a, rhs).astype(dtype)
+    arrays = {"LU": lu, "B": rhs, "X": x0, "piv": piv}
+    # 第一轮：trans=0 正确、非零档缺文件跳过 → 通过
+    run = run_cli(tmp_path, arrays, operator)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "[Success]" in run.stdout
+    # 第二轮：trans=1 写入错误解（cgetrs 的 trans=2 提供正确解，失败仅归因 trans=1）
+    output_dir = tmp_path / f"test/{operator}/data/output"
+    x_trans1 = np.linalg.solve(a.T, rhs)
+    wrong = x_trans1.copy()
+    wrong[0, 0] += 0.1
+    wrong.astype(dtype).tofile(output_dir / "X_gm_trans1.bin")
+    if operator == "cgetrs":
+        x_trans2 = np.linalg.solve(a.conj().T, rhs)
+        x_trans2.astype(dtype).tofile(output_dir / "X_gm_trans2.bin")
+    run = run_cli(tmp_path, arrays, operator)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "[Failed]" in run.stdout
+    assert "verify trans=1" in run.stdout
+
+
+@pytest.mark.parametrize("operator", ("sgetrs", "cgetrs"))
+def test_getrs_missing_all_trans_outputs_fails(tmp_path, operator):
+    """全部档位输出缺失必须判失败：零比对不得假通过（issue #637，检视采纳）。
+
+    算子未产出任何 X 输出（调用失败/提前返回/落盘路径不一致）时，旧口径
+    all_pass 初值 True 会静默判过；新口径零命中返回 False 并明确报错。
+    """
+    dtype = np.float32 if operator == "sgetrs" else np.complex64
+    if operator == "sgetrs":
+        a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    else:
+        a = np.array([[1 + 1j, 2.0], [3.0, 4 - 0.5j]], dtype=np.complex128)
+    lu_np, piv_np = scipy.linalg.lu_factor(a)
+    arrays = {
+        "LU": lu_np.astype(dtype),
+        "B": np.array([[1.0], [2.0]], dtype=dtype),
+        # 0-based 交换伙伴转 1-based LAPACK ipiv（与 gen_data 口径一致）
+        "piv": (piv_np + 1).astype(np.int32),
+    }
+    run = run_cli(tmp_path, arrays, operator)
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "[Failed]" in run.stdout
+    assert "no trans output was compared" in run.stdout

@@ -19,11 +19,20 @@
 #include <cstring>
 #include <iostream>
 #include <iterator>
+#include <string>
 #include <vector>
 
 #include "../utils/test_utils.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
+
+namespace
+{
+// trans 档清单（issue #637）：接口文档承诺 0（AX=B）、1（A^T·X=B）两档，逐档回归
+const int TRANS_LIST[] = {0, 1};
+const int TRANS_COUNT = static_cast<int>(sizeof(TRANS_LIST) / sizeof(TRANS_LIST[0]));
+
+}  // namespace
 
 int main(int argc, char **argv)
 {
@@ -32,61 +41,15 @@ int main(int argc, char **argv)
     N = (argc > 2) ? std::atoi(argv[2]) : 32;
     NRHS = (argc > 3) ? std::atoi(argv[3]) : 32;
 
-    CHECK_ACL(aclInit(nullptr));
-    CHECK_ACL(aclrtSetDevice(deviceId));
     aclrtStream stream = nullptr;
-    CHECK_ACL(aclrtCreateStream(&stream));
-
     aclsolverHandle_t handle = nullptr;
-    CHECK_ACL(aclsolverCreate(&handle));
-    CHECK_ACL(aclsolverSetStream(handle, stream));
-
-    size_t aMatrixFileSize = N * N * sizeof(float);
-    size_t ipivFileSize = N * sizeof(int32_t);
-    size_t bMatrixFileSize = N * NRHS * sizeof(float);
+    CHECK_ACL(InitGetrsTest(deviceId, &stream, &handle));
 
     float *A = nullptr;
     float *B = nullptr;
     int32_t *ipiv = nullptr;
-
-    auto cleanup = [&]() -> aclError
-    {
-        if (A != nullptr)
-        {
-            CHECK_ACL(aclrtFreeHost(A));
-        }
-        if (B != nullptr)
-        {
-            CHECK_ACL(aclrtFreeHost(B));
-        }
-        if (ipiv != nullptr)
-        {
-            CHECK_ACL(aclrtFreeHost(ipiv));
-        }
-        CHECK_ACL(aclrtDestroyStream(stream));
-        if (handle != nullptr)
-        {
-            CHECK_ACL(aclsolverDestroy(handle));
-        }
-        CHECK_ACL(aclrtResetDevice(deviceId));
-        CHECK_ACL(aclFinalize());
-        return ACL_SUCCESS;
-    };
-
-    CHECK_ACL(aclrtMallocHost((void **)(&A), aMatrixFileSize));
-    CHECK_RET(ReadFile("./test/sgetrs/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize),
-              LOG_PRINT("ReadFile A_gm.bin failed.\n");
-              cleanup(); return ACL_ERROR_INVALID_PARAM);
-
-    CHECK_ACL(aclrtMallocHost((void **)(&B), bMatrixFileSize));
-    CHECK_RET(ReadFile("./test/sgetrs/data/input/B_gm.bin", bMatrixFileSize, B, bMatrixFileSize),
-              LOG_PRINT("ReadFile B_gm.bin failed.\n");
-              cleanup(); return ACL_ERROR_INVALID_PARAM);
-
-    CHECK_ACL(aclrtMallocHost((void **)(&ipiv), ipivFileSize));
-    CHECK_RET(ReadFile("./test/sgetrs/data/input/W_gm.bin", ipivFileSize, ipiv, ipivFileSize),
-              LOG_PRINT("ReadFile W_gm.bin failed.\n");
-              cleanup(); return ACL_ERROR_INVALID_PARAM);
+    auto loadRet = LoadGetrsInputs<float>("./test/sgetrs/data", N, NRHS, &A, &B, &ipiv);
+    CHECK_RET(loadRet == ACL_SUCCESS, DestroyGetrsTest(stream, handle, deviceId, A, B, ipiv); return loadRet);
 
     std::cout << "[Input] A:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)A, N, N, 8, 8);
@@ -97,19 +60,15 @@ int main(int argc, char **argv)
     std::cout << "[Input] B:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)B, N, NRHS, 8, 8);
 
-    int32_t infoVal = 0;
-    int32_t *info = &infoVal;
+    // B 会被算子原地覆盖为解 X，逐档执行前从备份恢复（issue #637）
+    const std::vector<float> bBackup(B, B + static_cast<size_t>(N) * NRHS);
+    auto sweepRet = RunGetrsTransSweep<float>(
+        [&](uint64_t trans, int64_t n, int64_t nrhs, float *a, int64_t lda, int32_t *pivots, float *b, int64_t ldb,
+            int32_t *info) { return aclsolverSgetrs(handle, trans, n, nrhs, a, lda, pivots, b, ldb, info); },
+        TRANS_LIST, TRANS_COUNT, N, NRHS, A, N, ipiv, bBackup, B, NRHS, "./test/sgetrs/data/output/X_gm", NRHS);
+    CHECK_RET(sweepRet == ACL_SUCCESS, DestroyGetrsTest(stream, handle, deviceId, A, B, ipiv); return sweepRet);
 
-    auto ret = aclsolverSgetrs(handle, 0, N, NRHS, A, N, ipiv, B, NRHS, info);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverSgetrs failed. ERROR: %d\n", ret); cleanup(); return ret);
-
-    std::cout << "[Output] X:" << std::endl;
-    PrintPartOfMatrix<float>((uint8_t *)B, N, NRHS, 8, 8);
-
-    CHECK_RET(WriteFile("./test/sgetrs/data/output/X_gm.bin", B, bMatrixFileSize),
-              LOG_PRINT("WriteFile X_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
-
-    auto cleanupRet = cleanup();
+    auto cleanupRet = DestroyGetrsTest(stream, handle, deviceId, A, B, ipiv);
     CHECK_RET(cleanupRet == ACL_SUCCESS, return cleanupRet);
 
     return 0;

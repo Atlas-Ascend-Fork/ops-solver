@@ -63,8 +63,14 @@ LU = lu.astype(np.complex64)
 # scipy 返回 0-based，此处 +1 对齐
 IPIV = (piv + 1).astype(np.int32)
 
-# 4. 计算参考解 X = A^(-1) * B (cgetrs 的等效操作)
-X_ref = scipy.linalg.lu_solve((lu, piv), B).astype(np.complex64)
+# 4. 按 trans 档生成参考解（issue #637）：0 档 A·X=B，1 档 Aᵀ·X=B，2 档 A^H·X=B，
+# scipy lu_solve 的 trans 语义与本仓一致（2 为共轭转置），golden 按档落盘
+TRANS_LIST = (0, 1, 2)
+golden = {
+    trans: scipy.linalg.lu_solve((lu, piv), B, trans=trans).astype(np.complex64)
+    for trans in TRANS_LIST
+}
+X_ref = golden[0]
 
 # --- 保存输入数据 ---
 # 保存 LU 分解后的矩阵 (cgetrs 的输入 A)
@@ -80,9 +86,11 @@ with open(os.path.join(input_dir, "B_gm.bin"), "wb") as f:
     f.write(B.tobytes())
 
 # --- 保存输出数据 (golden) ---
-# 保存参考解向量 X (cgetrs 的输出，通常会覆盖 B)
-with open(os.path.join(output_dir, "golden.bin"), "wb") as f:
-    f.write(X_ref.tobytes())
+# 按 trans 档落盘（issue #637）：0 档保持既有 golden.bin，非零档 _trans<t> 后缀
+for trans, x in golden.items():
+    name = "golden.bin" if trans == 0 else f"golden_trans{trans}.bin"
+    with open(os.path.join(output_dir, name), "wb") as f:
+        f.write(x.tobytes())
 
 # 打印信息用于验证
 logging.info(f"Generated CGETRS test data for {n}x{n} matrix with {nrhs} RHS vectors")
@@ -96,6 +104,13 @@ logging.info(
 logging.info(
     f"Reference solution X (first 3 rows, first 3 columns):\n{X_ref[:3, :3] if nrhs >= 3 else X_ref[:3, :]}"
 )
+
+# 验证: 各 trans 档参考解满足对应方程（0: A·X≈B，1: Aᵀ·X≈B，2: A^H·X≈B，issue #637）
+for trans, x in golden.items():
+    lhs = A.T if trans == 1 else A.conj().T if trans == 2 else A
+    residual = np.max(np.abs(np.matmul(lhs, x) - B))
+    tag = {0: "A", 1: "Aᵀ", 2: "A^H"}[trans]
+    logging.info("trans=%d residual max(|%s·X - B|): %.3e", trans, tag, residual)
 
 # 验证: 计算 A * X 应该等于 B
 AX = np.matmul(A, X_ref)

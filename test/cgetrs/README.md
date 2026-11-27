@@ -167,6 +167,8 @@ Solver Cgetrs算子实现。
 
 > **确定性**：`gen_data.py` 固定 `np.random.seed(149)`（与 sgetrf/cgetrf 同种子保证 LU 因子一致性）——产物逐字节可复现。
 
+> **trans 多档覆盖（issue #637）**：测试二进制按文档承诺的 trans 取值逐档执行（复数 0：AX=B、1：AᵀX=B、2：A^HX=B），每档执行前从备份恢复右端项 B；输出按档落盘 `output/X_gm.bin`（trans=0）与 `output/X_gm_trans1.bin`、`output/X_gm_trans2.bin`。`verify_result.py` 逐档读取对应输出并与转置链参考解比对（共享工具 `lu_verify_utils.solve_lu(..., trans=...)`，trans=2 对三角因子取共轭），`gen_data.py` 同样按档生成 `golden.bin` / `golden_trans1.bin` / `golden_trans2.bin`。仅提供 `X_gm.bin` 的历史 fixture（如 Host 单测）自动只回归 trans=0 档。
+
 执行结果如下，说明精度对比成功。
 
   ```bash

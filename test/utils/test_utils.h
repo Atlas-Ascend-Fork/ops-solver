@@ -3,6 +3,9 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -29,6 +32,7 @@
 #include <vector>
 
 #include "acl/acl.h"
+#include "cann_ops_solver.h"
 #include "cann_ops_solver_common.h"
 
 typedef enum
@@ -288,5 +292,103 @@ inline bool allclose(const std::complex<float> *a, const std::complex<float> *b,
     }
     std::cout << "[Success] verification passed." << std::endl;
     return true;
+}
+
+// getrs 系测试公共输入加载（issue #637）：按 dtype 读取 A/B/W 三份 Host 数据，dataDir 为算子数据目录
+template <typename T>
+aclError LoadGetrsInputs(const std::string &dataDir, int n, int nrhs, T **a, T **b, int32_t **ipiv)
+{
+    size_t aMatrixFileSize = static_cast<size_t>(n) * n * sizeof(T);
+    size_t ipivFileSize = static_cast<size_t>(n) * sizeof(int32_t);
+    size_t bMatrixFileSize = static_cast<size_t>(n) * nrhs * sizeof(T);
+    CHECK_ACL(aclrtMallocHost((void **)a, aMatrixFileSize));
+    CHECK_RET(ReadFile(dataDir + "/input/A_gm.bin", aMatrixFileSize, *a, aMatrixFileSize),
+              LOG_PRINT("ReadFile A_gm.bin failed.\n");
+              return ACL_ERROR_INVALID_PARAM);
+    CHECK_ACL(aclrtMallocHost((void **)b, bMatrixFileSize));
+    CHECK_RET(ReadFile(dataDir + "/input/B_gm.bin", bMatrixFileSize, *b, bMatrixFileSize),
+              LOG_PRINT("ReadFile B_gm.bin failed.\n");
+              return ACL_ERROR_INVALID_PARAM);
+    CHECK_ACL(aclrtMallocHost((void **)ipiv, ipivFileSize));
+    CHECK_RET(ReadFile(dataDir + "/input/W_gm.bin", ipivFileSize, *ipiv, ipivFileSize),
+              LOG_PRINT("ReadFile W_gm.bin failed.\n");
+              return ACL_ERROR_INVALID_PARAM);
+    return ACL_SUCCESS;
+}
+
+// getrs 系测试公共初始化（issue #637）：aclInit、选卡、创建流与算子句柄并绑定流
+inline aclError InitGetrsTest(int deviceId, aclrtStream *stream, aclsolverHandle_t *handle)
+{
+    CHECK_ACL(aclInit(nullptr));
+    CHECK_ACL(aclrtSetDevice(deviceId));
+    CHECK_ACL(aclrtCreateStream(stream));
+    CHECK_ACL(aclsolverCreate(handle));
+    CHECK_ACL(aclsolverSetStream(*handle, *stream));
+    return ACL_SUCCESS;
+}
+
+// getrs 系测试公共清理（issue #637）：释放 Host 内存、销毁流与句柄、复位设备并逆初始化
+template <typename T>
+aclError DestroyGetrsTest(aclrtStream stream, aclsolverHandle_t handle, int deviceId, T *a, T *b, int32_t *ipiv)
+{
+    if (a != nullptr)
+    {
+        CHECK_ACL(aclrtFreeHost(a));
+    }
+    if (b != nullptr)
+    {
+        CHECK_ACL(aclrtFreeHost(b));
+    }
+    if (ipiv != nullptr)
+    {
+        CHECK_ACL(aclrtFreeHost(ipiv));
+    }
+    CHECK_ACL(aclrtDestroyStream(stream));
+    if (handle != nullptr)
+    {
+        CHECK_ACL(aclsolverDestroy(handle));
+    }
+    CHECK_ACL(aclrtResetDevice(deviceId));
+    CHECK_ACL(aclFinalize());
+    return ACL_SUCCESS;
+}
+
+// getrs 系多 trans 档扫描（issue #637）：逐档从备份恢复 B、调用算子并按档落盘输出。
+// trans=0 输出沿用 <outBase>.bin，非零档追加 _trans<t> 后缀；apiCall 封装各算子 API 差异，
+// printCols 为 X 打印列数（实数 nrhs、复数交错布局 nrhs*2）。
+inline std::string GetrsTransOutputPath(const std::string &outBase, int trans)
+{
+    return outBase + (trans == 0 ? std::string(".bin") : "_trans" + std::to_string(trans) + ".bin");
+}
+
+template <typename T, typename ApiFn>
+aclError RunGetrsTransSweep(ApiFn apiCall, const int *transList, int transCount, int64_t n, int64_t nrhs, T *a,
+                            int64_t lda, int32_t *ipiv, const std::vector<T> &bBackup, T *b, int64_t ldb,
+                            const std::string &outBase, int printCols)
+{
+    const size_t bBytes = bBackup.size() * sizeof(T);
+    // 清理上一次运行可能残留的输出文件（检视采纳）：避免本轮二进制未产出时
+    // 校验脚本读到旧文件造成结果来源不可信
+    for (int i = 0; i < transCount; ++i)
+    {
+        const std::string outPath = GetrsTransOutputPath(outBase, transList[i]);
+        (void)remove(outPath.c_str());
+    }
+    for (int i = 0; i < transCount; ++i)
+    {
+        const int trans = transList[i];
+        std::copy(bBackup.begin(), bBackup.end(), b);
+        int32_t info = 0;
+        std::cout << "[Run] trans=" << trans << std::endl;
+        auto ret = apiCall(static_cast<uint64_t>(trans), n, nrhs, a, lda, ipiv, b, ldb, &info);
+        CHECK_RET(ret == ACL_SUCCESS, ERROR_LOG("aclsolver getrs call failed at trans=%d, ERROR: %d", trans, ret);
+                  return ret);
+        std::cout << "[Output] X (trans=" << trans << "):" << std::endl;
+        PrintPartOfMatrix<float>((uint8_t *)b, static_cast<int>(n), printCols, 8, 8);
+        const std::string outPath = GetrsTransOutputPath(outBase, trans);
+        CHECK_RET(WriteFile(outPath, b, bBytes), ERROR_LOG("WriteFile %s failed.", outPath.c_str());
+                  return ACL_ERROR_INVALID_PARAM);
+    }
+    return ACL_SUCCESS;
 }
 #endif  // TEST_UTILS_H

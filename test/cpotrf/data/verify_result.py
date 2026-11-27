@@ -16,10 +16,12 @@ from pathlib import Path
 
 import numpy as np
 
+# 日志流配置须先于 verify_utils 导入：后者在模块导入时 basicConfig 装到 stderr，
+# 若顺序颠倒本脚本的 stdout 配置会被静默吞掉，Host 单测对 stdout 的断言全红
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "utils"))
 from verify_utils import read_binary_strict  # noqa: E402
-
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 TOLERANCE = 1e-4  # 绝对误差阈值
 ERROR_TOL = 1e-4

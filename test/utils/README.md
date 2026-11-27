@@ -9,6 +9,8 @@ Host 侧共享 Python/C++ 工具，被各算子测试的 `data/gen_data.py` 与 
 | verify_utils.py | `read_binary_strict(path, dtype, expected_count=None)`——字节对齐 + 元素数双重校验 | sgetrf/cgetrf/sgetri/cgetri/cgetri_batched/cmatinv_batched/cheevj/cgeqrf/cholesky/spotrf/cpotrf |
 | verify_utils.py | `verify_inverse(input, inv, order, dtype, mismatch)`——A·A⁻¹ ≈ I 判定 | sgetri/cgetri |
 | lu_verify_utils.py | `solve_lu/forward_substitution/backward_substitution`——LU 参考解计算（#612 向量化） | sgetrs/cgetrs |
+| lu_verify_utils.py | `solve_lu(..., trans=)/forward_substitution_transposed/backward_substitution_transposed/inverse_permutation`——trans 多档转置链参考解（#637） | sgetrs/cgetrs |
+| lu_verify_utils.py | `verify_trans_cases/trans_output_name`——多 trans 档系统级比对驱动，缺失档自动跳过（#637） | sgetrs/cgetrs |
 | lu_verify_utils.py | `load_pivots(path, n)`——1-based 主元校验+转换 | sgetrs/cgetrs |
 | lu_verify_utils.py | `compare_and_report(x_ref, x, n, nrhs)`——eps 双条件整体比对 | sgetrs/cgetrs |
 
@@ -17,6 +19,7 @@ Host 侧共享 Python/C++ 工具，被各算子测试的 `data/gen_data.py` 与 
 | 文件 | 功能 | 消费方 |
 |---|---|---|
 | test_utils.h | ReadFile/WriteFile 设备文件 IO | cgeqrf/cgetrs/sgetrs 等 <op>_test.cpp |
+| test_utils.h | `RunGetrsTransSweep`——getrs 系多 trans 档扫描驱动：恢复 B、调算子、按档落盘（#637） | sgetrs/cgetrs <op>_test.cpp |
 | qr_test_utils.h | QR 测试共用断言 | cheevj 等 |
 | cholesky/fixture_runner.cpp | Cholesky 五接口共享调用与设备管理 | cholesky/cpotrf_950 等 |
 

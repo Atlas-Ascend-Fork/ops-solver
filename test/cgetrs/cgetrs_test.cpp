@@ -19,11 +19,20 @@
 #include <cstring>
 #include <iostream>
 #include <iterator>
+#include <string>
 #include <vector>
 
 #include "../utils/test_utils.h"
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
+
+namespace
+{
+// trans 档清单（issue #637）：接口文档承诺 0（AX=B）、1（A^T·X=B）、2（A^H·X=B）三档，逐档回归
+const int TRANS_LIST[] = {0, 1, 2};
+const int TRANS_COUNT = static_cast<int>(sizeof(TRANS_LIST) / sizeof(TRANS_LIST[0]));
+
+}  // namespace
 
 int main(int argc, char **argv)
 {
@@ -32,63 +41,17 @@ int main(int argc, char **argv)
     N = (argc > 2) ? std::atoi(argv[2]) : 32;
     NRHS = (argc > 3) ? std::atoi(argv[3]) : 32;
 
-    CHECK_ACL(aclInit(nullptr));
-    CHECK_ACL(aclrtSetDevice(deviceId));
     aclrtStream stream = nullptr;
-    CHECK_ACL(aclrtCreateStream(&stream));
-
     aclsolverHandle_t handle = nullptr;
-    CHECK_ACL(aclsolverCreate(&handle));
-    CHECK_ACL(aclsolverSetStream(handle, stream));
+    CHECK_ACL(InitGetrsTest(deviceId, &stream, &handle));
 
-    size_t aMatrixFileSize = N * N * sizeof(aclFloatComplex);
-    size_t ipivFileSize = N * sizeof(int32_t);
-    size_t bMatrixFileSize = N * NRHS * sizeof(aclFloatComplex);
-
-    // C ABI 契约（issue #354）：aclsolverCgetrs 形参为 C 兼容的 aclFloatComplex，
-    // 与 std::complex<float> 布局逐字节等价，测试直接使用该类型调用。
     aclFloatComplex *A = nullptr;
     aclFloatComplex *B = nullptr;
     int32_t *ipiv = nullptr;
-
-    auto cleanup = [&]() -> aclError
-    {
-        if (A != nullptr)
-        {
-            CHECK_ACL(aclrtFreeHost(A));
-        }
-        if (B != nullptr)
-        {
-            CHECK_ACL(aclrtFreeHost(B));
-        }
-        if (ipiv != nullptr)
-        {
-            CHECK_ACL(aclrtFreeHost(ipiv));
-        }
-        CHECK_ACL(aclrtDestroyStream(stream));
-        if (handle != nullptr)
-        {
-            CHECK_ACL(aclsolverDestroy(handle));
-        }
-        CHECK_ACL(aclrtResetDevice(deviceId));
-        CHECK_ACL(aclFinalize());
-        return ACL_SUCCESS;
-    };
-
-    CHECK_ACL(aclrtMallocHost((void **)(&A), aMatrixFileSize));
-    CHECK_RET(ReadFile("./test/cgetrs/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize),
-              LOG_PRINT("ReadFile A_gm.bin failed.\n");
-              cleanup(); return ACL_ERROR_INVALID_PARAM);
-
-    CHECK_ACL(aclrtMallocHost((void **)(&B), bMatrixFileSize));
-    CHECK_RET(ReadFile("./test/cgetrs/data/input/B_gm.bin", bMatrixFileSize, B, bMatrixFileSize),
-              LOG_PRINT("ReadFile B_gm.bin failed.\n");
-              cleanup(); return ACL_ERROR_INVALID_PARAM);
-
-    CHECK_ACL(aclrtMallocHost((void **)(&ipiv), ipivFileSize));
-    CHECK_RET(ReadFile("./test/cgetrs/data/input/W_gm.bin", ipivFileSize, ipiv, ipivFileSize),
-              LOG_PRINT("ReadFile W_gm.bin failed.\n");
-              cleanup(); return ACL_ERROR_INVALID_PARAM);
+    // C ABI 契约（issue #354）：aclsolverCgetrs 入参为 C 结构的 aclFloatComplex，
+    // 与 std::complex<float> 二进制字节等价，可直接使用各类型的引用。
+    auto loadRet = LoadGetrsInputs<aclFloatComplex>("./test/cgetrs/data", N, NRHS, &A, &B, &ipiv);
+    CHECK_RET(loadRet == ACL_SUCCESS, DestroyGetrsTest(stream, handle, deviceId, A, B, ipiv); return loadRet);
 
     std::cout << "[Input] A:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)A, N, N * 2, 8, 8);
@@ -99,19 +62,16 @@ int main(int argc, char **argv)
     std::cout << "[Input] B:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t *)B, N, NRHS * 2, 8, 8);
 
-    int32_t infoVal = 0;
-    int32_t *info = &infoVal;
+    // B 会被算子原地覆盖为解 X，逐档执行前从备份恢复（issue #637）
+    const std::vector<aclFloatComplex> bBackup(B, B + static_cast<size_t>(N) * NRHS);
+    auto sweepRet = RunGetrsTransSweep<aclFloatComplex>(
+        [&](uint64_t trans, int64_t n, int64_t nrhs, aclFloatComplex *a, int64_t lda, int32_t *pivots,
+            aclFloatComplex *b, int64_t ldb, int32_t *info)
+        { return aclsolverCgetrs(handle, trans, n, nrhs, a, lda, pivots, b, ldb, info); },
+        TRANS_LIST, TRANS_COUNT, N, NRHS, A, N, ipiv, bBackup, B, NRHS, "./test/cgetrs/data/output/X_gm", NRHS * 2);
+    CHECK_RET(sweepRet == ACL_SUCCESS, DestroyGetrsTest(stream, handle, deviceId, A, B, ipiv); return sweepRet);
 
-    auto ret = aclsolverCgetrs(handle, 0, N, NRHS, A, N, ipiv, B, NRHS, info);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclsolverCgetrs failed. ERROR: %d\n", ret); cleanup(); return ret);
-
-    std::cout << "[Output] X:" << std::endl;
-    PrintPartOfMatrix<float>((uint8_t *)B, N, NRHS * 2, 8, 8);
-
-    CHECK_RET(WriteFile("./test/cgetrs/data/output/X_gm.bin", B, bMatrixFileSize),
-              LOG_PRINT("WriteFile X_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
-
-    auto cleanupRet = cleanup();
+    auto cleanupRet = DestroyGetrsTest(stream, handle, deviceId, A, B, ipiv);
     CHECK_RET(cleanupRet == ACL_SUCCESS, return cleanupRet);
 
     return 0;
