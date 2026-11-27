@@ -1503,11 +1503,18 @@ __aicore__ inline void CmatinvBatchedAIV<T>::ComplexCombinationAndCopyout(uint32
 import sys, os
 import numpy as np
 
+_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+
 np.random.seed(42)
 
 # 从命令行读取矩阵维度 n 和 batchSize
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+# 参数域校验（issue #466）：负数/零此前在 numpy 深处报 'negative dimensions'
+if n <= 0:
+    raise ValueError(f"n 必须是正整数, got {n}")
 batchSize = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+if batchSize <= 0:
+    raise ValueError(f"batchSize 必须是正整数, got {batchSize}")
 
 # 生成批量随机复数矩阵 (complex64)
 a_real = np.random.randn(batchSize, n, n).astype(np.float32)
@@ -1527,36 +1534,18 @@ inv_a = np.zeros((batchSize, n, n), dtype=np.complex64)
 for b in range(batchSize):
     inv_a[b] = np.linalg.inv(a[b]).astype(np.complex64)
 
-os.makedirs(os.path.dirname("./test/cmatinv_batched/data/input/A_gm.bin"), exist_ok=True)
-os.makedirs(os.path.dirname("./test/cmatinv_batched/data/golden/Ainv_gm.bin"), exist_ok=True)
+os.makedirs(os.path.dirname(f"{_D}input/A_gm.bin"), exist_ok=True)
+os.makedirs(os.path.dirname(f"{_D}golden/Ainv_gm.bin"), exist_ok=True)
 
-# 写入输入数据 (原始矩阵)
-with open("./test/cmatinv_batched/data/input/A_gm.bin", "wb") as f:
+# 写入输入数据 (原始矩阵)；路径以 __file__ 所在目录为基准，与仓内脚本一致
+with open(f"{_D}input/A_gm.bin", "wb") as f:
     f.write(a.tobytes())
 
 # 写入输出数据 (逆矩阵)
-with open("./test/cmatinv_batched/data/golden/Ainv_gm.bin", "wb") as f:
+with open(f"{_D}golden/Ainv_gm.bin", "wb") as f:
     f.write(inv_a.tobytes())
 
 print(f"Generated batch {batchSize} of {n}x{n} complex matrices and their inverses")
-
-
-# # 可选：打印矩阵形状和部分数据用于验证
-# print("Input matrix batch 0 (first 3x3):\n", a[0, :3, :3])
-# print("Inverse matrix batch 0 (first 3x3):\n", inv_a[0, :3, :3])
-
-# # 验证第一个batch
-# product = np.matmul(a[0], inv_a[0])
-# identity = np.eye(n, dtype=np.complex64)
-
-# # 计算误差
-# abs_error = np.abs(product - identity)
-# max_error = np.max(abs_error)
-# mean_error = np.mean(abs_error)
-# print("Verification results for batch 0:")
-# print(f"Max absolute error: {max_error:.3e}")
-# print(f"Mean absolute error: {mean_error:.3e}")
-# print("Product of A and inv(A) (first 3x3):\n", product[:3, :3])
 ```
 
 ### verify_result.py
@@ -1564,8 +1553,16 @@ print(f"Generated batch {batchSize} of {n}x{n} complex matrices and their invers
 主要功能：验证算子输出结果是否正确。
 
 ```python
+import os
 import sys
+
 import numpy as np
+
+# utils 导入路径以 __file__ 所在目录为基准（与仓内脚本一致）
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "utils")
+)
+from verify_utils import read_binary_strict  # noqa: E402
 
 # for float32
 relative_tol = 5e-3
@@ -1574,8 +1571,16 @@ error_tol = 1e-4
 
 
 def verify_result(A, invA, batchSize, N):
-    A = np.fromfile(A, dtype=np.complex64).reshape(batchSize, N, N)
-    invA = np.fromfile(invA, dtype=np.complex64).reshape(batchSize, N, N)
+    # read_binary_strict 拒绝尾部脏字节/截断文件（issue #202/#598）：
+    # 裸 np.fromfile 会静默丢弃不完整元素，损坏文件被后续 reshape 误判为成功
+    A = read_binary_strict(A, np.complex64, batchSize * N * N).reshape(batchSize, N, N)
+    invA = read_binary_strict(invA, np.complex64, batchSize * N * N).reshape(
+        batchSize, N, N
+    )
+
+    if not np.isfinite(A).all() or not np.isfinite(invA).all():
+        print("Non-finite input or inverse output cannot pass accuracy verification.")
+        return False
 
     # 计算每个batch的误差
     total_elements = 0
@@ -1583,21 +1588,33 @@ def verify_result(A, invA, batchSize, N):
 
     for b in range(batchSize):
         output = np.dot(A[b], invA[b]).reshape(-1)
+        if not np.isfinite(output).all():
+            print("Non-finite inverse product cannot pass accuracy verification.")
+            return False
         golden = np.eye(N).astype(np.complex64).reshape(-1)
         different_element_results = np.isclose(
             output, golden, rtol=relative_tol, atol=absolute_tol, equal_nan=True
         )
-        different_element_indexes = np.where(different_element_results == False)[0]
+        different_element_indexes = np.flatnonzero(~different_element_results)
 
-        # 打印前32个不匹配的元素
+        # 打印跨 batch 合计前 32 个不匹配的元素（issue #243）：
+        # 以局部计数器统一限流，首个坏 batch 不再吞掉后续明细
+        printed_this_run = 0
         for index in range(len(different_element_indexes)):
-            if total_different >= 32:
+            if total_different + printed_this_run >= 32:
                 break
             real_index = different_element_indexes[index]
             golden_data = golden[real_index]
             output_data = output[real_index]
+            # 除零防护（issue #243）：golden 为单位阵，对角外位置为 0，
+            # 相对差分母为 0 时改打印绝对差
+            denom = abs(golden_data)
+            if denom != 0:
+                diff_desc = "rdiff: %.6f" % (abs(output_data - golden_data) / denom)
+            else:
+                diff_desc = "absdiff: %.6f" % abs(output_data - golden_data)
             print(
-                "batch: %d, data index: %08d, expected: %.9f%+.9fj, actual: %.9f%+.9fj, rdiff: %.6f"
+                "batch: %d, data index: %08d, expected: %.9f%+.9fj, actual: %.9f%+.9fj, %s"
                 % (
                     b,
                     real_index,
@@ -1605,9 +1622,10 @@ def verify_result(A, invA, batchSize, N):
                     golden_data.imag,
                     output_data.real,
                     output_data.imag,
-                    abs(output_data - golden_data) / abs(golden_data),
+                    diff_desc,
                 )
             )
+            printed_this_run += 1
 
         total_elements += golden.size
         total_different += different_element_indexes.size
@@ -1617,10 +1635,13 @@ def verify_result(A, invA, batchSize, N):
     return error_ratio <= error_tol
 
 
+# 数据定位保持 cwd 相对路径（build.sh --run 在仓库根目录执行本脚本；
+# Host 测试亦以 tmp_path 为 cwd 构造数据并运行，issue #448 口径）。
 if __name__ == "__main__":
     try:
-        batchSize = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-        n = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+        # 参数序与同目录 gen_data.py 及 cmatinv_batched_test 保持一致：(n, batchSize)
+        n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+        batchSize = int(sys.argv[2]) if len(sys.argv) > 2 else 2
 
         res = verify_result(
             "./test/cmatinv_batched/data/input/A_gm.bin",
