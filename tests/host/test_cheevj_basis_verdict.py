@@ -23,20 +23,24 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
-def write_fixture(directory, n, basis):
-    """A=I has W=1 and any orthonormal complex basis; no NPU was invoked."""
+def write_fixture(directory, n, basis, eigenvalues=None):
+    """Write a diagonal Host fixture and the candidate eigenbasis."""
+    if eigenvalues is None:
+        eigenvalues = np.ones(n, dtype=np.float32)
     data = directory / "test/cheevj/data"
     for name in ["input", "output", "golden"]:
         (data / name).mkdir(parents=True, exist_ok=True)
-    np.eye(n, dtype=np.complex64).ravel(order="F").tofile(data / "input/A_gm.bin")
-    np.ones(n, dtype=np.float32).tofile(data / "golden/W_golden.bin")
-    np.ones(n, dtype=np.float32).tofile(data / "output/W_gm.bin")
+    np.diag(eigenvalues).astype(np.complex64).ravel(order="F").tofile(
+        data / "input/A_gm.bin"
+    )
+    eigenvalues.tofile(data / "golden/W_golden.bin")
+    eigenvalues.tofile(data / "output/W_gm.bin")
     basis.astype(np.complex64).ravel(order="F").tofile(data / "output/V_gm.bin")
 
 
-def actual_cli(directory, n):
+def actual_cli(directory, n, kind="identity"):
     return subprocess.run(
-        [sys.executable, str(VERIFIER), str(n), "V", "L", "identity"],
+        [sys.executable, str(VERIFIER), str(n), "V", "L", kind],
         cwd=directory,
         env=dict(os.environ),
         capture_output=True,
@@ -91,3 +95,16 @@ def test_nonfinite_basis_is_still_rejected(tmp_path):
     write_fixture(tmp_path, 128, basis)
     result = actual_cli(tmp_path, 128)
     assert result.returncode == 1, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("scale", [1.0, 1e20])
+@pytest.mark.parametrize("angle,expected", [(0.0, 0), (0.05, 1)])
+def test_residual_verdict_is_scale_independent(tmp_path, scale, angle, expected):
+    eigenvalues = np.array([scale, 2 * scale], dtype=np.float32)
+    basis = np.array(
+        [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]],
+        dtype=np.complex64,
+    )
+    write_fixture(tmp_path, 2, basis, eigenvalues)
+    result = actual_cli(tmp_path, 2, "diagonal")
+    assert result.returncode == expected, result.stdout + result.stderr

@@ -225,8 +225,8 @@ def verify_result(n, jobz, uplo, matrix_kind):
             matrix, output_v, matrix_kind
         ) - output_v * output_w.reshape(1, n)
         residual_norm = float(
-            np.linalg.norm(residual, ord="fro")
-            / max(float(np.linalg.norm(matrix, ord="fro")), 1.0)
+            np.linalg.norm(residual.astype(np.complex128), ord="fro")
+            / max(float(np.linalg.norm(matrix.astype(np.complex128), ord="fro")), 1.0)
         )
         orthogonal_norm = orthogonality_error(output_v)
         residual_ok = residual_norm <= RESIDUAL_TOL
