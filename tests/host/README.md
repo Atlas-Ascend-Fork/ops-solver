@@ -24,6 +24,7 @@
 | test_uninstall_deletion_status.py | scripts/package/install.sh 卸载的删除完整性与失败边界 | uninstall-deletion-tests | scripts/package/install.sh、测试自身 |
 | test_read_binary_strict.py | read_binary_strict 的字节对齐 + expected_count 校验 | read-binary-strict-tests | test/utils/verify_utils.py、测试自身 |
 | test_verify_inverse.py | verify_inverse 的 A·A⁻¹ ≈ I 判定 | read-binary-strict-tests | test/utils/verify_utils.py、测试自身 |
+| test_run_verification.py | run_verification 的 CLI 契约：阶数缺省 32/显式参数/非法参数/失败退出码（#654） | read-binary-strict-tests | test/utils/verify_utils.py、测试自身 |
 | test_compare_and_report.py | compare_and_report 的 eps 双条件整体比对（#612 向量化语义） | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
 | test_solve_lu.py | forward/backward/solve_lu 的 LU 参考解计算 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
 | test_load_pivots.py | load_pivots 的 1-based 主元校验 | lu-verify-utils-tests | test/utils/lu_verify_utils.py、测试自身 |
