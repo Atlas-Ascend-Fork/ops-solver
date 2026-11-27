@@ -102,15 +102,11 @@ get_opts() {
     # 跳过条件必须锚定"以 .run 结尾"或"以路径前缀开头"，不能对任意位置做 *".run"* 子串
     # 匹配——否则形如 --install-path=/data/x.run_env 的键值参数（值恰含 .run 子串）会被整体
     # 吞掉，用户安装路径被静默丢弃回落默认路径（issue #163）。
-    if [[ "$1" == *.run ]] || [[ "$1" == ./*.run ]] || [[ "$1" == --./*.run ]] || \
-       [[ "$1" == --.*.run ]] || [[ "$1" == --/* ]] || [[ "$1" == /* ]]; then
-      shift
-      continue
-    fi
     # makeself 注入的原始工作目录参数（issue #190）：形如 --/home/tmpdir，
     # 是 makeself 打包时把调用方 pwd 一并传给内部脚本所致，并非用户参数，
     # 直接跳过，避免参数解析提前失败导致后续 --install/--install-path 未被处理
-    if [[ "$1" == --/* ]]; then
+    if [[ "$1" == *.run ]] || [[ "$1" == ./*.run ]] || [[ "$1" == --./*.run ]] || \
+       [[ "$1" == --.*.run ]] || [[ "$1" == --/* ]] || [[ "$1" == /* ]]; then
       shift
       continue
     fi
@@ -325,7 +321,7 @@ do_uninstall() {
   grant_write_if_needed "${target_info}"
 
   if [ -d "${real_lib64}" ]; then
-    remove_uninstall_paths "solver libraries" -f "${real_lib64}"/libops_solver*.so
+    remove_uninstall_paths "solver libraries" -f "${real_lib64}"/libops_solver*.so "${real_lib64}"/libcholesky_simt*.so
   fi
   if [ -d "${real_include}" ]; then
     remove_uninstall_paths "solver headers" -f "${real_include}"/cann_ops_solver*.h
