@@ -29,6 +29,20 @@
 
 矩阵 C 原地更新；输入 A 和 tau 保持不变，不需要调用方预先构造显式 Q。
 
+- 示例 \
+    输入"A"与"tau"为 [Cgeqrf 示例](cgeqrf.md)对矩阵
+    $A=\begin{bmatrix} 1+i & -0.8-3.6i \\ 1-i & 0.6+0.2i \end{bmatrix}$ 的输出（紧凑存储与 tau 同 [Cungqr 示例](cungqr.md)），\
+    输入"C"为原矩阵 A，输入"side"为：LEFT，输入"trans"为：C（共轭转置），输入"m"为：2，输入"n"为：2，输入"k"为：2。\
+    调用"aclsolverCunmqr"算子后，\
+    输出"C"为 $Q^H C = Q^H A = R$（即分解的上三角因子，$A=Q R$ 的右端）：
+
+    ```
+    [ -2.0+0.0i,  2.0+1.0i
+       0.0+0.0i, -3.0+0.0i ]
+    ```
+
+    数值与 [Cgeqrf 示例](cgeqrf.md)输出 A 的上三角逐元素一致（numpy 可复核 $Q^H A$）。
+
 ## 函数原型
 
 ```c
