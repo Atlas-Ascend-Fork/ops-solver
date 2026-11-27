@@ -32,9 +32,16 @@
     其中 $Q = H(1) H(2) \cdots H(k)$ 由 Sgeqrf 的输出给出；$op(Q) = Q$（trans = N）或 $Q^T$（trans = T / C，实数下两者等价）。
 
 - 示例 \
-    输入"A"、"tau"为 aclsolverSgeqrf 的输出，"C"为待作用的 $m \times n$ 矩阵，\
-    取 side = ACLSOLVER_SIDE_LEFT、trans = ACLSOLVER_OP_T，\
-    调用"aclsolverSormqr"算子后，"C"被覆盖为 $Q^T C$。\
+    输入"A"与"tau"为 [Sgeqrf 示例](sgeqrf.md)对矩阵 $A=\begin{bmatrix} 3 & 4 \\ 4 & -3 \end{bmatrix}$ 的输出（紧凑存储与 TAU=[1.6, 0.0]，同 [Sorgqr 示例](sorgqr.md)），\
+    输入"C"为原矩阵 A，取 side = ACLSOLVER_SIDE_LEFT、trans = ACLSOLVER_OP_T（$m=2$、$n=2$、$k=2$），\
+    调用"aclsolverSormqr"算子后，"C"被覆盖为 $Q^T C = Q^T A = R$：
+
+    ```
+    [ -5.0,  0.0
+       0.0, -5.0 ]
+    ```
+
+    数值与 [Sgeqrf 示例](sgeqrf.md)输出 R 逐元素一致（numpy 可复核 $Q^T A$）。\
     $k = 0$ 时 $op(Q) = I$，C 原样不变。
 
 ## 函数原型

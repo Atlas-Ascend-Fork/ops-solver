@@ -32,9 +32,16 @@
     输出为 $Q$ 的前 $n$ 列（$m \times n$），就地覆盖 A。
 
 - 示例 \
-    输入"A"与"tau"为 aclsolverSgeqrf 对某个 $m \times n$ 矩阵的输出，\
-    输入"m"、"n"、"k" 分别为 Q 的行数、要生成的列数、反射子个数，\
-    调用"aclsolverSorgqr"算子后，"A"被覆盖为 $Q$ 的前 $n$ 列，满足 $Q^T Q = I$。\
+    输入"A"与"tau"为 [Sgeqrf 示例](sgeqrf.md)对矩阵 $A=\begin{bmatrix} 3 & 4 \\ 4 & -3 \end{bmatrix}$ 的输出（列主序紧凑存储与 TAU=[1.6, 0.0]），\
+    输入"m"为：2、输入"n"为：2、输入"k"为：2，\
+    调用"aclsolverSorgqr"算子后，"A"被覆盖为 $Q$ 的前 $n$ 列，满足 $Q^T Q = I$：
+
+    ```
+    Q = [ -0.6, -0.8
+          -0.8,  0.6 ]
+    ```
+
+    与 [Sgeqrf 示例](sgeqrf.md)给出的 Q 逐元素一致（numpy 可复核 $A = QR$）。\
     $k = 0$ 时结果是单位阵的前 $n$ 列，并<strong>显式写出</strong>（与 LAPACK sorgqr 一致）。
 
 ## 函数原型
