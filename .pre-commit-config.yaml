@@ -154,11 +154,11 @@ repos:
         files: ^test/utils/cholesky/(fixtures|lapack_residual)\.py$|^test/utils/cholesky/test_python_compat\.py$|^test/cholesky/data/verify_result\.py$
       - id: cholesky-lapack-residual-tests
         name: Cholesky LAPACK residual Host tests
-        entry: python -m pytest -q test/cholesky/test_lapack_residual.py
+        entry: python -m pytest -q test/cholesky/test_lapack_residual.py test/utils/cholesky/test_cpotri_residual.py
         language: python
         additional_dependencies: [numpy, scipy, pytest]
         pass_filenames: false
-        files: ^test/cholesky/(lapack_residual|conftest)\.py$|^test/cholesky/test_lapack_residual\.py$
+        files: ^test/cholesky/(lapack_residual|test_lapack_residual|conftest)\.py$|^test/utils/cholesky/(fixtures|test_cpotri_residual)\.py$
       - id: cholesky-data-verifier-tests
         name: Cholesky data verifier behavior Host tests
         entry: python -m pytest -q test/cholesky/test_data_verify.py

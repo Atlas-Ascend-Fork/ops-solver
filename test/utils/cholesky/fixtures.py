@@ -460,9 +460,7 @@ def lapack_ratio(op, a, output, b, upper):
         if op == "cpotrf":
             diagonal = np.diagonal(triangle, axis1=-2, axis2=-1)
             invalid_diagonal = np.any(
-                (~np.isfinite(diagonal))
-                | (diagonal.real <= 0)
-                | (diagonal.imag != 0),
+                (~np.isfinite(diagonal)) | (diagonal.real <= 0) | (diagonal.imag != 0),
                 axis=-1,
             )
             reconstructed = adjoint @ triangle if upper else triangle @ adjoint
@@ -471,7 +469,7 @@ def lapack_ratio(op, a, output, b, upper):
         else:
             inverse = triangle + adjoint
             diagonal = np.arange(n)
-            inverse[:, diagonal, diagonal] = triangle[:, diagonal, diagonal].real
+            inverse[:, diagonal, diagonal] = triangle[:, diagonal, diagonal]
             numerator = norm1(np.eye(n) - a @ inverse)
             denominator = n * norm1(a) * norm1(inverse) * FLOAT32_EPSILON
     ratio = np.divide(
