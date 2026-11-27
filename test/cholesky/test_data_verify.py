@@ -126,6 +126,29 @@ class CholeskyDataVerifierTest(unittest.TestCase):
                 module.main()
             self.assertIn("Physical batch outputs differ bitwise", str(raised.exception))
 
+    def test_failure_report_routes_to_stdout(self):
+        # issue #665：#661 修复后判定脚本的 [Failed] 报告须落在其声明的 stdout。
+        # 本用例以进程方式运行（区别于其余用例的模块直载），空数据目录触发
+        # FileNotFoundError——若日志流被导入期配置劫持回 stderr，本用例转红。
+        import os
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run = subprocess.run(
+                [sys.executable, str(VERIFIER_SOURCE)],
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=dict(os.environ),
+                check=False,
+            )
+            self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
+            self.assertIn("[Failed]", run.stdout)
+            self.assertIn("FileNotFoundError", run.stdout)
+            self.assertEqual(run.stderr, "")
+
 
 if __name__ == "__main__":
     unittest.main()

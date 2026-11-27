@@ -78,6 +78,22 @@ def test_cli_accepts_orthonormal_complex_basis(n, tmp_path):
     assert "[Success]" in result.stdout + result.stderr
 
 
+def test_cli_report_routes_to_stdout(tmp_path):
+    # issue #665：#661 修复后 verify 脚本声明 stream=sys.stdout，判定文本须落在
+    # stdout 且 stderr 为空——合并流断言对日志流劫持不敏感，无法防回归。
+    basis = np.eye(8, dtype=np.complex64)
+    write_fixture(tmp_path, 8, basis)
+    accepted = actual_cli(tmp_path, 8)
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    assert "[Success]" in accepted.stdout
+    assert accepted.stderr == ""
+    write_fixture(tmp_path, 8, np.zeros((8, 8), dtype=np.complex64))
+    rejected = actual_cli(tmp_path, 8)
+    assert rejected.returncode == 1, rejected.stdout + rejected.stderr
+    assert "[Failed]" in rejected.stdout
+    assert rejected.stderr == ""
+
+
 def test_large_probe_branch_accepts_identity_basis():
     basis = np.eye(1025, dtype=np.complex64)
     assert MODULE.orthogonality_error(basis) <= MODULE.ORTHOGONAL_TOL
