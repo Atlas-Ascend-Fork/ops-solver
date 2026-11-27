@@ -17,13 +17,22 @@ execute_process(
 )
 set(report "${output}\n${errors}")
 message("${report}")
+string(JOIN "|" _sanitizer_diag_re
+    "====== (ERROR|WARNING|FATAL)"
+    "[[]warning[]]"
+    "[[]mssanitizer[]] (ERROR|WARN|WARNING|FATAL):"
+    "See all detected errors above"
+    "detected memory leaks"
+    "[1-9][0-9]* byte([(]s[)]|s)? leaked"
+    "exited abnormally"
+)
 if(NOT "${status}" STREQUAL "0" OR
-   report MATCHES "====== (ERROR|WARNING)|[[]warning[]]|[[]mssanitizer[]] (ERROR|WARN):|exited abnormally" OR
+   report MATCHES "${_sanitizer_diag_re}" OR
    NOT report MATCHES "complex solver focused regression passed")
     message(FATAL_ERROR "Memory regression failed or sanitizer coverage is incomplete; inspect the report above.")
 endif()
 foreach(kernel complex_factor_distributed_panel complex_tiny_inverse)
-    if(NOT report MATCHES "Sanitizer finished on kernel[^\n]*${kernel}")
-        message(FATAL_ERROR "Missing sanitizer coverage for ${kernel}.")
+    if(NOT report MATCHES "Sanitizer finished on kernel[^\n]*${kernel}[^\n]*[.] No error detected[.]")
+        message(FATAL_ERROR "Missing clean sanitizer coverage for ${kernel}.")
     endif()
 endforeach()
