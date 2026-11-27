@@ -181,11 +181,11 @@ __simt_callee__ __aicore__ __attribute__((always_inline)) inline int DirectRowPi
                                                                                     int column, int n, int lane)
 {
     auto value = matrix.Get(column);
-    float score = lane >= column && lane < n ? Abs(value.real) + Abs(value.imag) : -1.0f;
+    uint32_t score = lane >= column && lane < n ? PivotScore(value) : 0U;
     int row = lane;
     for (int offset = Width / 2; offset > 0; offset /= 2)
     {
-        float other = asc_shfl_down(score, offset, Width);
+        uint32_t other = asc_shfl_down(score, offset, Width);
         int target = asc_shfl_down(row, offset, Width);
         if (lane + offset < Width && (other > score || (other == score && target < row)))
         {

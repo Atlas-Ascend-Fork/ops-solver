@@ -28,7 +28,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void FactorPanelVf(ComplexSo
                                                                        __gm__ aclFloatComplex* a, __gm__ int* pivots,
                                                                        __gm__ int* info, int begin, int end)
 {
-    __ubuf__ float scores[THREADS / 32];
+    __ubuf__ uint32_t scores[THREADS / 32];
     __ubuf__ int rows[THREADS / 32];
     FactorPanel(a, shape.m, shape.n, shape.lda, begin, end, pivots, info, scores, rows);
 }
@@ -48,22 +48,22 @@ __simt_callee__ __aicore__ inline aclFloatComplex NormalizeCachedValue(aclFloatC
             PreparedQuotient(imag, divisor.real, -real, divisor.imag, divisor)};
 }
 
-__simt_callee__ __aicore__ inline void ReduceCachedPivot(float& score, int& row, int height)
+__simt_callee__ __aicore__ inline void ReduceCachedPivot(uint32_t& score, int& row, int height)
 {
-    float maximum = asc_reduce_max(score);
+    uint32_t maximum = asc_reduce_max(score);
     row = asc_reduce_min(score == maximum ? row : height);
     score = maximum;
 }
 
 __simt_callee__ __aicore__ inline int FindCachedPivot(__ubuf__ aclFloatComplex* panel, int height, int column,
-                                                      __ubuf__ float* scores, __ubuf__ int* rows)
+                                                      __ubuf__ uint32_t* scores, __ubuf__ int* rows)
 {
-    float best = -1.0f;
+    uint32_t best = 0;
     int row = height;
     for (int r = column + threadIdx.x; r < height; r += blockDim.x)
     {
         auto value = Load(panel, column * height + r);
-        float score = Abs(value.real) + Abs(value.imag);
+        uint32_t score = PivotScore(value);
         if (score > best || (score == best && r < row))
         {
             best = score;
@@ -79,7 +79,7 @@ __simt_callee__ __aicore__ inline int FindCachedPivot(__ubuf__ aclFloatComplex* 
     asc_syncthreads();
     if (threadIdx.x < 32)
     {
-        best = threadIdx.x < blockDim.x / 32 ? scores[threadIdx.x] : -1.0f;
+        best = threadIdx.x < blockDim.x / 32 ? scores[threadIdx.x] : 0U;
         row = threadIdx.x < blockDim.x / 32 ? rows[threadIdx.x] : height;
         ReduceCachedPivot(best, row, height);
         if (threadIdx.x == 0) rows[0] = row;
@@ -90,7 +90,7 @@ __simt_callee__ __aicore__ inline int FindCachedPivot(__ubuf__ aclFloatComplex* 
 
 __simt_callee__ __aicore__ inline void FactorCachedColumn(__ubuf__ aclFloatComplex* panel, int rowsCount, int columns,
                                                           int column, int begin, __gm__ int* pivots, __gm__ int* info,
-                                                          __ubuf__ float* scores, __ubuf__ int* rows)
+                                                          __ubuf__ uint32_t* scores, __ubuf__ int* rows)
 {
     int pivot = pivots == nullptr ? column : FindCachedPivot(panel, rowsCount, column, scores, rows);
     if (threadIdx.x == 0)
@@ -129,7 +129,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(1024) inline void FactorCachedPanelVf(Comple
                                                                           __gm__ int* info, int begin, int end)
 {
     __ubuf__ float storage[2 * COMPLEX_SOLVER_PANEL_CAPACITY];
-    __ubuf__ float scores[1024 / 32];
+    __ubuf__ uint32_t scores[1024 / 32];
     __ubuf__ int rows[1024 / 32];
     auto* panel = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
     int height = shape.m - begin;
@@ -188,7 +188,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void FactorResidentVf(Comple
                                                                           __gm__ int* info)
 {
     __ubuf__ float storage[2 * Capacity];
-    __ubuf__ float scores[THREADS / 32];
+    __ubuf__ uint32_t scores[THREADS / 32];
     __ubuf__ int rows[THREADS / 32];
     auto* local = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
     for (int index = threadIdx.x; index < shape.m * shape.n; index += blockDim.x)
@@ -206,7 +206,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREADS) inline void FactorShortVf(ComplexSo
                                                                        __gm__ int* info)
 {
     __ubuf__ float storage[2 * PANEL * PANEL];
-    __ubuf__ float scores[THREADS / 32];
+    __ubuf__ uint32_t scores[THREADS / 32];
     __ubuf__ int rows[THREADS / 32];
     auto* local = reinterpret_cast<__ubuf__ aclFloatComplex*>(storage);
     for (int index = threadIdx.x; index < shape.m * shape.m; index += blockDim.x)

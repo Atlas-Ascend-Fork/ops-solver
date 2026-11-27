@@ -84,11 +84,11 @@ __simt_callee__ __aicore__ inline int RegisterPivot(const LaneMatrix<Width>& lu,
     if constexpr (Width >= 4)
     {
         auto value = Load(lu.column - lane, lane * (Width + 1) + column);
-        float score = lane >= column && lane < n ? Abs(value.real) + Abs(value.imag) : -1.0f;
+        uint32_t score = lane >= column && lane < n ? PivotScore(value) : 0U;
         int row = lane;
         for (int offset = Width / 2; offset > 0; offset /= 2)
         {
-            float other = asc_shfl_down(score, offset, Width);
+            uint32_t other = asc_shfl_down(score, offset, Width);
             int otherRow = asc_shfl_down(row, offset, Width);
             if (lane + offset < Width && (other > score || (other == score && otherRow < row)))
             {
@@ -101,11 +101,11 @@ __simt_callee__ __aicore__ inline int RegisterPivot(const LaneMatrix<Width>& lu,
     int row = column;
     if (lane == column)
     {
-        float best = -1;
+        uint32_t best = 0;
         for (int i = column; i < n; ++i)
         {
             auto value = lu.Get(i);
-            float score = Abs(value.real) + Abs(value.imag);
+            uint32_t score = PivotScore(value);
             if (score > best)
             {
                 best = score;

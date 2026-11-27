@@ -11,6 +11,7 @@
 #include "../utils/complex_solver_test.h"
 
 #include <cmath>
+#include <limits>
 #include <string>
 
 using namespace ComplexSolverTest;
@@ -448,6 +449,62 @@ void MemoryRegression(const Session& session)
     Batched(session, 32, true, true);
 }
 
+void CachedPivotScoreBoundary(const Session& session)
+{
+    // The 65x33 input takes the cached panel path and places the candidates in different warps.
+    constexpr int m = 65;
+    constexpr int n = 33;
+    std::vector<aclFloatComplex> a(static_cast<size_t>(m) * n, {0, 0});
+    for (int j = 1; j < n; ++j) a[j * m + j] = {1, 0};
+    a[0] = {0x1.8p127f, 0x1.8p127f};
+    const float maximum = std::numeric_limits<float>::max();
+    a[m - 1] = {maximum, maximum};
+
+    const size_t bytes = a.size() * sizeof(aclFloatComplex);
+    DeviceBuffer matrix(bytes), pivots(n * sizeof(int)), info(sizeof(int));
+    matrix.Upload(a.data(), bytes);
+    Factor(session, m, n, matrix.As<aclFloatComplex>(), m, pivots.As<int>(), info.As<int>());
+    CheckInfo(info, 1);
+    int firstPivot;
+    pivots.Download(&firstPivot, sizeof(firstPivot));
+    Require(firstPivot == m, "maximum unsigned pivot score in panel");
+}
+
+void PivotRangeRegression(const Session& session)
+{
+    CachedPivotScoreBoundary(session);
+    for (int exponent : {4, 126, 127})
+    {
+        float v = std::ldexp(1.0f, exponent);
+        std::vector<aclFloatComplex> a{{v, v}, {1.5f * v, 1.5f * v}, {v, 0}, {-v, 0}};
+        DeviceBuffer matrix(a.size() * sizeof(aclFloatComplex)), pivots(2 * sizeof(int)), info(sizeof(int));
+        matrix.Upload(a.data(), a.size() * sizeof(aclFloatComplex));
+        Factor(session, 2, 2, matrix.As<aclFloatComplex>(), 2, pivots.As<int>(), info.As<int>());
+        CheckInfo(info, 1);
+        int ipiv[2];
+        pivots.Download(ipiv, sizeof(ipiv));
+        matrix.Download(a.data(), a.size() * sizeof(aclFloatComplex));
+        Require(ipiv[0] == 2 && ipiv[1] == 2, "overflow-safe L1 pivot order");
+        for (auto z : a) Require(std::isfinite(z.real) && std::isfinite(z.imag), "finite LU factor");
+        Require(std::abs(double(a[1].real) - 2.0 / 3.0) <= std::ldexp(1.0, -24), "L21 accuracy");
+        Require(std::abs(std::ldexp(double(a[3].real), -exponent) - 5.0 / 3.0) <= std::ldexp(1.0, -22), "U22 accuracy");
+    }
+    const float tiny = std::numeric_limits<float>::denorm_min();
+    for (auto column :
+         {std::vector<aclFloatComplex>{{tiny, 0}, {2 * tiny, 0}}, std::vector<aclFloatComplex>{{1, 2}, {2, 1}},
+          std::vector<aclFloatComplex>{{-0.0f, -0.0f}, {tiny, 0}}})
+    {
+        int expected = column[0].real == 1.0f ? 1 : 2;
+        DeviceBuffer matrix(2 * sizeof(aclFloatComplex)), pivots(sizeof(int)), info(sizeof(int));
+        matrix.Upload(column.data(), 2 * sizeof(aclFloatComplex));
+        Factor(session, 2, 1, matrix.As<aclFloatComplex>(), 2, pivots.As<int>(), info.As<int>());
+        CheckInfo(info, 1);
+        int pivot;
+        pivots.Download(&pivot, sizeof(pivot));
+        Require(pivot == expected, "subnormal and equal L1 pivot order");
+    }
+}
+
 // Device regression: use the actual public APIs after building the modified library.
 bool WithinFourUlps(float actual, float expected)
 {
@@ -500,6 +557,7 @@ void DivisionRangeRegression(const Session& session)
 
 void RunRegression(const Session& session)
 {
+    PivotRangeRegression(session);
     DivisionRangeRegression(session);
     PanelRegression(session);
     VectorBatched(session);
@@ -540,13 +598,17 @@ int main(int argc, char** argv)
     {
         Require(argc == 1 || (argc == 2 && (std::string(argv[1]) == "--panel-regression" ||
                                             std::string(argv[1]) == "--memory-regression" ||
+                                            std::string(argv[1]) == "--pivot-range-regression" ||
                                             std::string(argv[1]) == "--division-range-regression")),
-                "usage: complex_solver_test [--panel-regression|--memory-regression|--division-range-regression]");
+                "usage: complex_solver_test "
+                "[--panel-regression|--memory-regression|--pivot-range-regression|--division-range-regression]");
         Session session(0);
         if (argc == 2)
         {
             if (std::string(argv[1]) == "--panel-regression")
                 PanelRegression(session);
+            else if (std::string(argv[1]) == "--pivot-range-regression")
+                PivotRangeRegression(session);
             else if (std::string(argv[1]) == "--division-range-regression")
                 DivisionRangeRegression(session);
             else

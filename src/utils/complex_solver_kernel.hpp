@@ -41,6 +41,28 @@ __simt_callee__ __aicore__ inline void Store(Pointer pointer, uint64_t index, ac
 
 __simt_callee__ __aicore__ inline float Abs(float x) { return x < 0.0f ? -x : x; }
 
+// Positive float encodings are ordered by magnitude. Extend their exponent by
+// one bit when the L1 sum overflows; keep all finite sums (including subnormals)
+// unchanged. Zero is reserved for an inactive lane, so a zero matrix still pivots.
+__simt_callee__ __aicore__ inline uint32_t PivotScore(aclFloatComplex value)
+{
+    union
+    {
+        float value;
+        uint32_t bits;
+    } score;
+    float real = Abs(value.real), imag = Abs(value.imag);
+    score.value = real + imag;
+    if (!(score.value >= 0.0f)) return 0;  // NaN has the inactive score.
+    if (score.value == 0.0f) return 1U;    // Canonicalize both signs of zero.
+    if (score.value > 0x1.fffffep127f)
+    {
+        score.value = real * 0.5f + imag * 0.5f;
+        return score.bits + 0x00800001U;
+    }
+    return score.bits + 1U;
+}
+
 __simt_callee__ __aicore__ inline aclFloatComplex SubMul(aclFloatComplex x, aclFloatComplex a, aclFloatComplex b)
 {
     return {fmaf(a.imag, b.imag, fmaf(-a.real, b.real, x.real)), fmaf(-a.imag, b.real, fmaf(-a.real, b.imag, x.imag))};
@@ -126,11 +148,11 @@ __simt_callee__ __aicore__ inline __gm__ aclFloatComplex* MatrixPointer(__gm__ u
     return reinterpret_cast<__gm__ aclFloatComplex*>(address);
 }
 
-__simt_callee__ __aicore__ inline void ReducePivot(float& score, int& row)
+__simt_callee__ __aicore__ inline void ReducePivot(uint32_t& score, int& row)
 {
     for (int offset = 16; offset > 0; offset /= 2)
     {
-        float other = asc_shfl_down(score, offset);
+        uint32_t other = asc_shfl_down(score, offset);
         int otherRow = asc_shfl_down(row, offset);
         if ((threadIdx.x % 32) + offset < 32 && (other > score || (other == score && otherRow < row)))
         {
@@ -141,15 +163,15 @@ __simt_callee__ __aicore__ inline void ReducePivot(float& score, int& row)
 }
 
 template <typename MatrixPointer>
-__simt_callee__ __aicore__ inline int FindPivot(MatrixPointer a, int m, int lda, int col, __ubuf__ float* scores,
+__simt_callee__ __aicore__ inline int FindPivot(MatrixPointer a, int m, int lda, int col, __ubuf__ uint32_t* scores,
                                                 __ubuf__ int* rows)
 {
-    float best = -1.0f;
+    uint32_t best = 0;
     int row = m;
     for (int r = col + threadIdx.x; r < m; r += blockDim.x)
     {
         auto value = Load(a, static_cast<uint64_t>(col) * lda + r);
-        float score = Abs(value.real) + Abs(value.imag);
+        uint32_t score = PivotScore(value);
         if (score > best || (score == best && r < row))
         {
             best = score;
@@ -165,7 +187,7 @@ __simt_callee__ __aicore__ inline int FindPivot(MatrixPointer a, int m, int lda,
     asc_syncthreads();
     if (threadIdx.x < 32)
     {
-        best = threadIdx.x < blockDim.x / 32 ? scores[threadIdx.x] : -1.0f;
+        best = threadIdx.x < blockDim.x / 32 ? scores[threadIdx.x] : 0U;
         row = threadIdx.x < blockDim.x / 32 ? rows[threadIdx.x] : m;
         ReducePivot(best, row);
         if (threadIdx.x == 0)
@@ -228,7 +250,7 @@ __simt_callee__ __aicore__ inline void UpdatePanel(MatrixPointer a, int m, int l
 
 template <typename MatrixPointer, typename PivotPointer, typename InfoPointer>
 __simt_callee__ __aicore__ inline void FactorColumn(MatrixPointer a, int m, int n, int lda, int col, int end,
-                                                    PivotPointer pivots, InfoPointer info, __ubuf__ float* scores,
+                                                    PivotPointer pivots, InfoPointer info, __ubuf__ uint32_t* scores,
                                                     __ubuf__ int* rows)
 {
     int pivot = pivots == nullptr ? col : FindPivot(a, m, lda, col, scores, rows);
@@ -244,7 +266,7 @@ __simt_callee__ __aicore__ inline void FactorColumn(MatrixPointer a, int m, int 
 
 template <typename MatrixPointer, typename PivotPointer, typename InfoPointer>
 __simt_callee__ __aicore__ inline void FactorPanel(MatrixPointer a, int m, int n, int lda, int begin, int end,
-                                                   PivotPointer pivots, InfoPointer info, __ubuf__ float* scores,
+                                                   PivotPointer pivots, InfoPointer info, __ubuf__ uint32_t* scores,
                                                    __ubuf__ int* rows)
 {
     for (int col = begin; col < end; ++col) FactorColumn(a, m, n, lda, col, end, pivots, info, scores, rows);
