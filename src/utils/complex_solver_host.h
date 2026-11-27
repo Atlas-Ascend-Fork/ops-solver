@@ -287,8 +287,11 @@ inline aclsolverStatus_t ReadPointerArrays(const void* a, const void* c, int cou
     aclError syncError = aclrtSynchronizeStream(stream);
     if (error != ACL_SUCCESS || syncError != ACL_SUCCESS)
     {
+        // 校验阶段的元数据拷贝/同步失败属执行层故障（issue #672）：与同文件 CompleteGetri
+        // 及实数族 real_lu_runtime.h Metadata::Sync 口径对齐返回 EXECUTION_FAILED；
+        // 分配失败维持 ALLOC_FAILED 不变。
         OP_LOGE(op, "pointer metadata copy/sync failed: %d/%d", error, syncError);
-        return ACLSOLVER_STATUS_INTERNAL_ERROR;
+        return ACLSOLVER_STATUS_EXECUTION_FAILED;
     }
     return ACLSOLVER_STATUS_SUCCESS;
 }
