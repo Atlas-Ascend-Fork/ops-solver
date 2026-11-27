@@ -74,6 +74,7 @@ aclsolverStatus_t aclsolverCgetri(
 ## 调用与边界
 
 - 先完成 LU 分解，再查询并分配求逆工作空间，随后调用本接口。
+- 查询入口 `aclsolverCgetri_bufferSize` 不读 `A`（既不读内容也不读地址），允许传 `nullptr`；两段式调用可在分配 `A` 之前先查询工作空间尺寸（与 sgeqrf 等接口的 bufferSize 口径一致）。
 - 有效主元在第 `k` 列满足 `k + 1 ≤ devIpiv[k] ≤ n`（`k` 从 0 开始）。非法主元写 `devInfo = -4`，函数返回 `ACLSOLVER_STATUS_INVALID_VALUE`。
 - 主元非空时，当前实现会同步调用方 stream 并回读 `info`，以便通过返回值报告非法主元。
 - `n == 0` 时不计算矩阵，写 `devInfo = 0`；仍需满足 `lda`、非负 `Lwork` 和 `devInfo` 约束。

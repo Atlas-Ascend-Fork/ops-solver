@@ -592,6 +592,22 @@ void RunRegression(const Session& session)
 }
 }  // namespace
 
+// 查询入口不读 A（既不读内容也不读地址），两段式调用第一步允许传 nullptr
+// （与 sgeqrf/sorgqr/sormqr/sgels/xlarft 的 bufferSize 口径一致）。独立于回归
+// 主流程先行执行，避免依赖存量回归步骤的结果（issue #671）。
+void NullptrQueryA(const Session& session)
+{
+    int lwork = -1;
+    Require(aclsolverCgetri_bufferSize(session.handle, 4, nullptr, 4, &lwork) == ACLSOLVER_STATUS_SUCCESS,
+            "bufferSize nullptr A status");
+    Require(lwork == 16, "bufferSize nullptr A result");
+    lwork = -1;
+    Require(aclsolverCgetri_bufferSize(session.handle, 0, nullptr, 1, &lwork) == ACLSOLVER_STATUS_SUCCESS,
+            "bufferSize nullptr A zero order status");
+    Require(lwork == 0, "bufferSize nullptr A zero order result");
+    std::cout << "bufferSize nullptr A query passed" << std::endl;
+}
+
 int main(int argc, char** argv)
 {
     try
@@ -603,6 +619,7 @@ int main(int argc, char** argv)
                 "usage: complex_solver_test "
                 "[--panel-regression|--memory-regression|--pivot-range-regression|--division-range-regression]");
         Session session(0);
+        NullptrQueryA(session);
         if (argc == 2)
         {
             if (std::string(argv[1]) == "--panel-regression")

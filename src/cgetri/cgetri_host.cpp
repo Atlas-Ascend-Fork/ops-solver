@@ -82,12 +82,10 @@ aclsolverStatus_t aclsolverCgetri_bufferSize(aclsolverHandle_t handle, int n, ac
     int bad = InvalidShape(n, lda);
     if (bad != 0) return ComplexSolver::Reject(OP_NAME, bad, nullptr, 0, stream, blocks);
     if (Lwork == nullptr) return ComplexSolver::Reject(OP_NAME, 4, nullptr, 0, stream, blocks);
-    if (n > 0)
-    {
-        status = ComplexSolver::DeviceSpan(A, static_cast<uint64_t>(lda) * n * sizeof(*A), alignof(aclFloatComplex),
-                                           OP_NAME, 2);
-        if (status != ACLSOLVER_STATUS_SUCCESS) return status;
-    }
+    // A 不参与尺寸推导（既不读内容也不读地址），因此允许传 nullptr（issue #671）：
+    // 调用方常在分配 A 之前先查 workspace 尺寸，强制校验 A 会让两段式调用流程在
+    // 第一步即失败；与 sgeqrf/sorgqr/sormqr/sgels/xlarft 的 bufferSize 入口口径一致。
+    (void)A;
     *Lwork = n * n;
     return ACLSOLVER_STATUS_SUCCESS;
 }
