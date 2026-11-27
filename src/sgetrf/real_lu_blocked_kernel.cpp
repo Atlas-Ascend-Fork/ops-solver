@@ -1684,5 +1684,12 @@ extern "C" int real_lu_gemm_do(GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR info, in
         real_lu_gemm_kernel<false><<<blocks, nullptr, stream>>>(a, b, c, info, pitch, rows, columns, depth,
                                                                 matrixStride, batch, offsetA, offsetB, offsetC, tiling);
     }
+    // Kernel launches are asynchronous; do not report success when enqueueing failed
+    // (issue #669)：函数契约以 -1 报告启动失败，真实下发失败（blocks 非法、流异常、
+    // 资源不足等）必须经线程级状态感知，调用方按 != 0 转换为执行失败。
+    if (aclrtPeekAtLastError(ACL_RT_THREAD_LEVEL) != ACL_SUCCESS)
+    {
+        return -1;
+    }
     return 0;
 }
