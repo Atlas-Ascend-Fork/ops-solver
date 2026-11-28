@@ -138,7 +138,7 @@ bash build.sh --soc=ascend950 --ops=cholesky --run
     $$
     A = L \cdot L^T
     $$
-    其中$A$为$n \times n$阶实数正定对称矩阵，$L$为单位下三角矩阵，$L^T$为上三角矩阵。
+    其中$A$为$n \times n$阶实数正定对称矩阵，$L$为下三角矩阵，$L^T$为上三角矩阵。
 
 - 示例 \
     输入"A"为：
@@ -201,7 +201,7 @@ bash build.sh --soc=ascend950 --ops=cholesky --run
     <tr>
         <td align="center">lda</td>
         <td align="center">输入</td>
-        <td align="left">A左右相邻元素间的内存地址偏移量（当前约束为n）</td>
+        <td align="left">A左右相邻元素间的内存地址偏移量（当前约束为lda >= n且lda <= 16384）</td>
     </tr>
     <tr>
         <td align="center">info</td>
@@ -248,7 +248,9 @@ bash build.sh --soc=ascend950 --ops=cholesky --run
         aclrtMallocHost((void**)(&A), aMatrixFileSize);
         // 填充A矩阵数据...
 
-        int32_t *info;
+        const char uplo = 'L';
+        int32_t infoVal = 0;
+        int32_t *info = &infoVal;
 
         // 调用 aclsolverSpotrf
         auto ret = aclsolverSpotrf(handle, uplo, n, n, A, n, info);
