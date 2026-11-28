@@ -26,6 +26,29 @@
 #include "acl/acl.h"
 #include "cann_ops_solver.h"
 
+// 负向用例（issue #670）：info 容量不足（1 字节 < sizeof(int)）时必须在任何设备写
+// 之前拒绝并返回 INVALID_VALUE；对齐实数 spotrfBatched 的 CheckInfoSpan 设备范围
+// 校验口径，正常 Device info 的错误回写行为不变。
+static aclError CheckUndersizedInfoSpan(aclsolverHandle_t handle)
+{
+    const int negN = 64;
+    void* negA = nullptr;
+    void* negWorkspace = nullptr;
+    void* tinyInfo = nullptr;
+    CHECK_ACL(aclrtMalloc(&negA, (size_t)negN * negN * sizeof(aclFloatComplex), ACL_MEM_MALLOC_HIGHEST_FIRST));
+    CHECK_ACL(aclrtMalloc(&negWorkspace, (size_t)negN * negN * sizeof(aclFloatComplex), ACL_MEM_MALLOC_HIGHEST_FIRST));
+    CHECK_ACL(aclrtMalloc(&tinyInfo, 1, ACL_MEM_MALLOC_HIGHEST_FIRST));
+    auto negRet = aclsolverCpotrf(handle, ACLSOLVER_FILL_MODE_UPPER, negN, (aclFloatComplex*)negA, negN,
+                                  (aclFloatComplex*)negWorkspace, negN * negN, (int32_t*)tinyInfo);
+    CHECK_RET(negRet == ACLSOLVER_STATUS_INVALID_VALUE,
+              LOG_PRINT("undersized info expected ACLSOLVER_STATUS_INVALID_VALUE, got %d\n", negRet);
+              aclrtFree(negA); aclrtFree(negWorkspace); aclrtFree(tinyInfo); return ACL_ERROR_INVALID_PARAM);
+    CHECK_ACL(aclrtFree(negA));
+    CHECK_ACL(aclrtFree(negWorkspace));
+    CHECK_ACL(aclrtFree(tinyInfo));
+    return ACL_SUCCESS;
+}
+
 int main(int argc, char** argv)
 {
     int deviceId, N;
@@ -67,6 +90,10 @@ int main(int argc, char** argv)
               LOG_PRINT("ReadFile A_gm.bin failed.\n");
               cleanup(); return ACL_ERROR_INVALID_PARAM);
 
+    auto negSpanRet = CheckUndersizedInfoSpan(handle);
+    CHECK_RET(negSpanRet == ACL_SUCCESS, LOG_PRINT("undersized info span negative case failed: %d\n", negSpanRet);
+              cleanup(); return negSpanRet);
+
     std::cout << "[Input] A:" << std::endl;
     PrintPartOfMatrix<float>((uint8_t*)A, N, 2 * N, 8, 8);
 
@@ -81,7 +108,8 @@ int main(int argc, char** argv)
     PrintPartOfMatrix<float>((uint8_t*)A, N, 2 * N, 8, 8);
 
     CHECK_RET(WriteFile("./test/cpotrf/data/output/U_gm.bin", A, aMatrixFileSize),
-              LOG_PRINT("WriteFile U_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
+              LOG_PRINT("WriteFile U_gm.bin failed.\n");
+              cleanup(); return ACL_ERROR_INVALID_PARAM);
 
     // Re-read original matrix for lower factorization
     CHECK_RET(ReadFile("./test/cpotrf/data/input/A_gm.bin", aMatrixFileSize, A, aMatrixFileSize),
@@ -95,7 +123,8 @@ int main(int argc, char** argv)
     PrintPartOfMatrix<float>((uint8_t*)A, N, 2 * N, 8, 8);
 
     CHECK_RET(WriteFile("./test/cpotrf/data/output/L_gm.bin", A, aMatrixFileSize),
-              LOG_PRINT("WriteFile L_gm.bin failed.\n"); cleanup(); return ACL_ERROR_INVALID_PARAM);
+              LOG_PRINT("WriteFile L_gm.bin failed.\n");
+              cleanup(); return ACL_ERROR_INVALID_PARAM);
 
     auto cleanupRet = cleanup();
     CHECK_RET(cleanupRet == ACL_SUCCESS, return cleanupRet);

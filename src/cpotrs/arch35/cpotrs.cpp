@@ -20,6 +20,17 @@ extern "C" aclsolverStatus_t aclsolverCpotrs(aclsolverHandle_t handle, aclsolver
     {
         arg = 8;
     }
+    // info 回写前校验设备范围（issue #670，对齐实数 spotrfBatched 的 CheckInfoSpan
+    // 口径）：Finish 的 InfoKernel 按设备地址语义写 info，Host 指针或容量不足会
+    // 产生设备侧越界写；校验失败直接返回，不再下发设备写。
+    if (info)
+    {
+        auto span = ComplexSolver::DeviceSpan(info, sizeof(int), alignof(int), "aclsolverCpotrs", 8);
+        if (span != ACLSOLVER_STATUS_SUCCESS)
+        {
+            return span;
+        }
+    }
     auto status = Cholesky::Finish(handle, info, arg);
     if (status != ACLSOLVER_STATUS_SUCCESS || n == 0 || nrhs == 0)
     {

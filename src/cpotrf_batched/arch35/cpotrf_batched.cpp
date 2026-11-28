@@ -23,6 +23,18 @@ extern "C" aclsolverStatus_t aclsolverCpotrfBatched(aclsolverHandle_t handle, ac
     {
         arg = 6;
     }
+    // info 回写前校验设备范围（issue #670，对齐实数 spotrfBatched 的 CheckInfoSpan
+    // 口径）：Finish 预写 info[0]，batch>0 时后续 Factor 错误/成功路径按 batch 全量
+    // 写 info；Host 指针或容量不足会产生设备侧越界写，校验失败直接返回。
+    if (info)
+    {
+        auto span = ComplexSolver::DeviceSpan(info, static_cast<uint64_t>(batch > 0 ? batch : 1) * sizeof(int),
+                                              alignof(int), "aclsolverCpotrfBatched", 5);
+        if (span != ACLSOLVER_STATUS_SUCCESS)
+        {
+            return span;
+        }
+    }
     auto status = Cholesky::Finish(handle, info, arg);
     if (status != ACLSOLVER_STATUS_SUCCESS || batch == 0)
     {
